@@ -1,0 +1,55 @@
+{
+ "message": "Booking availabilities retrieved successfully",
+ "errorCode": null,
+ "errorDescription": null,
+ "errorDetails": null,
+ "isError": false,
+ "data": {
+  "availabilityWindowKey": "fbe1898b-c384-464e-8bbb-45e40096319a",
+  "duratione": 0,
+  "flightDateTime": "2026-11-10T08:00:00",
+  "isAvailable": true,
+  "loungeEntryDateTime": "2026-11-10T06:00:00",
+  "loungeExitDateTime": "2026-11-10T08:00:00",
+  "promotions": [],
+  "showShortStayWarning": false,
+  "tickets": [
+   {
+    "currency": "EUR",
+    "quantity": 0,
+    "maxQuantity": 5,
+    "minQuantity": 1,
+    "price": {
+     "discount": 0.0,
+     "originalValue": 80.0,
+     "unit": 80.0
+    },
+    "type": "Adult"
+   },
+   {
+    "currency": "EUR",
+    "quantity": 0,
+    "maxQuantity": 4,
+    "minQuantity": 0,
+    "price": {
+     "discount": 0.0,
+     "originalValue": 80.0,
+     "unit": 80.0
+    },
+    "type": "Child"
+   },
+   {
+    "currency": "EUR",
+    "quantity": 0,
+    "maxQuantity": 3,
+    "minQuantity": 0,
+    "price": {
+     "discount": 0.0,
+     "originalValue": 0.0,
+     "unit": 0.0
+    },
+    "type": "Infant"
+   }
+  ]
+ }
+}
