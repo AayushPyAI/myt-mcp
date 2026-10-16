@@ -15,6 +15,7 @@ from myt_mcp.ofran.client import OfranClient
 from myt_mcp.ofran.transport import BrowserTransport, HttpTransport
 from myt_mcp.ratelimit import SiteLimiter
 from myt_mcp.sata.client import SataClient
+from myt_mcp.tap.client import TapClient
 from myt_mcp.trenitalia.client import TrenitaliaClient
 from myt_mcp.viator.client import ViatorClient
 
@@ -23,7 +24,7 @@ class Services:
     def __init__(self, settings: Settings, *, myt: MYTClient | None = None, ofran: OfranClient | None = None,
                  trenitalia: TrenitaliaClient | None = None, viator: ViatorClient | None = None,
                  sata: SataClient | None = None, aspire: aspire_api.AspireClient | None = None,
-                 gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, israir: IsrairClient | None = None):
+                 gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, israir: IsrairClient | None = None, tap: TapClient | None = None):
         self.settings = settings
         self._myt = myt
         self._ofran = ofran
@@ -34,6 +35,7 @@ class Services:
         self._gyg = gyg
         self._kiwitaxi = kiwitaxi
         self._israir = israir
+        self._tap = tap
         self._browser: BrowserSession | None = None
 
     def myt(self) -> MYTClient:
@@ -123,6 +125,15 @@ class Services:
             self._israir = IsrairClient(limiter=limiter, cache_minutes=s.scrape_cache_minutes)
         return self._israir
 
+    def tap(self) -> TapClient:
+        s = self.settings
+        if not s.tap_enabled:
+            raise IntegrationError("TAP fare checks are switched off on the server (TAP_ENABLED=false). Ask the operator for the flight price.")
+        if self._tap is None:
+            limiter = SiteLimiter("TAP", max(s.scrape_min_interval_seconds, 5.0), min(s.scrape_max_per_hour, 20))
+            self._tap = TapClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes)
+        return self._tap
+
     def check_trip(self, trip_id: int | None) -> None:
         """While testing on the client's account, only the trips in ALLOWED_TRIP_IDS may be touched.
         Called before any request is sent to MYT."""
@@ -133,6 +144,6 @@ class Services:
                                    "call find_trip with that number first and use the trip_id it returns.".replace("{trip_id}", str(trip_id)))
 
     async def aclose(self) -> None:
-        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._gyg, self._kiwitaxi, self._israir, self._browser):
+        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._gyg, self._kiwitaxi, self._israir, self._tap, self._browser):
             if client is not None:
                 await client.aclose()
