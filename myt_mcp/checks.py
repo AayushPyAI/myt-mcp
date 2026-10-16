@@ -58,7 +58,7 @@ REMINDER = ("Before you answer: copy every name, date and price exactly as this 
             "one call after another; a detail (meeting point, pickup, child age band, cancellation) belongs to ONE option or listing: "
             "write the one you priced; recommend by the whole group's total first and never contradict your own table; show the discounted "
             "price AND the list price when both exist; label Cheapest, Recommended and Most flexible with a one-line reason; end with "
-            "end_your_answer_with. Before you compare options or sources call quote_guide('comparison'); in a long chat call quote_guide('correct_data') again before writing to MYT.")
+            "end_your_answer_with. Before you compare options or sources call quote_guide('comparison'); before a hotel or car search call quote_guide('filters') and apply the operator's filters or the trip's defaults; in a long chat call quote_guide('correct_data') again before writing to MYT.")
 
 _SOURCES = {
     "find_trip": "MYT (ManageYourTrip)", "get_trip": "MYT (ManageYourTrip)", "get_quotation": "MYT (ManageYourTrip)",

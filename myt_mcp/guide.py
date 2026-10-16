@@ -24,6 +24,7 @@ TOPICS = {
     "flights": "Flights",
     "lounges": "Airport lounges",
     "hotels": "Hotels",
+    "filters": "Filters: hotels",
     "transfers": "Transfers",
     "other_sources": "Sources not built yet",
     "activities": "Activities",
