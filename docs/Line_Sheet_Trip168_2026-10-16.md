@@ -12,7 +12,7 @@ Group: 2 adults + 1 child aged 8 (age from the operator, not MYT). Currency EUR.
 | 5 | Transportation | TAP Air Portugal | FLR to LIS TP875 12:20-14:30, direct, no checked bag (Discount) | 6 Mar 2027 | 1 (group) | 434.38 | 447.41 (3%) | tap.com tool, 16 Oct; RateHawk shows 438.38 | Fare: with 23 kg bag 530.38 (546.29 with 3%); refundable 654.38 |
 | 6 | Attraction | Get Your Guide | Golf Cart Tour: Highlights of Florence and Hills, 3 h, free cancellation until 4 Mar | 5 Mar 2027, 9:30 / 13:00 / 16:30 | 1 (group) | 239.97 | 271.17 (13%) | getyourguide_activity_details, 16 Oct 09:26 UTC | Start time; cheaper other tour: Official Grand Panoramic EUR 128 |
 
-Sum of lines 1-6 net 1,054.35; with the assumed profit 1,148.38. Quote subtotal would go from 3,624.99 to about 4,773.37 before items B and C.
+Sum of lines 1-6 net 1,054.35; with the assumed profit 1,147.98. Quote subtotal would go from 3,624.99 to about 4,772.97 before items B and C.
 
 ## B. Price found but the operator must choose first
 | Item | Options | Needed from the operator |
