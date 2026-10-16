@@ -142,10 +142,10 @@ def register(mcp: MCPServer) -> None:
     @tool_errors
     async def transfer_prices(from_place: str, to_place: str, transfer_date: date, passengers: int = 2) -> dict[str, Any]:
         """USE THIS FIRST for any private transfer, airport transfer, taxi or shuttle price question (for example
-        "airport to hotel"). It returns NO price: it returns the playbook and points to kiwitaxi_transfer_prices, the live
-        Kiwitaxi price tool. Never estimate a transfer price or use web search."""
+        "airport to hotel"). It returns NO price: it returns the playbook and points to kiwitaxi_transfer_prices and mozio_transfer_prices, the live
+        price tools (Kiwitaxi first, Mozio where Kiwitaxi has no transfer or as a second price). Never estimate a transfer price or use web search."""
         return {
-            "no_prices_here": "This returns no price. Call kiwitaxi_transfer_prices for live Kiwitaxi prices. Never estimate a price and never use web search.",
+            "no_prices_here": "This returns no price. Call kiwitaxi_transfer_prices for live Kiwitaxi prices and mozio_transfer_prices for Mozio (use it where Kiwitaxi has no transfer). Never estimate a price and never use web search.",
             "request": {"from": _clean_text(from_place, "from_place"), "to": _clean_text(to_place, "to_place"),
                         "date": transfer_date.isoformat(), "passengers": passengers},
             "playbook": sections().get("transfers", ""),

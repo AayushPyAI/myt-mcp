@@ -10,6 +10,7 @@ from myt_mcp.gyg.client import GygClient
 from myt_mcp.israir.client import IsrairClient
 from myt_mcp.kiwitaxi.client import KiwitaxiClient
 from myt_mcp.lounges import aspire as aspire_api
+from myt_mcp.mozio.client import MozioClient
 from myt_mcp.myt.client import MYTClient
 from myt_mcp.ofran.client import OfranClient
 from myt_mcp.ofran.transport import BrowserTransport, HttpTransport
@@ -24,7 +25,8 @@ class Services:
     def __init__(self, settings: Settings, *, myt: MYTClient | None = None, ofran: OfranClient | None = None,
                  trenitalia: TrenitaliaClient | None = None, viator: ViatorClient | None = None,
                  sata: SataClient | None = None, aspire: aspire_api.AspireClient | None = None,
-                 gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, israir: IsrairClient | None = None, tap: TapClient | None = None):
+                 gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, israir: IsrairClient | None = None, tap: TapClient | None = None,
+                 mozio: MozioClient | None = None):
         self.settings = settings
         self._myt = myt
         self._ofran = ofran
@@ -36,6 +38,7 @@ class Services:
         self._kiwitaxi = kiwitaxi
         self._israir = israir
         self._tap = tap
+        self._mozio = mozio
         self._browser: BrowserSession | None = None
 
     def myt(self) -> MYTClient:
@@ -134,6 +137,15 @@ class Services:
             self._tap = TapClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes)
         return self._tap
 
+    def mozio(self) -> MozioClient:
+        s = self.settings
+        if not s.mozio_enabled:
+            raise IntegrationError("Mozio transfer checks are switched off on the server (MOZIO_ENABLED=false). Ask the operator for the transfer price.")
+        if self._mozio is None:
+            limiter = SiteLimiter("Mozio", max(s.scrape_min_interval_seconds, 5.0), min(s.scrape_max_per_hour, 30))
+            self._mozio = MozioClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes)
+        return self._mozio
+
     def check_trip(self, trip_id: int | None) -> None:
         """While testing on the client's account, only the trips in ALLOWED_TRIP_IDS may be touched.
         Called before any request is sent to MYT."""
@@ -144,6 +156,6 @@ class Services:
                                    "call find_trip with that number first and use the trip_id it returns.".replace("{trip_id}", str(trip_id)))
 
     async def aclose(self) -> None:
-        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._gyg, self._kiwitaxi, self._israir, self._tap, self._browser):
+        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._gyg, self._kiwitaxi, self._israir, self._tap, self._mozio, self._browser):
             if client is not None:
                 await client.aclose()

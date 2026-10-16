@@ -65,7 +65,7 @@ _SOURCES = {
     "get_trip_participants": "MYT (ManageYourTrip)", "get_supplier_reservations": "MYT (ManageYourTrip)", "reconcile_trip": "MYT (ManageYourTrip)", "check_reservation_paperwork": "MYT (ManageYourTrip)", "train_prices": "Trenitalia (lefrecce.it)",
     "sata_flight_prices": "SATA (azoresairlines.pt)", "lounge_prices": "Aspire Lounges", "viator_search_activities": "Viator",
     "viator_activity_details": "Viator", "getyourguide_activity_details": "GetYourGuide", "getyourguide_find_activities": "GetYourGuide",
-    "ofran_car_prices": "Ofran", "kiwitaxi_transfer_prices": "Kiwitaxi (kiwitaxi.com)", "israir_flight_prices": "Israir (israir.co.il)", "tap_flight_prices": "TAP Air Portugal (flytap.com)", "tap_fare_calendar": "TAP Air Portugal fare calendar (flytap.com)",
+    "ofran_car_prices": "Ofran", "kiwitaxi_transfer_prices": "Kiwitaxi (kiwitaxi.com)", "mozio_transfer_prices": "Mozio (mozio.com)", "israir_flight_prices": "Israir (israir.co.il)", "tap_flight_prices": "TAP Air Portugal (flytap.com)", "tap_fare_calendar": "TAP Air Portugal fare calendar (flytap.com)",
 }
 
 
