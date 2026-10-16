@@ -24,3 +24,10 @@ Trip 168: 0 reservations (only a quotation).
 
 ## Reading of the three mismatches
 Ofran 600 against 83.38 and Trenitalia 60 against 113 were already seen on 15 Oct: the reservations carry the old amounts, the quotation was edited afterwards. The Ofran reservation is dated 15 Oct and the quote line 18 Oct.
+
+## First status change (user-approved, 16 Oct 2026, trip 906 only)
+- Change: order **R2342227** (ITCooking, Cooking workshop), row menu > **Skip To COR**: Ready To Send to Reservation Confirmed. Approved by the user in chat ("yahi change chalao") after the exact change was written out. The first click was stopped once by the auto-mode classifier ("External System Writes"); it was run only after the explicit approval, not worked around.
+- What happened: toast "Skipped successfully", no dialog, no email form; the row shows "Reservation Confirmed".
+- Verified: API `status_api` ConfirmedByTo (before: NotSent); counts now 4 Ready To Send, 2 Reservation Confirmed, 1 Voucher Issued; the ITCooking voucher flag disappeared; Reservation History has ONE new entry, "Oct 16, 2026 5:09 PM, Order skipped to COR" (no request-sent or email action); nothing else changed.
+- Not proven: whether a supplier email is sent in the background (nothing in the history says so). Ask Meylinda once.
+- Undo path seen in the menu: none for this status (a Voucher Issued row has "Back To COR"); do not try to undo without the operator.
