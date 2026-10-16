@@ -101,7 +101,7 @@ class Services:
             raise IntegrationError("GetYourGuide detail checks are switched off on the server (GYG_ENABLED=false). Use the GetYourGuide connector's cards.")
         if self._gyg is None:
             limiter = SiteLimiter("GetYourGuide", s.scrape_min_interval_seconds, s.scrape_max_per_hour)
-            self._gyg = GygClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes)
+            self._gyg = GygClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes, http_first=True)
         return self._gyg
 
     def kiwitaxi(self) -> KiwitaxiClient:

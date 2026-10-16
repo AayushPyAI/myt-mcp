@@ -20,10 +20,14 @@ Plain HTTP is not used: the page's own session and headers are needed, so reques
 from __future__ import annotations
 
 import json
+import logging
 import re
+import uuid
 from datetime import date
 from typing import Any
 from urllib.parse import urlencode
+
+import httpx
 
 from myt_mcp.browser import BrowserSession
 from myt_mcp.cache import TTLCache
@@ -57,6 +61,11 @@ class GygError(IntegrationError):
     pass
 
 
+log = logging.getLogger("myt_mcp.gyg")
+HTTP_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+                "Accept": "application/json", "Origin": ORIGIN, "Referer": f"{ORIGIN}/", "Accept-Language": "en-US,en;q=0.9"}
+
+
 def clean_url(url: str) -> str:
     """The activity link without tracking parameters, with EUR prices requested."""
     base = url.split("?")[0].split("#")[0]
@@ -64,8 +73,10 @@ def clean_url(url: str) -> str:
 
 
 class GygClient:
-    def __init__(self, session: BrowserSession, *, limiter: SiteLimiter | None = None, cache_minutes: float = 10.0):
+    def __init__(self, session: BrowserSession, *, limiter: SiteLimiter | None = None, cache_minutes: float = 10.0,
+                 http_first: bool = False, transport: httpx.AsyncBaseTransport | None = None):
         self._session = session
+        self._http_first, self._transport = http_first, transport
         self._limiter = limiter or SiteLimiter("GetYourGuide", min_interval=5.0, max_per_hour=60)
         self._pages: TTLCache[dict[str, Any]] = TTLCache(cache_minutes * 60, max_entries=32, track_fetch_time=True)
         self._answers: TTLCache[dict[str, Any]] = TTLCache(cache_minutes * 60, max_entries=64, track_fetch_time=True)
@@ -82,6 +93,16 @@ class GygClient:
         async def load() -> dict[str, Any]:
             await self._limiter.acquire()
             params = {"q": query.strip(), **({"date_from": day.isoformat(), "date_to": day.isoformat()} if day else {})}
+            payload = {"contentIdentifier": "srp-activity-grid", "sortingSelected": "popularity", "filtersUpdated": [], "selectedSortingOrderValue": "popularity",
+                       "additionalParams": {"q": query.strip(), "rawUserQuery": query.strip()}, "injectedCardsCount": 0, "templateMatcherRuleId": "search.basic",
+                       **({"datesSelected": {"fromDate": day.isoformat(), "toDate": day.isoformat()}} if day else {})}
+            if self._http_first:
+                # the search service answers plain HTTP (only the activity pages are behind a browser check); fall back to the browser if it does not
+                headers = {"accept-currency": "EUR", "visitor-platform": "desktop", "x-gyg-app-type": "Web", "visitor-id": uuid.uuid4().hex.upper()[:26]}
+                try:
+                    return await self._read_pages(self._http_post, f"{SRP_API}?{urlencode(params)}", payload, headers, pages)
+                except IntegrationError as e:
+                    log.info("GetYourGuide search over HTTP failed (%s); using the browser", e)
 
             async def action(page):
                 try:
@@ -99,27 +120,39 @@ class GygClient:
             if not read.get("visitor_id"):
                 raise GygError("GetYourGuide's search page had an unexpected format; the site may have changed.")
             headers = {"accept-currency": "EUR", "visitor-platform": "desktop", "x-gyg-app-type": "Web", "visitor-id": read["visitor_id"]}
-            payload = {"contentIdentifier": "srp-activity-grid", "sortingSelected": "popularity", "filtersUpdated": [], "selectedSortingOrderValue": "popularity",
-                       "additionalParams": {"q": query.strip(), "rawUserQuery": query.strip()}, "injectedCardsCount": 0, "templateMatcherRuleId": "search.basic",
-                       **({"datesSelected": {"fromDate": day.isoformat(), "toDate": day.isoformat()}} if day else {})}
-            answers: list[dict[str, Any]] = []
-            for number in range(1, pages + 1):
-                if number > 1:
-                    await self._limiter.acquire()
-                try:
-                    answers.append(await self._srp_page(f"{SRP_API}?{urlencode(params)}", {"payload": {**payload, "page": number}}, headers))
-                except IntegrationError as e:
-                    if number == 1:
-                        raise
-                    return {"answers": answers, "stopped": f"page {number} could not be read ({e}); the answer covers pages 1-{number - 1}."}
-                if not any(isinstance(b, dict) and b.get("type") == "loadMore" for b in answers[-1].get("content") or []):
-                    break   # no "Show more" after this page: it was the last one
-            return {"answers": answers, "stopped": None}
+            return await self._read_pages(self._browser_post, f"{SRP_API}?{urlencode(params)}", payload, headers, pages)
 
         return await self._searches.get_or_load(key, load)
 
-    async def _srp_page(self, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
-        r = await self._session.fetch(ORIGIN, f"{ORIGIN}/", "POST", url, body, headers)
+    async def _http_post(self, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+        try:
+            async with httpx.AsyncClient(headers=HTTP_HEADERS, timeout=40, transport=self._transport) as http:
+                r = await http.post(url, json=body, headers=headers)
+        except httpx.HTTPError as e:
+            raise GygError(f"GetYourGuide could not be reached over HTTP ({type(e).__name__}).") from None
+        return {"status": r.status_code, "text": r.text}
+
+    async def _browser_post(self, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+        return await self._session.fetch(ORIGIN, f"{ORIGIN}/", "POST", url, body, headers)
+
+    async def _read_pages(self, post, url: str, payload: dict[str, Any], headers: dict[str, str], pages: int) -> dict[str, Any]:
+        """Page 1..`pages` of the search; a failure after the first page keeps what was read."""
+        answers: list[dict[str, Any]] = []
+        for number in range(1, pages + 1):
+            if number > 1:
+                await self._limiter.acquire()
+            try:
+                answers.append(await self._srp_page(post, url, {"payload": {**payload, "page": number}}, headers))
+            except IntegrationError as e:
+                if number == 1:
+                    raise
+                return {"answers": answers, "stopped": f"page {number} could not be read ({e}); the answer covers pages 1-{number - 1}."}
+            if not any(isinstance(b, dict) and b.get("type") == "loadMore" for b in answers[-1].get("content") or []):
+                break   # no "Show more" after this page: it was the last one
+        return {"answers": answers, "stopped": None}
+
+    async def _srp_page(self, post, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+        r = await post(url, body, headers)
         if r["status"] in (401, 403, 429):
             raise GygError(f"GetYourGuide refused the search ({r['status']}). Stopping; wait a while or check the site.")
         if r["status"] != 200:

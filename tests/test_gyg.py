@@ -427,3 +427,54 @@ def test_included_and_not_included_items_are_told_apart():
     info = activity_info(state)
     assert info["includes"] == ["All ingredients and cooking equipment", "Lots of wine"]
     assert info["not_included"] == ["Hotel pickup and drop-off", "Gratuities"]
+
+
+# ---------- search over plain HTTP first, the browser as the fallback ----------
+
+def http_client(status=200, pages=None, session=None):
+    import httpx
+    calls = []
+    answers = list(pages or [SEARCH_PAGE])
+
+    def handler(request):
+        calls.append(request)
+        if status != 200:
+            return httpx.Response(status, text="blocked")
+        return httpx.Response(200, json=answers.pop(0) if len(answers) > 1 else answers[0])
+
+    session = session or search_session(SEARCH_PAGE)
+    client = GygClient(session, limiter=SiteLimiter("GetYourGuide", 0, 1000), http_first=True, transport=httpx.MockTransport(handler))
+    return client, calls, session
+
+
+async def test_search_over_http_needs_no_browser_and_sends_the_search_headers():
+    client, calls, session = http_client()
+    got = await client.search("Florence pasta cooking class", OCT19, 1)
+    rows, total = search_page(got["answers"][0])
+    assert len(rows) == 6 and total == 573 and got["stopped"] is None
+    assert session.visits == [] and session.posts == []                        # the browser was not used
+    request = calls[0]
+    assert request.url.path == "/user-interface/landing-pages/srp/blocks" and request.url.params["q"] == "Florence pasta cooking class"
+    assert request.headers["accept-currency"] == "EUR" and len(request.headers["visitor-id"]) == 26 and request.headers["visitor-id"].isalnum()
+    body = json.loads(request.content)["payload"]
+    assert body["page"] == 1 and body["sortingSelected"] == "popularity" and body["datesSelected"] == {"fromDate": "2026-10-19", "toDate": "2026-10-19"}
+
+
+async def test_search_over_http_falls_back_to_the_browser_when_refused():
+    client, calls, session = http_client(status=403)
+    got = await client.search("Florence pasta cooking class", OCT19, 1)
+    assert len(calls) == 1 and len(session.visits) == 1 and len(session.posts) == 1       # one refused HTTP try, then the browser path
+    assert search_page(got["answers"][0])[1] == 573
+
+
+async def test_search_over_http_keeps_the_pages_read_when_a_later_page_fails():
+    import httpx
+    sent = []
+
+    def handler(request):
+        sent.append(request)
+        return httpx.Response(200, json=SEARCH_PAGE) if len(sent) == 1 else httpx.Response(500, text="x")
+
+    client = GygClient(search_session(), limiter=SiteLimiter("GetYourGuide", 0, 1000), http_first=True, transport=httpx.MockTransport(handler))
+    got = await client.search("Florence pasta class", None, 3)
+    assert len(got["answers"]) == 1 and "page 2 could not be read" in got["stopped"] and "datesSelected" not in json.loads(sent[0].content)["payload"]
