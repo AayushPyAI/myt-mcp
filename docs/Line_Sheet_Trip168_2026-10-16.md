@@ -39,3 +39,8 @@ Prices of all lines were re-read first (transfers 81 / 99 / 100 / 100 unchanged,
 - ❌ 4 transfers: RateHawk is a DMC supplier and does not stay in the quote row; needs the user's choice of supplier or Meylinda.
 - ❌ Lisbon hotel: Altis Grand has no supplier in MYT (suppliers are not created by us). RateHawk fresh: Deluxe Triple, breakfast, free cancellation until 4 Mar EUR 679 (+16 at the hotel); Arbitrip EUR 694 tax included, free cancellation before 3 Mar.
 Quote now: 10 lines, subtotal EUR 4,495.49 (was 3,624.99, 8 lines).
+
+## Update, same day: transfers and hotel written with workarounds (user: "inhe try karo", screenshots of the Lisbon supplier list)
+- ✅ 4 transfers written under the placeholder supplier "Lisbon Airport Transfers" (id 101768, Car, Portugal), product name says "via RateHawk Transfers", Economy, net 81 / 99 / 100 / 100, profit 13% = 91.53 / 111.87 / 113.00 / 113.00. The supplier is wrong for Rome, Florence and the Azores: Meylinda should replace it with the right RateHawk transfers row.
+- ✅ Lisbon hotel written as Hotel Vincci Liberdade (supplier id 77317) instead of Altis Grand (no MYT supplier): Triple Superior Room, breakfast, free cancellation until 3 Mar, RateHawk net EUR 697 for 2 nights (348.50 a night, +EUR 16 payable at the hotel), profit 3% = 717.91. Altis Grand RateHawk was EUR 679 (Deluxe Triple, breakfast, free cancellation until 4 Mar) and Arbitrip EUR 694; Altis needs a supplier created by the operator.
+- Quote now: 15 lines, subtotal EUR 5,642.80 (API-verified 09:55 UTC). Still missing: Israir flights 6H581 and 6H582 (no price source).
