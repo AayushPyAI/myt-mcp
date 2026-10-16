@@ -36,6 +36,28 @@ def _same_product(a: str | None, b: str | None) -> bool:
     return bool(ka and kb) and (ka in kb or kb in ka)
 
 
+NEXT_STEP = {
+    "NotSent": "Confirm it (row menu > Skip To COR) or issue the voucher (Skip To Voucher & Download). Never Send Request: it emails the supplier.",
+    None: "Confirm it (row menu > Skip To COR) or issue the voucher (Skip To Voucher & Download). Never Send Request: it emails the supplier.",
+    "ConfirmedByTo": "Issue the voucher (Print Voucher on the row menu: not tested yet), then add the supplier invoice and the payment.",
+    "VoucherSent": "Check the supplier invoice (Create/Edit Invoice) and the PAYMENTS tab; mark paid only after the operator confirms the payment.",
+}
+URGENCY_ORDER = {"overdue": 0, "today": 1, "soon": 2, "later": 3, "done": 4}
+
+
+def _urgency(api_status: str | None, days: int | None, soon_days: int) -> str:
+    """How pressing the reservation is: a service that has started or starts today without a voucher comes first."""
+    if api_status == "VoucherSent":
+        return "done"
+    if days is None:
+        return "later"
+    if days < 0:
+        return "overdue"
+    if days == 0:
+        return "today"
+    return "soon" if days <= soon_days else "later"
+
+
 def reservations_summary(v3: dict[str, Any], today: date, soon_days: int = 7) -> dict[str, Any]:
     """One row per supplier reservation, with the supplier order's status and the amounts as the MYT screen shows them."""
     orders = {o.get("order_id"): o for o in v3.get("order_documents") or []}
@@ -62,8 +84,11 @@ def reservations_summary(v3: dict[str, Any], today: date, soon_days: int = 7) ->
             "status": STATUS_ON_SCREEN.get(api_status, api_status),
             "status_api": api_status,
         }
-        rows.append(row)
         days = (_iso(start) - today).days if _iso(start) else None
+        row["service_in_days"] = days
+        row["urgency"] = _urgency(api_status, days, soon_days)
+        row["next_step"] = NEXT_STEP.get(api_status, "Read the row on the MYT screen: this status is not one of the three seen so far.")
+        rows.append(row)
         if api_status in (None, "NotSent") and days is not None and days <= soon_days:
             when = f"starts in {days} day(s)" if days >= 0 else f"started {-days} day(s) ago"
             flags.append(f"{row['supplier']} / {row['product']} (order {row['order_id']}): status '{row['status']}' but the service {when}.")
@@ -77,6 +102,11 @@ def reservations_summary(v3: dict[str, Any], today: date, soon_days: int = 7) ->
         "total_cost": round(sum(r["total_cost"] for r in rows), 2),
         "by_status": by_status,
         "voucher_flags": flags,
+        "worklist": [
+            {"order_id": r["order_id"], "supplier": r["supplier"], "product": r["product"], "start": r["start"], "status": r["status"],
+             "urgency": r["urgency"], "service_in_days": r["service_in_days"], "next_step": r["next_step"]}
+            for r in sorted(rows, key=lambda x: (URGENCY_ORDER[x["urgency"]], x["start"] or "", x["order_id"] or 0)) if r["urgency"] != "done"
+        ],
         "status_names": "status is the name MYT's screen shows; status_api is the API's own name. Only these three were seen so far.",
         "not_in_api": NOT_IN_API,
     }

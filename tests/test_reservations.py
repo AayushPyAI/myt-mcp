@@ -158,3 +158,28 @@ async def test_tools_read_the_allowed_trip_and_refuse_others():
     assert not rec.is_error and "MISMATCH" in rec.content[0].text
     assert other.is_error and "outside the allowed test trips" in other.content[0].text
     assert bad_days.is_error and "soon_days" in bad_days.content[0].text
+
+
+def test_worklist_orders_by_urgency_and_gives_a_next_step():
+    v3 = _v3(
+        [
+            _res(1, 10, "RateHawk", "Hotel Uno", 225.0, 1, 1, "2026-10-14"),      # started yesterday, not sent
+            _res(2, 20, "Cooking Co", "Cooking workshop", 150.0, 2, 1, "2026-10-15"),  # today
+            _res(3, 30, "Far Co", "Tour", 80.0, 1, 1, "2026-12-01"),                   # later
+            _res(4, 40, "Done Co", "Hotel Due", 90.0, 1, 1, "2026-10-16"),            # voucher issued
+            _res(5, 50, "Soon Co", "Dinner", 60.0, 1, 1, "2026-10-18"),               # in 3 days, confirmed
+        ],
+        {1: "NotSent", 2: "NotSent", 3: "NotSent", 4: "VoucherSent", 5: "ConfirmedByTo"},
+        [],
+    )
+    out = reservations_summary(v3, TODAY, soon_days=7)
+    by_id = {r["order_id"]: r for r in out["reservations"]}
+    assert by_id[1]["urgency"] == "overdue" and by_id[1]["service_in_days"] == -1
+    assert by_id[2]["urgency"] == "today"
+    assert by_id[3]["urgency"] == "later"
+    assert by_id[4]["urgency"] == "done"
+    assert by_id[5]["urgency"] == "soon"
+    assert [w["order_id"] for w in out["worklist"]] == [1, 2, 5, 3]          # the voucher-issued one is not on the list
+    assert "Never Send Request" in by_id[1]["next_step"]
+    assert "voucher" in by_id[5]["next_step"].lower()
+    assert "payment" in by_id[4]["next_step"].lower()
