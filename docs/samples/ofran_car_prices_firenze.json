@@ -1,0 +1,156 @@
+{
+  "pickup": {
+    "name": "Firenze Airport",
+    "code": "FLR",
+    "kind": "airport",
+    "country_id": "60",
+    "iata_id": "60",
+    "preferred": false,
+    "date": "2026-10-15",
+    "time": "10:00"
+  },
+  "dropoff": {
+    "name": "Firenze Airport",
+    "code": "FLR",
+    "kind": "airport",
+    "country_id": "60",
+    "iata_id": "60",
+    "preferred": false,
+    "date": "2026-10-20",
+    "time": "10:00"
+  },
+  "rental_days": 5,
+  "offers_found": 68,
+  "cars": [
+    {
+      "supplier": "Maggiore Italy",
+      "car": "Lancia Ypsilon or similar",
+      "group": "Small",
+      "sipp": "ECMR",
+      "transmission": "manual",
+      "seats": "2",
+      "doors": "2/4",
+      "suitcases": "1",
+      "price": 191.63,
+      "price_before_discount": 213.72,
+      "currency": "EUR",
+      "package": "Zero Excess",
+      "live_rate": true,
+      "cdw_excess": 0.0,
+      "theft_excess": 0.0,
+      "deposit": null,
+      "excess_currency": "EUR",
+      "optional_extras": [
+        {
+          "name": "Ofran Plus I",
+          "price": 14.31,
+          "currency": "EUR"
+        }
+      ]
+    },
+    {
+      "supplier": "Budget Italy",
+      "car": "Fiat Panda or similar",
+      "group": "Small",
+      "sipp": "ECMR",
+      "transmission": "manual",
+      "seats": "2",
+      "doors": "2/4",
+      "suitcases": "1",
+      "price": 193.8,
+      "price_before_discount": 213.0,
+      "currency": "EUR",
+      "package": "Zero Excess",
+      "live_rate": true,
+      "cdw_excess": 0.0,
+      "theft_excess": 0.0,
+      "deposit": null,
+      "excess_currency": "EUR",
+      "optional_extras": [
+        {
+          "name": "Ofran Plus I",
+          "price": 14.31,
+          "currency": "EUR"
+        }
+      ]
+    },
+    {
+      "supplier": "Maggiore Italy",
+      "car": "Opel Corsa or similar",
+      "group": "Small",
+      "sipp": "EDMR",
+      "transmission": "manual",
+      "seats": "2",
+      "doors": "4",
+      "suitcases": "1",
+      "price": 199.66,
+      "price_before_discount": 222.17,
+      "currency": "EUR",
+      "package": "Zero Excess",
+      "live_rate": true,
+      "cdw_excess": 0.0,
+      "theft_excess": 0.0,
+      "deposit": null,
+      "excess_currency": "EUR",
+      "optional_extras": [
+        {
+          "name": "Ofran Plus I",
+          "price": 14.31,
+          "currency": "EUR"
+        }
+      ]
+    },
+    {
+      "supplier": "Budget Italy",
+      "car": "Hyundai i10 or similar",
+      "group": "Small",
+      "sipp": "MBMR",
+      "transmission": "manual",
+      "seats": "2",
+      "doors": "2/4",
+      "suitcases": "1",
+      "price": 199.98,
+      "price_before_discount": 219.5,
+      "currency": "EUR",
+      "package": "Zero Excess",
+      "live_rate": true,
+      "cdw_excess": 0.0,
+      "theft_excess": 0.0,
+      "deposit": null,
+      "excess_currency": "EUR",
+      "optional_extras": [
+        {
+          "name": "Ofran Plus I",
+          "price": 14.31,
+          "currency": "EUR"
+        }
+      ]
+    },
+    {
+      "supplier": "Budget Italy",
+      "car": "Citroen C3 or similar",
+      "group": "Small",
+      "sipp": "EDMR",
+      "transmission": "manual",
+      "seats": "2",
+      "doors": "2/4",
+      "suitcases": "0",
+      "price": 201.93,
+      "price_before_discount": 221.56,
+      "currency": "EUR",
+      "package": "Zero Excess",
+      "live_rate": true,
+      "cdw_excess": 0.0,
+      "theft_excess": 0.0,
+      "deposit": null,
+      "excess_currency": "EUR",
+      "optional_extras": [
+        {
+          "name": "Ofran Plus I",
+          "price": 14.31,
+          "currency": "EUR"
+        }
+      ]
+    }
+  ]
+}
