@@ -9,6 +9,7 @@ from mcp import Client
 
 from myt_mcp.app import create_server
 from myt_mcp.config import Settings
+from myt_mcp.lounges import aspire as aspire_api
 from myt_mcp.lounges.aspire import AspireClient, AspireError, Reply
 from myt_mcp.lounges.parse import match_airport, summarize_rates
 from myt_mcp.ratelimit import SiteLimiter
@@ -393,3 +394,33 @@ async def test_aspire_retries_once_when_the_connection_drops(monkeypatch):
     async with Client(lounge_server(Flaky())) as c:
         r = await c.call_tool("lounge_prices", {"airport": "TLV", "flight_departure": FLIGHT.isoformat()})
     assert not r.is_error and r.structured_content["lounges"]
+
+
+# ---------- Aspire: plain HTTP first, the browser as the fallback ----------
+
+class _Transport:
+    def __init__(self, reply=None, error=None):
+        self.reply, self.error, self.calls = reply, error, []
+
+    async def send(self, method, url, body=None):
+        self.calls.append((method, url))
+        if self.error:
+            raise self.error
+        return self.reply
+
+    async def aclose(self):
+        pass
+
+
+@pytest.mark.parametrize("primary,expect_fallback", [
+    (_Transport(reply=aspire_api.Reply(200, "{}")), False),
+    (_Transport(reply=aspire_api.Reply(404, "no")), False),                         # the site's own answer: not a reason to switch
+    (_Transport(reply=aspire_api.Reply(403, "blocked")), True),
+    (_Transport(reply=aspire_api.Reply(429, "slow")), True),
+    (_Transport(reply=aspire_api.Reply(503, "down")), True),
+    (_Transport(error=aspire_api.AspireError("Could not reach Aspire Lounges (ConnectError).")), True),
+])
+async def test_aspire_uses_http_first_and_the_browser_only_when_http_fails(primary, expect_fallback):
+    fallback = _Transport(reply=aspire_api.Reply(200, '{"from": "browser"}'))
+    reply = await aspire_api.FallbackTransport(primary, fallback).send("GET", "https://www.aspirelounges.com/x")
+    assert bool(fallback.calls) is expect_fallback and (reply.text == '{"from": "browser"}') is expect_fallback

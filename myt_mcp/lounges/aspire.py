@@ -89,6 +89,26 @@ class BrowserTransport:
         """The shared browser session is closed by its owner."""
 
 
+class FallbackTransport:
+    """Plain HTTP first (the website's own API answers it); the automation browser only when HTTP fails or is refused."""
+
+    def __init__(self, primary: Transport, fallback: Transport):
+        self._primary, self._fallback = primary, fallback
+
+    async def send(self, method: str, url: str, body: dict[str, Any] | None = None) -> Reply:
+        try:
+            reply = await self._primary.send(method, url, body)
+            if reply.status not in (401, 403, 429) and reply.status < 500:
+                return reply
+        except IntegrationError:
+            pass
+        return await self._fallback.send(method, url, body)
+
+    async def aclose(self) -> None:
+        await self._primary.aclose()
+        await self._fallback.aclose()
+
+
 class AspireClient:
     def __init__(self, transport: Transport | None = None, *, limiter: SiteLimiter | None = None, cache_minutes: float = 10.0):
         self._transport = transport or HttpTransport()

@@ -90,7 +90,8 @@ class Services:
         if not s.aspire_enabled:
             raise IntegrationError("Aspire lounge checks are switched off on the server (ASPIRE_ENABLED=false). Ask the operator for the lounge price.")
         if self._aspire is None:
-            transport = aspire_api.BrowserTransport(self.browser()) if s.browser_cdp_url else aspire_api.HttpTransport()
+            transport = (aspire_api.FallbackTransport(aspire_api.HttpTransport(), aspire_api.BrowserTransport(self.browser()))
+                         if s.browser_cdp_url else aspire_api.HttpTransport())
             limiter = SiteLimiter("Aspire", max(s.scrape_min_interval_seconds / 2, 1.0), s.scrape_max_per_hour)
             self._aspire = aspire_api.AspireClient(transport, limiter=limiter, cache_minutes=s.scrape_cache_minutes)
         return self._aspire
