@@ -31,3 +31,11 @@ Sum of lines 1-6 net 1,054.35; with the assumed profit 1,147.98. Quote subtotal 
 - Supplier names must be copied exactly from the MYT supplier list. Finished quote 273 carries the supplier "RateHawk" on its transfer lines, so ask Meylinda how that row is created (a DMC supplier did not stay in the row before). The existing line already uses supplier "Get Your Guide" (id 81856) and "Azore Airlines" (id 46627).
 - A price older than 60 minutes must be re-read before the line is written. All transfer prices above were read earlier today and need a quick re-check.
 - Lines are written in the browser with Claude in Chrome, one line at a time, only after the operator's yes. Never press Update Mini-Site or change the selected quotation version.
+
+## Written into MYT on 16 Oct 2026 (user said "fill the myt", defaults and recommendations approved)
+Prices of all lines were re-read first (transfers 81 / 99 / 100 / 100 unchanged, TAP CLANEW EUR 530.38 at 09:42 UTC, golf cart EUR 239.97 at 09:26 UTC).
+- ✅ Golf Cart Tour, supplier Get Your Guide (id 81856), 5 Mar 2027, net 239.97, profit 13% = 271.17.
+- ✅ TAP FLR-LIS TP875, supplier TAP AIR PORTUGAL (id 98430), 6 Mar 2027, fare CLANEW with bag, net 530.38, profit 13% (same as the existing LIS-PDL flight line in this quote) = 599.33.
+- ❌ 4 transfers: RateHawk is a DMC supplier and does not stay in the quote row; needs the user's choice of supplier or Meylinda.
+- ❌ Lisbon hotel: Altis Grand has no supplier in MYT (suppliers are not created by us). RateHawk fresh: Deluxe Triple, breakfast, free cancellation until 4 Mar EUR 679 (+16 at the hotel); Arbitrip EUR 694 tax included, free cancellation before 3 Mar.
+Quote now: 10 lines, subtotal EUR 4,495.49 (was 3,624.99, 8 lines).
