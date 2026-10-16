@@ -1,0 +1,290 @@
+{
+ "state": {
+  "__PRELOADED_DATA__": {
+   "pageModel": {
+    "preloadedData": {
+     "search": {
+      "totalResults": 200,
+      "results": [
+       {
+        "item": {
+         "productCode": "5383SINTRACASCAIS",
+         "title": {
+          "__typename": "TextValue",
+          "text": "Sintra and Cascais Small-Group Day Trip from Lisbon",
+          "translationInfo": {
+           "__typename": "TranslationInfo",
+           "source": "ORIGINAL",
+           "vendor": null
+          }
+         },
+         "pricingInfo": {
+          "__typename": "PricingInfo",
+          "fromPrice": {
+           "__typename": "Money",
+           "amount": 49,
+           "currency": "EUR"
+          },
+          "comparisonPrice": null,
+          "amountSaved": null,
+          "fromPriceWithExtraCharges": null,
+          "comparisonPricePlusExtraCharges": null,
+          "pricingType": "TRAVELLER_BY_AGE_BAND",
+          "priceVariesByGroupSize": true,
+          "adjustments": null
+         },
+         "reviewSummary": {
+          "__typename": "ReviewSummary",
+          "averageRating": 5,
+          "exactRating": 4.8,
+          "count": 8032
+         },
+         "itinerary": {
+          "__typename": "ProductSingleDayTourItinerary",
+          "duration": {
+           "__typename": "FixedDuration",
+           "duration": 480,
+           "unit": "MINUTES"
+          }
+         },
+         "cancellationPolicy": {
+          "__typename": "CancellationPolicy",
+          "freeCancellation": true
+         },
+         "offeredLanguages": [
+          {
+           "__typename": "OfferedLanguage",
+           "code": "en"
+          },
+          {
+           "__typename": "OfferedLanguage",
+           "code": "es"
+          },
+          {
+           "__typename": "OfferedLanguage",
+           "code": "fr"
+          },
+          {
+           "__typename": "OfferedLanguage",
+           "code": "pt"
+          }
+         ],
+         "productBadges": [
+          {
+           "__typename": "ProductBadgeWithInfo",
+           "type": "LIKELY_TO_SELL_OUT",
+           "isPrimary": true
+          },
+          {
+           "__typename": "ProductBadgeWithInfo",
+           "type": "RECOMMENDED_BY_TRAVELLERS",
+           "isPrimary": false
+          }
+         ],
+         "primaryDestination": {
+          "__typename": "Destination",
+          "name": "Lisbon",
+          "id": "538",
+          "canonicalName": "Lisbon"
+         },
+         "description": {
+          "__typename": "TextValue",
+          "text": "Experience the natural and historical beauty of Portugal on a small-group day trip from Lisbon to Sintra and Cascais. Just a few hours from Portugal's capital city, Sintra is a magical place where man and nature exist in perfect harmony. Discover secret trails at Pena Park, admire the natural wonders of Sintra Natural Park and the cliffs of Roca Cape, and visit the whimsical Pena National Palace. Enjoy a scenic drive along the Atlantic coast, and stop at Cascais Beach. Walk around Cascais town and bay."
+         },
+         "canonicalName": "Sintra and Cascais Small-Group Day Trip from Lisbon"
+        }
+       },
+       {
+        "item": {
+         "productCode": "32957P13",
+         "title": {
+          "__typename": "TextValue",
+          "text": "Best Sintra Day Trip From Lisbon – Pena, Cabo Da Roca & Cascais",
+          "translationInfo": {
+           "__typename": "TranslationInfo",
+           "source": "ORIGINAL",
+           "vendor": null
+          }
+         },
+         "pricingInfo": {
+          "__typename": "PricingInfo",
+          "fromPrice": {
+           "__typename": "Money",
+           "amount": 27.2,
+           "currency": "EUR"
+          },
+          "comparisonPrice": {
+           "__typename": "Money",
+           "amount": 32,
+           "currency": "EUR"
+          },
+          "amountSaved": {
+           "__typename": "Money",
+           "amount": 4.8,
+           "currency": "EUR"
+          },
+          "fromPriceWithExtraCharges": {
+           "__typename": "ProductPriceWithExtraCharges",
+           "amountPlusExtraCharges": {
+            "__typename": "Money",
+            "amount": 30.97,
+            "currency": "EUR"
+           }
+          },
+          "comparisonPricePlusExtraCharges": {
+           "__typename": "Money",
+           "amount": 35.77,
+           "currency": "EUR"
+          },
+          "pricingType": "TRAVELLER_BY_AGE_BAND",
+          "priceVariesByGroupSize": true,
+          "adjustments": null
+         },
+         "reviewSummary": {
+          "__typename": "ReviewSummary",
+          "averageRating": 5,
+          "exactRating": 5,
+          "count": 572
+         },
+         "itinerary": {
+          "__typename": "ProductSingleDayTourItinerary",
+          "duration": {
+           "__typename": "FixedDuration",
+           "duration": 480,
+           "unit": "MINUTES"
+          }
+         },
+         "cancellationPolicy": {
+          "__typename": "CancellationPolicy",
+          "freeCancellation": true
+         },
+         "offeredLanguages": [
+          {
+           "__typename": "OfferedLanguage",
+           "code": "en"
+          },
+          {
+           "__typename": "OfferedLanguage",
+           "code": "es"
+          },
+          {
+           "__typename": "OfferedLanguage",
+           "code": "pt"
+          }
+         ],
+         "productBadges": [
+          {
+           "__typename": "ProductBadgeWithInfo",
+           "type": "SPECIAL_OFFER",
+           "isPrimary": true
+          },
+          {
+           "__typename": "ProductBadgeWithInfo",
+           "type": "RECOMMENDED_BY_TRAVELLERS",
+           "isPrimary": false
+          }
+         ],
+         "primaryDestination": {
+          "__typename": "Destination",
+          "name": "Lisbon",
+          "id": "538",
+          "canonicalName": "Lisbon"
+         },
+         "description": {
+          "__typename": "TextValue",
+          "text": "Discover breathtaking landscapes, rich history, and hidden gems with us.\n\nWe handle everything, starting with pick-up and drop off at your accommodation (private tour options only).\n\nBegin with a stop in Cascais, a charming fishing village once favored by royalty.\n\nExplore stunning, lesser-known viewpoints and choose one monument to visit inside. \n\nFeel the thrill at Cabo da Roca, mainland Europe’s westernmost point, where cliffs meet the Atlantic in postcard perfection.\n\nA municipal fee of €3.77 per person may apply for access to Sintra.\n\n*Our Tour Options:*\n\n• Private Tour Option – Without tickets included – If you choose Pena Palace or Quinta da Regaleira, purchase the tickets for 10:00am. \n• Private Tour Option – With Pena Palace ticket included – We take care of it all!\n• Group Tour Option – With Pena Palace ticket included. Meeting point/end location: Praça dos Restauradores 16, Lisbon. (This option does not offer pick up/drop off at the accommodation)"
+         },
+         "canonicalName": "Sintra and Cascais Group Tour"
+        }
+       },
+       {
+        "item": {
+         "productCode": "172853P1",
+         "title": {
+          "__typename": "TextValue",
+          "text": "Sintra Private Trip from Lisbon Customizable Dreamlike Experience",
+          "translationInfo": {
+           "__typename": "TranslationInfo",
+           "source": "ORIGINAL",
+           "vendor": null
+          }
+         },
+         "pricingInfo": {
+          "__typename": "PricingInfo",
+          "fromPrice": {
+           "__typename": "Money",
+           "amount": 155,
+           "currency": "EUR"
+          },
+          "comparisonPrice": null,
+          "amountSaved": null,
+          "fromPriceWithExtraCharges": null,
+          "comparisonPricePlusExtraCharges": null,
+          "pricingType": "TRAVELLER_BY_AGE_BAND",
+          "priceVariesByGroupSize": true,
+          "adjustments": null
+         },
+         "reviewSummary": {
+          "__typename": "ReviewSummary",
+          "averageRating": 5,
+          "exactRating": 5,
+          "count": 2033
+         },
+         "itinerary": {
+          "__typename": "ProductSingleDayTourItinerary",
+          "duration": {
+           "__typename": "FixedDuration",
+           "duration": 480,
+           "unit": "MINUTES"
+          }
+         },
+         "cancellationPolicy": {
+          "__typename": "CancellationPolicy",
+          "freeCancellation": true
+         },
+         "offeredLanguages": [
+          {
+           "__typename": "OfferedLanguage",
+           "code": "en"
+          },
+          {
+           "__typename": "OfferedLanguage",
+           "code": "es"
+          },
+          {
+           "__typename": "OfferedLanguage",
+           "code": "pt"
+          }
+         ],
+         "productBadges": [
+          {
+           "__typename": "ProductBadgeWithInfo",
+           "type": "RECOMMENDED_BY_TRAVELLERS",
+           "isPrimary": false
+          }
+         ],
+         "primaryDestination": {
+          "__typename": "Destination",
+          "name": "Lisbon",
+          "id": "538",
+          "canonicalName": "Lisbon"
+         },
+         "description": {
+          "__typename": "TextValue",
+          "text": "This tour will be a day trip where travelers can enjoy the different faces of Sintra with a private certified guide and a private air-conditioned van. Travelers will visit the Pena National Palace and Quinta da Regaleira, both UNESCO World Heritage sites, as well as Monserrate Palace, National Palace the Moorish Castle and Cabo da Roca, the most western point of continental Europe. Since this tour is 100% customizable travelers can decide which monuments to visit in the inside or can decide to visit monuments only from the outside, just let us know! During the tour you will discover the hidden treasures only locals know of and will have the opportunity to try the fantastic Portuguese cuisine. The itinerary is designed in a way travelers will always avoid crowds.\n\n◉ Guided tour inside the monuments you choose to visit\n◉ Private customizable experience\n◉ Guaranteed to skip lines with our guides\n◉ We pick up and drop-off at your hotel in Lisbon, Cascais or Sintra"
+         },
+         "canonicalName": "Sintra, Sintra private tour, a dreamlike experience!"
+        }
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ "urls": {
+  "5383SINTRACASCAIS": "https://www.viator.com/tours/Lisbon/Sintra-and-Cascais-Small-Group-Day-Trip-from-Lisbon/d538-5383SINTRACASCAIS",
+  "32957P13": "https://www.viator.com/tours/Lisbon/Sintra-and-Cascais-Group-Tour/d538-32957P13",
+  "172853P1": "https://www.viator.com/tours/Lisbon/Sintra-Sintra-private-tour-a-dreamlike-experience/d538-172853P1"
+ }
+}

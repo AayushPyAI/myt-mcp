@@ -1,0 +1,394 @@
+{
+ "productCode": "5383SINTRACASCAIS",
+ "title": "Sintra and Cascais Small-Group Day Trip from Lisbon",
+ "supplierName": "Inside Lisbon",
+ "isPrivateTour": false,
+ "rating": {
+  "score": 5,
+  "exactScore": 4.8,
+  "reviewCount": 8032
+ },
+ "duration": {
+  "days": 0,
+  "hours": 8,
+  "minutes": 0
+ },
+ "pricing": {
+  "price": {
+   "retailPrice": {
+    "currencyCode": "EUR",
+    "currencySymbol": "€",
+    "amount": 49
+   }
+  }
+ },
+ "description": {
+  "overview": {
+   "header": "Reaching the sights in Sintra and Cascais by rental car or public transport can be a hassle. Instead, see Portugal&#39;s natural and architectural wonders stress-free with this small-group, guided tour directly from Lisbon. Experience the natural wonders of Pena Park with a guided tour and enjoy a visit inside Pena National Palace (if option with tickets is selected). Use your free time in Sintra to take in the highlights, then drive along the Atlantic Coast past the bluffs of Roca Cape to Cascais for a leisurely walk through town to its scenic beaches.",
+   "footer": "Enjoy ample free time in Sintra on this tour—more than most tours allow.",
+   "features": [
+    "Travel from Lisbon to Sintra and Cascais without the hassle of navigating",
+    "See the cliffs of Roca Cape, the westernmost point of continental Europe",
+    "Enjoy a scenic drive along the Atlantic coast, including free time at Cascais Beach",
+    "Enjoy the relaxed atmosphere of a small-group tour",
+    "Upgrade your experience to include Quinta da Regaleira"
+   ]
+  },
+  "sampleMenu": [],
+  "exclusions": {
+   "features": [
+    "Gratuities",
+    "Food and drinks, unless specified",
+    "Hotel pickup and drop-off",
+    "Without tickets option: same-day Palace tickets may be limited or unavailable."
+   ],
+   "featuresDescription": [
+    "Gratuities",
+    "",
+    "",
+    ""
+   ],
+   "featuresTooltip": [
+    "",
+    "",
+    "",
+    ""
+   ]
+  },
+  "inclusions": {
+   "features": [
+    "Tickets to Pena Palace & Park included or optional, depending on your choice",
+    "Guided by a passionate local expert",
+    "Travel in a comfortable air-conditioned minivan",
+    "Quinta da Regaleira tickets included only with selected option \"Upgrade to include Regaleira\""
+   ],
+   "featuresDescription": [
+    "",
+    "",
+    "",
+    ""
+   ],
+   "featuresTooltip": [
+    "",
+    "",
+    "",
+    ""
+   ]
+  },
+  "additionalInfo": {
+   "features": [
+    "Confirmation will be received at time of booking",
+    "Not wheelchair accessible",
+    "Service animals allowed",
+    "Near public transportation",
+    "Infant seats available",
+    "Travelers should have a moderate physical fitness level",
+    "Duration of stop at Cascais Beach depends on weather conditions",
+    "It's rare, but this tour may be conducted in two languages to accommodate all participants",
+    "Infant / child seats are mandatory for children aged 0-11. These are available on request if child age is advised at time of booking.",
+    "There is no room in our vehicles for strollers and luggage",
+    "If the booking is for more than 8 people, the group might be divided in separate vehicles",
+    "For bookings without tickets: same-day Palace tickets may be limited. Alternatives include staying near the park entrance or buying a Park-only ticket (no Palace or guided visit). Please confirm plans with your guide in the morning.",
+    "This tour/activity will have a maximum of 8 travelers"
+   ]
+  },
+  "cancellationPolicy": {
+   "cancellationPolicyTypes": [
+    "STANDARD_TWENTY_FOUR_HOURS",
+    "SUPPLIER_CAN_CANCEL_ON_BAD_WEATHER",
+    "SUPPLIER_CAN_CANCEL_ON_SMALL_GROUP"
+   ],
+   "policies": [
+    "You can cancel up to 24 hours in advance of the experience for a full refund."
+   ],
+   "highlightedPolicies": [
+    "For a full refund, you must cancel at least 24 hours before the experience’s start time.",
+    "If you cancel less than 24 hours before the experience’s start time, the amount you paid will not be refunded.",
+    "Any changes made less than 24 hours before the experience’s start time will not be accepted.",
+    "Cut-off times are based on the experience’s local time.",
+    "This experience requires good weather. If it’s canceled due to poor weather, you’ll be offered a different date or a full refund.",
+    "This experience requires a minimum number of travelers. If it’s canceled because the minimum isn’t met, you’ll be offered a different date/experience or a full refund."
+   ],
+   "cancellationPolicyLabel": "Free cancellation",
+   "cancellationPolicyDescription": "up to 24 hours in advance",
+   "freeCancellationFromDays": -1,
+   "timelineTitle": "Free cancellation",
+   "policyTimeline": [
+    {
+     "refund": "100% refund",
+     "period": "24 hours prior",
+     "days": 1,
+     "policyType": "NO_CANCELLATION_FEE",
+     "feePercentage": 0
+    },
+    {
+     "refund": "No refund",
+     "period": "Within 24 hours",
+     "days": 0,
+     "policyType": "WITH_FEE_WITHIN_DAYS",
+     "feePercentage": 100
+    }
+   ]
+  }
+ },
+ "logisticsLocation": {
+  "departureAndReturnUIType": "POINT_AS_LIST",
+  "meetingPoints": [
+   {
+    "locationCategory": "START",
+    "locationInstruction": "Please meet our guide in front of the Hard Rock Cafe. Most of the times the guide will park the vehicle in a underground parking lot, so don't worry if you don't see any vehicles approaching.",
+    "locationData": {
+     "location": {
+      "reference": "LOC-df1fff81-710e-4f45-9003-d337c5ed917e",
+      "serviceProviderReference": "ChIJUV-0EIEzGQ0RLeFpT8uLavk",
+      "locationId": 189158,
+      "name": "Hard Rock Cafe | Lisbon",
+      "address": {
+       "country": "Portugal",
+       "countryCode": "PT",
+       "state": "Lisboa",
+       "street": "Av. da Liberdade",
+       "postcode": "1250-144",
+       "readableFormat": "Av. da Liberdade 2, 1250-144 Lisboa, Portugal"
+      },
+      "unstructuredAddress": "Av. da Liberdade 2, 1250-144 Lisboa, Portugal",
+      "description": "Hard Rock Cafe | Lisbon, Av. da Liberdade 2, 1250-144 Lisboa, Portugal",
+      "latitude": 38.716630699999996,
+      "longitude": -9.1417631,
+      "serviceProvider": "GOOGLE_PLACES",
+      "isCustomInputPickupLocation": false
+     },
+     "logisticsLocationPointType": "START_AND_END"
+    },
+    "locationPointType": "START_AND_END"
+   }
+  ],
+  "dropOffPoints": [],
+  "returnLocationPoints": [
+   {
+    "locationCategory": "END",
+    "locationInstruction": "Please meet our guide in front of the Hard Rock Cafe. Most of the times the guide will park the vehicle in a underground parking lot, so don't worry if you don't see any vehicles approaching.",
+    "locationData": {
+     "location": {
+      "reference": "LOC-df1fff81-710e-4f45-9003-d337c5ed917e",
+      "serviceProviderReference": "ChIJUV-0EIEzGQ0RLeFpT8uLavk",
+      "name": "Hard Rock Cafe | Lisbon",
+      "address": {
+       "country": "Portugal",
+       "countryCode": "PT",
+       "state": "Lisboa",
+       "street": "Av. da Liberdade",
+       "postcode": "1250-144",
+       "readableFormat": "Av. da Liberdade 2, 1250-144 Lisboa, Portugal"
+      },
+      "unstructuredAddress": "Av. da Liberdade 2, 1250-144 Lisboa, Portugal",
+      "description": "Hard Rock Cafe | Lisbon, Av. da Liberdade 2, 1250-144 Lisboa, Portugal",
+      "latitude": 38.716630699999996,
+      "longitude": -9.1417631,
+      "serviceProvider": "GOOGLE_PLACES",
+      "isCustomInputPickupLocation": false
+     },
+     "logisticsLocationPointType": "START_AND_END"
+    },
+    "locationPointType": "START_AND_END"
+   }
+  ],
+  "pickupPointTotal": 0,
+  "departurePointTotal": 1,
+  "endsAtStartPoint": true,
+  "isPickupOffered": false,
+  "hasPickupArea": false,
+  "isCustomPickupAllowed": false,
+  "pickupOptionType": "MEET_EVERYONE_AT_START_POINT",
+  "pickUpAndDropOffDataSummary": {}
+ },
+ "departureAndReturnLocations": {
+  "departureLocations": [
+   {
+    "description": "Av. da Liberdade 2, 1250-144 Lisboa, Portugal",
+    "instructions": "Please meet our guide in front of the Hard Rock Cafe. Most of the times the guide will park the vehicle in a underground parking lot, so don't worry if you don't see any vehicles approaching.",
+    "type": "START_AND_END"
+   }
+  ],
+  "tourOptionSchedules": {
+   "productType": "TOUR",
+   "startTimeType": "FIXED_START_TIMES",
+   "tourOptions": [
+    {
+     "tourGradeCode": "TG7",
+     "title": "Private Tour"
+    },
+    {
+     "tourGradeCode": "TG6",
+     "title": "Upgrade to include Regaleira"
+    },
+    {
+     "tourGradeCode": "TG5",
+     "title": "Tickets Pena Park Included"
+    },
+    {
+     "tourGradeCode": "TG4",
+     "title": "Entry Tickets Not Included"
+    },
+    {
+     "tourGradeCode": "DEFAULT",
+     "title": "Tickets Park & Pena Palace"
+    }
+   ],
+   "startTimesByTourGradeCode": {
+    "TG4": [
+     {
+      "seasonDateRange": "09/01/2026 - 10/31/2026",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-09-01",
+      "seasonEndDate": "2026-10-31"
+     },
+     {
+      "seasonDateRange": "11/01/2026 - 10/26/2027",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-11-01",
+      "seasonEndDate": "2027-10-26"
+     }
+    ],
+    "TG6": [
+     {
+      "seasonDateRange": "09/01/2026 - 10/31/2026",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-09-01",
+      "seasonEndDate": "2026-10-31"
+     },
+     {
+      "seasonDateRange": "11/01/2026 - 10/26/2027",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-11-01",
+      "seasonEndDate": "2027-10-26"
+     }
+    ],
+    "TG5": [
+     {
+      "seasonDateRange": "09/01/2026 - 10/31/2026",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-09-01",
+      "seasonEndDate": "2026-10-31"
+     },
+     {
+      "seasonDateRange": "11/01/2026 - 10/26/2027",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-11-01",
+      "seasonEndDate": "2027-10-26"
+     }
+    ],
+    "TG7": [
+     {
+      "seasonDateRange": "07/22/2026 - 10/31/2026",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-07-22",
+      "seasonEndDate": "2026-10-31"
+     },
+     {
+      "seasonDateRange": "11/01/2026 - 10/26/2027",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-11-01",
+      "seasonEndDate": "2027-10-26"
+     }
+    ],
+    "DEFAULT": [
+     {
+      "seasonDateRange": "09/01/2026 - 10/31/2026",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-09-01",
+      "seasonEndDate": "2026-10-31"
+     },
+     {
+      "seasonDateRange": "11/01/2026 - 10/26/2027",
+      "startTimes": [],
+      "operatingHours": {},
+      "seasonStartDate": "2026-11-01",
+      "seasonEndDate": "2027-10-26"
+     }
+    ]
+   },
+   "startsAt": "8:00 AM"
+  },
+  "returnLocations": [],
+  "ticketRedemptionLocations": []
+ },
+ "productLanguages": {
+  "primaryLanguage": {
+   "code": "en",
+   "displayName": "English"
+  },
+  "offeredLanguages": [
+   {
+    "code": "pt",
+    "displayName": "Portuguese"
+   },
+   {
+    "code": "en",
+    "displayName": "English"
+   },
+   {
+    "code": "fr",
+    "displayName": "French"
+   },
+   {
+    "code": "es",
+    "displayName": "Spanish"
+   }
+  ]
+ },
+ "availabilityConfig": {
+  "ageBandRanges": [
+   {
+    "ageBand": "ADULT",
+    "ageMin": 12,
+    "ageMax": 99,
+    "passengerMin": 1,
+    "passengerMax": 15,
+    "name": "Adult",
+    "defaultInputValue": 2,
+    "isCountedAsViableToBook": true,
+    "isBookableAlone": false
+   },
+   {
+    "ageBand": "CHILD",
+    "ageMin": 4,
+    "ageMax": 11,
+    "passengerMin": 0,
+    "passengerMax": 15,
+    "name": "Child",
+    "defaultInputValue": 0,
+    "isCountedAsViableToBook": false,
+    "isBookableAlone": false
+   },
+   {
+    "ageBand": "INFANT",
+    "ageMin": 0,
+    "ageMax": 3,
+    "passengerMin": 0,
+    "passengerMax": 15,
+    "name": "Infant",
+    "defaultInputValue": 0,
+    "isCountedAsViableToBook": false,
+    "isBookableAlone": true
+   }
+  ],
+  "maxTravellersPerBooking": 15,
+  "maxTravellersForCurrentDate": 15,
+  "searchDates": {
+   "from": "2026-10-14",
+   "to": "2026-10-15"
+  },
+  "nextAvailableDate": "2026-10-14"
+ },
+ "hasFreeCancellation": true
+}

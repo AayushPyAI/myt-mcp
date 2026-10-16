@@ -1,0 +1,583 @@
+{
+ "validationErrors": {},
+ "productAvailability": {
+  "tourGrades": [
+   {
+    "tourGradeCode": "TG1~10:00",
+    "availability": "AVAILABLE",
+    "date": "2026-10-16",
+    "description": "Learn to make fresh pasta, like the grandmothers made them in Italy.\nWe will teach you every process and stand by you te",
+    "languages": [
+     "English"
+    ],
+    "languageCodes": [
+     "en"
+    ],
+    "price": {
+     "retailPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 50.0
+     },
+     "discountedPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 50.0
+     },
+     "discountAmount": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "isDiscounted": false
+    },
+    "currency": "EUR",
+    "totalRetailPricePlusExtraCharges": {
+     "currencyCode": "EUR",
+     "currencySymbol": "€",
+     "amount": 0.0
+    },
+    "productCode": "212483P5",
+    "title": "Cooking Art Brunelleschi",
+    "startTimes": [
+     {
+      "tourGradeCode": "TG1~10:00",
+      "startTime": "10:00 AM",
+      "startTime24H": "10:00",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 50.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 50.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "AVAILABLE",
+      "priceBreakdown": [
+       {
+        "ageBand": "ADULT",
+        "numberOfTravelers": 2,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 25.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 25.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 50.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 50.0
+         },
+         "isDiscounted": false
+        }
+       },
+       {
+        "ageBand": "CHILD",
+        "numberOfTravelers": 1,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        }
+       }
+      ],
+      "spotsLeft": 42
+     },
+     {
+      "tourGradeCode": "TG1~14:30",
+      "startTime": "2:30 PM",
+      "startTime24H": "14:30",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 90.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 90.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "AVAILABLE",
+      "priceBreakdown": [
+       {
+        "ageBand": "ADULT",
+        "numberOfTravelers": 2,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 45.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 45.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 90.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 90.0
+         },
+         "isDiscounted": false
+        }
+       },
+       {
+        "ageBand": "CHILD",
+        "numberOfTravelers": 1,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        }
+       }
+      ],
+      "spotsLeft": 49
+     },
+     {
+      "tourGradeCode": "TG1~18:30",
+      "startTime": "6:30 PM",
+      "startTime24H": "18:30",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 138.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 138.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "AVAILABLE",
+      "priceBreakdown": [
+       {
+        "ageBand": "ADULT",
+        "numberOfTravelers": 2,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 69.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 69.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 138.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 138.0
+         },
+         "isDiscounted": false
+        }
+       },
+       {
+        "ageBand": "CHILD",
+        "numberOfTravelers": 1,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        }
+       }
+      ],
+      "spotsLeft": 37
+     }
+    ],
+    "priceBreakdown": [
+     {
+      "ageBand": "ADULT",
+      "numberOfTravelers": 2,
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 25.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 25.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "totalPrice": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 50.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 50.0
+       },
+       "isDiscounted": false
+      }
+     },
+     {
+      "ageBand": "CHILD",
+      "numberOfTravelers": 1,
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "totalPrice": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      }
+     }
+    ],
+    "earliestPaymentDate": "2026-10-14T15:00:00",
+    "spotsLeft": 42,
+    "languageServices": [
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "en"
+     }
+    ],
+    "isReserveEligible": true,
+    "isAvailable": true
+   },
+   {
+    "tourGradeCode": "TG6~18:25",
+    "availability": "UNAVAILABLE",
+    "date": "2026-10-16",
+    "description": "Flambé Pasta Class &amp; Tiramisù: The pasta will be cooked inside an excellent 24 months aged Parmesan with fresh truff",
+    "languages": [
+     "English"
+    ],
+    "languageCodes": [
+     "en"
+    ],
+    "price": {
+     "retailPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "discountedPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "discountAmount": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "isDiscounted": false
+    },
+    "currency": "EUR",
+    "totalRetailPricePlusExtraCharges": {
+     "currencyCode": "EUR",
+     "currencySymbol": "€",
+     "amount": 0.0
+    },
+    "productCode": "212483P5",
+    "title": "Flambé Pasta Class & Tiramisù ",
+    "startTimes": [
+     {
+      "tourGradeCode": "TG6~18:25",
+      "startTime": "6:25 PM",
+      "startTime24H": "18:25",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "UNAVAILABLE",
+      "priceBreakdown": []
+     }
+    ],
+    "priceBreakdown": [],
+    "languageServices": [
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "en"
+     }
+    ],
+    "isReserveEligible": false,
+    "isAvailable": false
+   },
+   {
+    "tourGradeCode": "TG5~18:00",
+    "availability": "UNAVAILABLE",
+    "date": "2026-10-16",
+    "description": "Pasta course where you will have a lot of fun! You will learn how to prepare the famous Negroni cocktail and Fresh Pasta",
+    "languages": [
+     "English"
+    ],
+    "languageCodes": [
+     "en"
+    ],
+    "price": {
+     "retailPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "discountedPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "discountAmount": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "isDiscounted": false
+    },
+    "currency": "EUR",
+    "totalRetailPricePlusExtraCharges": {
+     "currencyCode": "EUR",
+     "currencySymbol": "€",
+     "amount": 0.0
+    },
+    "productCode": "212483P5",
+    "title": "Negroni Tour + Pasta Class",
+    "startTimes": [
+     {
+      "tourGradeCode": "TG5~18:00",
+      "startTime": "6:00 PM",
+      "startTime24H": "18:00",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "UNAVAILABLE",
+      "priceBreakdown": []
+     }
+    ],
+    "priceBreakdown": [],
+    "languageServices": [
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "en"
+     }
+    ],
+    "isReserveEligible": false,
+    "isAvailable": false
+   }
+  ],
+  "tourGradesDisplayLimit": 4,
+  "hasCustomCancellationPolicy": false,
+  "selectedLanguageCodes": []
+ },
+ "alternativeProducts": [],
+ "cancellationPolicyDetails": {
+  "policyType": "REFUNDABLE",
+  "refundEligibleUntilDate": "2026-10-15",
+  "isRefundDeadlineInPast": false
+ }
+}

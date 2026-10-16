@@ -1,0 +1,926 @@
+{
+ "validationErrors": {},
+ "productAvailability": {
+  "tourGrades": [
+   {
+    "tourGradeCode": "TG4~08:00",
+    "availability": "UNAVAILABLE",
+    "date": "2026-10-16",
+    "description": "Does not include any entry tickets or guided visit. Please note tickets may be limited if purchased last minute<br />Dur",
+    "languages": [
+     "Portuguese",
+     "English",
+     "French",
+     "Spanish"
+    ],
+    "languageCodes": [
+     "pt",
+     "en",
+     "fr",
+     "es"
+    ],
+    "price": {
+     "retailPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 140.0
+     },
+     "discountedPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 140.0
+     },
+     "discountAmount": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "isDiscounted": false
+    },
+    "currency": "EUR",
+    "totalRetailPricePlusExtraCharges": {
+     "currencyCode": "EUR",
+     "currencySymbol": "€",
+     "amount": 0.0
+    },
+    "productCode": "5383SINTRACASCAIS",
+    "title": "Entry Tickets Not Included",
+    "startTimes": [
+     {
+      "tourGradeCode": "TG4~08:00",
+      "startTime": "8:00 AM",
+      "startTime24H": "08:00",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 140.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 140.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "UNAVAILABLE",
+      "priceBreakdown": [
+       {
+        "ageBand": "ADULT",
+        "numberOfTravelers": 2,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 56.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 56.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 112.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 112.0
+         },
+         "isDiscounted": false
+        }
+       },
+       {
+        "ageBand": "CHILD",
+        "numberOfTravelers": 1,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 28.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 28.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 28.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 28.0
+         },
+         "isDiscounted": false
+        }
+       }
+      ]
+     }
+    ],
+    "priceBreakdown": [
+     {
+      "ageBand": "ADULT",
+      "numberOfTravelers": 2,
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 56.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 56.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "totalPrice": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 112.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 112.0
+       },
+       "isDiscounted": false
+      }
+     },
+     {
+      "ageBand": "CHILD",
+      "numberOfTravelers": 1,
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 28.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 28.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "totalPrice": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 28.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 28.0
+       },
+       "isDiscounted": false
+      }
+     }
+    ],
+    "languageServices": [
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "en"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "pt"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "es"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "fr"
+     }
+    ],
+    "isReserveEligible": false,
+    "isAvailable": false
+   },
+   {
+    "tourGradeCode": "TG6~08:00",
+    "availability": "UNAVAILABLE",
+    "date": "2026-10-16",
+    "description": "Duration: 9 hours<br />Full Sintra Pena and Regaleira: The order of the tour can change, depending on the schedules to e",
+    "languages": [
+     "English",
+     "Spanish"
+    ],
+    "languageCodes": [
+     "en",
+     "es"
+    ],
+    "price": {
+     "retailPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "discountedPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "discountAmount": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "isDiscounted": false
+    },
+    "currency": "EUR",
+    "totalRetailPricePlusExtraCharges": {
+     "currencyCode": "EUR",
+     "currencySymbol": "€",
+     "amount": 0.0
+    },
+    "productCode": "5383SINTRACASCAIS",
+    "title": "Upgrade to include Regaleira",
+    "startTimes": [
+     {
+      "tourGradeCode": "TG6~08:00",
+      "startTime": "8:00 AM",
+      "startTime24H": "08:00",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "UNAVAILABLE",
+      "priceBreakdown": []
+     }
+    ],
+    "priceBreakdown": [],
+    "languageServices": [
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "en"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "es"
+     }
+    ],
+    "isReserveEligible": false,
+    "isAvailable": false
+   },
+   {
+    "tourGradeCode": "TG5~08:00",
+    "availability": "UNAVAILABLE",
+    "date": "2026-10-16",
+    "description": "Duration: 8 hours<br />Tickets Pena Park Only: Includes entry tickets only to Pena Park (tickets to the Palace not inclu",
+    "languages": [
+     "Portuguese",
+     "English",
+     "French",
+     "Spanish"
+    ],
+    "languageCodes": [
+     "pt",
+     "en",
+     "fr",
+     "es"
+    ],
+    "price": {
+     "retailPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 195.0
+     },
+     "discountedPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 195.0
+     },
+     "discountAmount": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "isDiscounted": false
+    },
+    "currency": "EUR",
+    "totalRetailPricePlusExtraCharges": {
+     "currencyCode": "EUR",
+     "currencySymbol": "€",
+     "amount": 0.0
+    },
+    "productCode": "5383SINTRACASCAIS",
+    "title": "Tickets Pena Park Included",
+    "startTimes": [
+     {
+      "tourGradeCode": "TG5~08:00",
+      "startTime": "8:00 AM",
+      "startTime24H": "08:00",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 195.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 195.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "UNAVAILABLE",
+      "priceBreakdown": [
+       {
+        "ageBand": "ADULT",
+        "numberOfTravelers": 2,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 78.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 78.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 156.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 156.0
+         },
+         "isDiscounted": false
+        }
+       },
+       {
+        "ageBand": "CHILD",
+        "numberOfTravelers": 1,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 39.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 39.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 39.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 39.0
+         },
+         "isDiscounted": false
+        }
+       }
+      ]
+     }
+    ],
+    "priceBreakdown": [
+     {
+      "ageBand": "ADULT",
+      "numberOfTravelers": 2,
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 78.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 78.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "totalPrice": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 156.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 156.0
+       },
+       "isDiscounted": false
+      }
+     },
+     {
+      "ageBand": "CHILD",
+      "numberOfTravelers": 1,
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 39.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 39.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "totalPrice": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 39.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 39.0
+       },
+       "isDiscounted": false
+      }
+     }
+    ],
+    "languageServices": [
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "en"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "pt"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "es"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "fr"
+     }
+    ],
+    "isReserveEligible": false,
+    "isAvailable": false
+   },
+   {
+    "tourGradeCode": "TG7~08:00",
+    "availability": "UNAVAILABLE",
+    "date": "2026-10-16",
+    "description": "Duration: 8 hours<br />Tickets Park &amp; Palace included: Private guide and vehicle, with pick up included (to be confi",
+    "languages": [
+     "Portuguese",
+     "English",
+     "French",
+     "Spanish"
+    ],
+    "languageCodes": [
+     "pt",
+     "en",
+     "fr",
+     "es"
+    ],
+    "price": {
+     "retailPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "discountedPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "discountAmount": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "isDiscounted": false
+    },
+    "currency": "EUR",
+    "totalRetailPricePlusExtraCharges": {
+     "currencyCode": "EUR",
+     "currencySymbol": "€",
+     "amount": 0.0
+    },
+    "productCode": "5383SINTRACASCAIS",
+    "title": "Private Tour",
+    "startTimes": [
+     {
+      "tourGradeCode": "TG7~08:00",
+      "startTime": "8:00 AM",
+      "startTime24H": "08:00",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "UNAVAILABLE",
+      "priceBreakdown": []
+     }
+    ],
+    "priceBreakdown": [],
+    "languageServices": [
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "en"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "pt"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "es"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "fr"
+     }
+    ],
+    "isReserveEligible": false,
+    "isAvailable": false
+   },
+   {
+    "tourGradeCode": "DEFAULT~08:00",
+    "availability": "UNAVAILABLE",
+    "date": "2026-10-16",
+    "description": "Duration: 8 hours<br />Tickets Park &amp; Palace included: Includes entry tickets to Pena Park and Pena Palace, plus a g",
+    "languages": [
+     "Portuguese",
+     "English",
+     "French",
+     "Spanish"
+    ],
+    "languageCodes": [
+     "pt",
+     "en",
+     "fr",
+     "es"
+    ],
+    "price": {
+     "retailPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 215.0
+     },
+     "discountedPrice": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 215.0
+     },
+     "discountAmount": {
+      "currencyCode": "EUR",
+      "currencySymbol": "€",
+      "amount": 0.0
+     },
+     "isDiscounted": false
+    },
+    "currency": "EUR",
+    "totalRetailPricePlusExtraCharges": {
+     "currencyCode": "EUR",
+     "currencySymbol": "€",
+     "amount": 0.0
+    },
+    "productCode": "5383SINTRACASCAIS",
+    "title": "Tickets Park & Pena Palace",
+    "startTimes": [
+     {
+      "tourGradeCode": "DEFAULT~08:00",
+      "startTime": "8:00 AM",
+      "startTime24H": "08:00",
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 215.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 215.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "availabilityResult": "UNAVAILABLE",
+      "priceBreakdown": [
+       {
+        "ageBand": "ADULT",
+        "numberOfTravelers": 2,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 86.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 86.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 172.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 172.0
+         },
+         "isDiscounted": false
+        }
+       },
+       {
+        "ageBand": "CHILD",
+        "numberOfTravelers": 1,
+        "price": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 43.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 43.0
+         },
+         "discountAmount": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 0.0
+         },
+         "isDiscounted": false
+        },
+        "totalPrice": {
+         "retailPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 43.0
+         },
+         "discountedPrice": {
+          "currencyCode": "EUR",
+          "currencySymbol": "€",
+          "amount": 43.0
+         },
+         "isDiscounted": false
+        }
+       }
+      ]
+     }
+    ],
+    "priceBreakdown": [
+     {
+      "ageBand": "ADULT",
+      "numberOfTravelers": 2,
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 86.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 86.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "totalPrice": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 172.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 172.0
+       },
+       "isDiscounted": false
+      }
+     },
+     {
+      "ageBand": "CHILD",
+      "numberOfTravelers": 1,
+      "price": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 43.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 43.0
+       },
+       "discountAmount": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 0.0
+       },
+       "isDiscounted": false
+      },
+      "totalPrice": {
+       "retailPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 43.0
+       },
+       "discountedPrice": {
+        "currencyCode": "EUR",
+        "currencySymbol": "€",
+        "amount": 43.0
+       },
+       "isDiscounted": false
+      }
+     }
+    ],
+    "languageServices": [
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "en"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "pt"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "es"
+     },
+     {
+      "hasAudioGuide": false,
+      "hasHumanGuide": true,
+      "hasWrittenGuide": false,
+      "locale": "fr"
+     }
+    ],
+    "isReserveEligible": false,
+    "isAvailable": false
+   }
+  ],
+  "tourGradesDisplayLimit": 4,
+  "hasCustomCancellationPolicy": false,
+  "selectedLanguageCodes": []
+ },
+ "alternativeProducts": [],
+ "cancellationPolicyDetails": {
+  "policyType": "REFUNDABLE",
+  "refundEligibleUntilDate": "2026-10-15",
+  "isRefundDeadlineInPast": false
+ }
+}
