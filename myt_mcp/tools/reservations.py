@@ -6,7 +6,7 @@ from datetime import date
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
@@ -22,11 +22,21 @@ READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
 class ScreenDoc(BaseModel):
     """One row read from a MYT screen (a voucher, a supplier invoice or a supplier payment)."""
 
-    order_id: int | None = Field(default=None, description="The order id (R2342258 -> 2342258) when the row shows it; best way to match")
+    order_id: int | None = Field(default=None, description="The order id as the screen shows it (R2342258 or 2342258) when the row shows it; best way to match")
     supplier: str | None = Field(default=None, description="Supplier name as the row shows it")
     number: str | None = Field(default=None, description="Voucher or invoice number, e.g. V2324")
     amount: float | None = Field(default=None, description="Amount on the row")
     currency: str | None = Field(default=None, description="EUR, ILS or USD")
+
+    @field_validator("order_id", mode="before")
+    @classmethod
+    def _order_id_from_screen(cls, value: Any) -> Any:
+        """The screen writes the order id as "R2342258"; accept that form as well as the bare number."""
+        if isinstance(value, str):
+            digits = value.strip().lstrip("Rr").strip()
+            if digits.isdigit():
+                return int(digits)
+        return value
 
 
 def register(mcp: MCPServer, services: Services) -> None:

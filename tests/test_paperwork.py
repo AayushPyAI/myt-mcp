@@ -103,3 +103,13 @@ async def test_tool_passes_screen_rows_through_and_refuses_other_trips():
         other = await c.call_tool("check_reservation_paperwork", {"trip_id": 5})
     assert not ok.is_error and "V1" in ok.content[0].text and "supplier_invoice" in ok.content[0].text
     assert other.is_error and "outside the allowed test trips" in other.content[0].text
+
+
+def test_screen_doc_accepts_the_order_id_as_the_screen_writes_it():
+    from myt_mcp.tools.reservations import ScreenDoc
+
+    assert ScreenDoc(order_id="R2342199").order_id == 2342199
+    assert ScreenDoc(order_id="r2342199").order_id == 2342199
+    assert ScreenDoc(order_id=2342199).order_id == 2342199
+    assert ScreenDoc(order_id=" 2342199 ").order_id == 2342199
+    assert ScreenDoc().order_id is None
