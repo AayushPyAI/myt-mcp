@@ -32,5 +32,6 @@ Not run today: Madeira airport to hotel (30), Lisbon and Porto airport legs (35,
 - Staff: 2 commission lines and 1 benefit line (0%): amounts come from the operator.
 
 ## Result
-Of the 25 lines that carry a market price (everything except the 3 staff lines and the 3 flight/fee items that are not searchable): about 10 can be priced by our system (7 transfers on RateHawk Transfers, 5 GetYourGuide activities counted once each); of the 8 we compared today or in the validation, 5 match within 5%, 2 are cheaper than the quote, 1 is a different option. Roughly 11 lines (hotels, local tours, local car, flights) still need the operator's own supplier or a human price.
+25 lines carry a market price (29 minus the 3 staff lines minus one attraction line that was not read). Our system can price about 12 of them (7 transfers on RateHawk Transfers, 5 GetYourGuide activities); 13 still need the operator's own supplier or a human price (6 hotels, 2 local tours, 2 cars, 3 flight and fee items).
+Of the 9 lines compared (4 transfers including Madeira from the validation, 5 activities): 5 match within 5%, 2 are cheaper than the quote, 1 is close (-8%), 1 is a different option.
 What our system cannot do yet: write the lines into MYT (the API is read-only), set the markups and return the mini-site link.
