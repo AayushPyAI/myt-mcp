@@ -25,6 +25,7 @@ DAY = date(2027, 3, 1)
 def test_parse_the_real_answer():
     [o] = parse_packages(ANSWER)
     assert (o["flight_numbers"], o["from"], o["to"], o["departure"], o["arrival"], o["stops"]) == (["349"], "TLV", "FCO", "2027-03-01 16:10", "2027-03-01 18:55", 0)
+    assert o["flight_codes"] == ["6H349"]
     assert (o["price_total"], o["currency"], o["price_per_passenger_type"], o["package_type"]) == (237, "USD", {"adult": 79, "child": 79}, "CHARTER")
     assert o["baggage"] == {"hand_bag_included": True, "trolley_included": False, "checked_bag_included": False,
                             "checked_bag": "not included (23 kg can be added for a fee)"}

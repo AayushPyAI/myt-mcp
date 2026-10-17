@@ -100,7 +100,7 @@ def register(mcp: MCPServer, services: Services) -> None:
         """Israir (Israeli airline) one-way flight prices between Tel Aviv (TLV) and the ~60 cities Israir sells (Rome, Milan,
         Verona, Porto, London, Athens, Budapest...), from israir.co.il's own public search: flight number, local departure and
         arrival times, the fare per passenger type and the TOTAL for the whole group, and what baggage is in the price. Prices
-        are in USD (Israir's currency here): do not convert them yourself; say "USD" and let the operator decide. One of the two
+        are in USD (Israir's currency here; `flight_codes` is the flight as Israir's page writes it, e.g. 6H349): do not convert them yourself; say "USD" and let the operator decide. One of the two
         airports must be TLV. `child_ages` = each child's age on the flight (under 2 = infant). Give two searches for a
         return. Seats an agency holds as "batch" or block flights are NOT in this public search: if a trip's flight (for
         example 6H581) is not found, say so. Nothing is booked."""

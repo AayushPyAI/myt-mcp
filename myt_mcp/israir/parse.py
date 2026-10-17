@@ -56,8 +56,10 @@ def parse_packages(answer: dict[str, Any]) -> list[dict[str, Any]]:
             for p in fare.get("passengerFares") or []:
                 per_type[(p.get("ltsPassengerType") or "?").lower()] = (p.get("amount") or {}).get("amount")
             seats = economy.get("seats")
+            digits = [n for n in (numbers.group(1).split(";") if numbers else []) if n]
             out.append({
-                "flight_numbers": [n for n in (numbers.group(1).split(";") if numbers else []) if n],
+                "flight_numbers": digits,
+                "flight_codes": [f"6H{n}" for n in digits],      # how Israir's own page writes them (checked 17 Oct 2026: "6H349")
                 "from": segments[0]["depLoc"]["location"], "to": segments[-1]["arrLoc"]["location"],
                 "departure": _when(segments[0]["depLoc"].get("scheduledDateTime")), "arrival": _when(segments[-1]["arrLoc"].get("scheduledDateTime")),
                 "stops": len(segments) - 1, "carrier_code": segments[0].get("carrierCode"),
