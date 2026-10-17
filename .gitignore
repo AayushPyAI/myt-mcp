@@ -5,3 +5,27 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 *.log
+
+# secrets and local settings (only .env.example is tracked)
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pid
+*.out
+
+# local tools and test output
+.coverage
+htmlcov/
+.idea/
+.vscode/
+
+# recordings, transcripts and exports that must never be pushed
+*.mp3
+*.wav
+*.m4a
+*.mp4
+*.mov
+*transcript*
+*.zip
