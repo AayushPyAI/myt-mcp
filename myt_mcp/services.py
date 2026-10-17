@@ -3,6 +3,7 @@ for clients instead of creating them, so connections and caches are shared and t
 
 from __future__ import annotations
 
+from myt_mcp.boi.client import BoiClient
 from myt_mcp.browser import BrowserSession
 from myt_mcp.config import Settings
 from myt_mcp.errors import IntegrationError
@@ -26,7 +27,7 @@ class Services:
                  trenitalia: TrenitaliaClient | None = None, viator: ViatorClient | None = None,
                  sata: SataClient | None = None, aspire: aspire_api.AspireClient | None = None,
                  gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, israir: IsrairClient | None = None, tap: TapClient | None = None,
-                 mozio: MozioClient | None = None):
+                 mozio: MozioClient | None = None, boi: BoiClient | None = None):
         self.settings = settings
         self._myt = myt
         self._ofran = ofran
@@ -38,6 +39,7 @@ class Services:
         self._kiwitaxi = kiwitaxi
         self._israir = israir
         self._tap = tap
+        self._boi = boi
         self._mozio = mozio
         self._browser: BrowserSession | None = None
 
@@ -110,6 +112,11 @@ class Services:
             self._gyg = GygClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes, http_first=True)
         return self._gyg
 
+    def boi(self) -> BoiClient:
+        if self._boi is None:
+            self._boi = BoiClient()
+        return self._boi
+
     def kiwitaxi(self) -> KiwitaxiClient:
         s = self.settings
         if not s.kiwitaxi_enabled:
@@ -156,6 +163,6 @@ class Services:
                                    "call find_trip with that number first and use the trip_id it returns.".replace("{trip_id}", str(trip_id)))
 
     async def aclose(self) -> None:
-        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._gyg, self._kiwitaxi, self._israir, self._tap, self._mozio, self._browser):
+        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._gyg, self._kiwitaxi, self._israir, self._tap, self._mozio, self._boi, self._browser):
             if client is not None:
                 await client.aclose()

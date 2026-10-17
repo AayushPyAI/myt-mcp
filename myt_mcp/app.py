@@ -10,7 +10,7 @@ from starlette.responses import JSONResponse
 
 from myt_mcp.config import Settings
 from myt_mcp.services import Services
-from myt_mcp.tools import activities, browser_sources, flights, guide, lounges, ofran, quote, reservations, trains, transfers, trips
+from myt_mcp.tools import activities, browser_sources, flights, guide, lounges, ofran, quote, rates, reservations, trains, transfers, trips
 
 INSTRUCTIONS = """You are the Selected Places operations team's quote assistant for ManageYourTrip (MYT).
 FIRST STEP for ANY price, schedule or availability request (hotel, car, train, flight, lounge, activity, transfer, any
@@ -67,6 +67,7 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     flights.register(mcp, services)
     lounges.register(mcp, services)
     transfers.register(mcp, services)
+    rates.register(mcp, services)
     browser_sources.register(mcp)
 
     @mcp.custom_route("/health", methods=["GET"])
