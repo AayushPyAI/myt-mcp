@@ -84,7 +84,8 @@ def main() -> int:
             print("No test reservation on trip 168: run `create --yes` first.")
             return 1
         order_id, reservation_id, price = found
-        body = {"OrderDocId": order_id, "OrderReservations": [{"OrderReservationId": reservation_id, "Price": 2.0, "Comments": "API test updated by Claude"}]}
+        body = {"OrderDocId": order_id, "OrderReservations": [{"OrderReservationId": reservation_id, "ReservationDate": "2027-03-01", "Quantity": 1, "Duration": 1,
+                                                          "Price": 2.0, "ArrivalTime": "10:00", "Comments": "API test updated by Claude", "IsActive": True}]}
         print(f"Test reservation: order {order_id}, reservation {reservation_id}, price now {price}")
         print("POST /api/reservations/Update\n" + json.dumps({"orderDoc": body}, indent=2))
         if args.yes:
@@ -94,7 +95,7 @@ def main() -> int:
         body = {"tripId": TRIP_ID, "statusId": status.get("id")}
         print("POST /api/trip/ChangeTripStatus (the CURRENT status, so nothing should change)\n" + json.dumps(body, indent=2))
         if args.yes:
-            show("ChangeTripStatus", http.post("/trip/ChangeTripStatus", json=body))
+            show("ChangeTripStatus", http.post("/trip/ChangeTripStatus", params={"key": key}, json=body))
             after = read_trip(http, key)["trip"].get("status") or {}
             print("Status after:", after.get("name"), after.get("id"))
     if not args.yes:
