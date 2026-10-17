@@ -219,13 +219,14 @@ def test_customer_invoices_from_the_trip_payload():
         return {"date": f"{iso}T00:00:00", "string": iso}
     v3 = {"invoices": [
         {"invoice_id": 1, "invoice_number": 243, "description": "", "is_proforma": True, "total": {"amount": 34298.0}, "document_date": day("2026-02-01"),
-         "payable_until": day("2026-01-28"), "installments": [{"amount": "600.00", "date": "6 Jan 2026"}] + [{"amount": "4,212.25", "date": f"26 {m} 2026"} for m in ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug")]},
+         "payable_until": day("2026-01-28"), "installments": [{"amount": {"amount": 600.0, "string": "600.00"}, "currency": {"name": "ILS"}, "date": day("2026-01-06")}] + [{"amount": {"amount": 4212.25, "string": "4,212.25"}, "currency": {"name": "ILS"}, "date": day(f"2026-{m:02d}-26")} for m in range(1, 9)]},
         {"invoice_id": 2, "invoice_number": 271, "description": "Add on", "is_proforma": True, "total": {"amount": 1035.0}, "document_date": day("2026-05-18"), "payable_until": day("2026-05-18")},
     ]}
     from myt_mcp.myt.reservations import customer_invoices
     out = customer_invoices(v3)
     first, second = out["invoices"]
     assert out["count"] == 2 and out["total_of_invoices"] == 35333.0 and "Paid status" in out["not_in_api"]
+    assert first["currency"] == "ILS" and first["installments"][0]["date"] == "2026-01-06"
     assert first["type"] == "pro forma" and first["installments_total"] == 34298.0 and first["installments_match_total"] is True and len(first["installments"]) == 9
     assert second["installments"] == [] and second["installments_match_total"] is None and second["description"] == "Add on"
     assert customer_invoices({})["invoices"] == []

@@ -196,24 +196,37 @@ def reconcile(v3: dict[str, Any], today: date, soon_days: int = 7, profit_pcts: 
     }
 
 
+def _num(value: Any) -> float:
+    """An amount as MYT writes it: {"amount": 600.0, "string": "600.00"}, a number, or a string with thousands commas."""
+    if isinstance(value, dict):
+        value = value.get("amount", value.get("string"))
+    try:
+        return float(str(value if value is not None else 0).replace(",", ""))
+    except ValueError:
+        return 0.0
+
+
 def customer_invoices(v3: dict[str, Any]) -> dict[str, Any]:
-    """The customer's invoices of a trip as the API carries them (pro forma or tax invoice): number, total, dates and the payment schedule.
-    The API gives no paid status and no currency: both are on the MYT screen (Reports > Balance by trip > Customer invoice)."""
+    """The customer's invoices of a trip as the API carries them (pro forma or tax invoice): number, total, dates and the payment schedule, with the
+    currency the installments are in. The API gives no paid status: it is on the MYT screen (Reports > Balance by trip > Customer invoice)."""
     rows = []
     for inv in v3.get("invoices") or []:
-        total = _amount(inv.get("total"))
-        installments = [{"date": _date(i.get("date")) if isinstance(i.get("date"), dict) else i.get("date"), "amount": float(str(i.get("amount") or 0).replace(",", ""))}
+        total = _num(inv.get("total"))
+        installments = [{"date": _date(i.get("date")) if isinstance(i.get("date"), dict) else i.get("date"), "amount": round(_num(i.get("amount")), 2),
+                         "currency": ((i.get("currency") or {}).get("name") if isinstance(i.get("currency"), dict) else i.get("currency"))}
                         for i in inv.get("installments") or []]
         scheduled = round(sum(i["amount"] for i in installments), 2)
+        currencies = sorted({i["currency"] for i in installments if i["currency"]})
         rows.append({
             "invoice_number": inv.get("invoice_number"), "invoice_id": inv.get("invoice_id"),
             "type": "pro forma" if inv.get("is_proforma") else "invoice", "description": inv.get("description") or None,
-            "total": total, "document_date": _date(inv.get("document_date")), "payable_until": _date(inv.get("payable_until")),
+            "total": round(total, 2), "currency": currencies[0] if len(currencies) == 1 else None,
+            "document_date": _date(inv.get("document_date")), "payable_until": _date(inv.get("payable_until")),
             "installments": installments, "installments_total": scheduled if installments else None,
-            "installments_match_total": (abs(scheduled - float(total)) <= 0.01) if installments and total is not None else None,
+            "installments_match_total": (abs(scheduled - total) <= 0.01) if installments else None,
         })
     return {
         "invoices": rows, "count": len(rows),
-        "total_of_invoices": round(sum(float(r["total"] or 0) for r in rows), 2),
-        "not_in_api": "Paid status, the currency and receipts are not in the API. Read them on the MYT screen: Reports > Balance by trip > Customer invoice (trip filtered).",
+        "total_of_invoices": round(sum(r["total"] for r in rows), 2),
+        "not_in_api": "Paid status and receipts are not in the API; a single-payment invoice carries no currency here. Read them on the MYT screen: Reports > Balance by trip > Customer invoice (trip filtered).",
     }
