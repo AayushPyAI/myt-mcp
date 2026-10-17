@@ -424,3 +424,26 @@ async def test_a_train_without_a_price_is_left_out_with_a_warning_not_a_refusal(
     d = r.structured_content
     assert not r.is_error and len(d["trains"]) == 1 and d["trains_read"] == 2
     assert "InterCityNotte 1955" in d["warning"] and "no price" in d["warning"]
+
+
+def _always_400():
+    def handler(req):
+        if req.url.path.endswith("/locations/search"):
+            return httpx.Response(200, json=[{"id": 1 if "fir" in req.url.params["name"].lower() else 2, "name": req.url.params["name"].title()}])
+        return httpx.Response(400, json={"message": "There are no travel solutions with the selected search criteria. Please try another date."})
+    settings = Settings()
+    return create_server(settings, Services(settings, trenitalia=mock_client(handler)))
+
+
+async def test_a_far_date_Trenitalia_does_not_publish_yet_is_an_answer_not_an_error():
+    far = (date.today() + timedelta(days=420)).isoformat()
+    async with Client(_always_400()) as c:
+        r = await c.call_tool("train_prices", {"from_station": "Firenze", "to_station": "Roma", "travel_date": far})
+    d = r.structured_content
+    assert not r.is_error and d["not_published_yet"] is True and d["trains"] == [] and "Do NOT estimate" in d["note"]
+
+
+async def test_a_rejected_search_for_a_near_date_stays_an_error():
+    async with Client(_always_400()) as c:
+        r = await c.call_tool("train_prices", {"from_station": "Firenze", "to_station": "Roma", "travel_date": SOON})
+    assert r.is_error and "rejected this search (400)" in r.content[0].text

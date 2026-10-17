@@ -96,6 +96,19 @@ def _section(tokens: list[str], heading: str, stop: set[str]) -> list[str]:
     return out
 
 
+_PAGE_LABELS = {"Meeting point", "View details", "Check travel times", "Additional information", "End location", "Check availability", "Start time", "Starting location:"}
+
+
+def _meeting_text(tokens: list[str]) -> str | None:
+    """The text under the page's "Meeting point" heading. The heading repeats next to buttons and labels ("View details",
+    "End location"), so only a following token that is a real sentence or address counts; None when the page has no text."""
+    for i, token in enumerate(tokens[:-1]):
+        nxt = tokens[i + 1]
+        if token == "Meeting point" and nxt not in _PAGE_LABELS and nxt not in _SECTION_STOP and len(nxt) >= 15:
+            return nxt[:600]
+    return None
+
+
 _ITEM_ID = re.compile(r"^(inclusion|exclusion)-\d+$")
 
 
@@ -137,6 +150,7 @@ def activity_info(state: dict[str, Any]) -> dict[str, Any]:
         "includes": listed["inclusion"] or ([] if listed["exclusion"] else _section(tokens, "Includes", _SECTION_STOP)),
         "not_included": listed["exclusion"],
         "cancellation": next((t for t in tokens if t.lower().startswith("cancel up to")), None),
+        "meeting_point": _meeting_text(tokens),
         "visitor_id": (re.search(r'"visitorId"\s*:\s*"([A-Z0-9]{8,})"', json.dumps(state)) or [None, None])[1],
     }
 

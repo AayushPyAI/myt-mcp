@@ -478,3 +478,50 @@ async def test_search_over_http_keeps_the_pages_read_when_a_later_page_fails():
     client = GygClient(search_session(), limiter=SiteLimiter("GetYourGuide", 0, 1000), http_first=True, transport=httpx.MockTransport(handler))
     got = await client.search("Florence pasta class", None, 3)
     assert len(got["answers"]) == 1 and "page 2 could not be read" in got["stopped"] and "datesSelected" not in json.loads(sent[0].content)["payload"]
+
+
+# ---------- meeting point: the option's own line, else the activity page's "Meeting point" section ----------
+
+def _state_with_meeting(text="Meet us at the Crown Tours Office on Via Mocenigo, 15, near the Vatican Museums."):
+    state = json.loads(json.dumps(STATE))
+    state["sdui"]["meeting"] = [{"text": "Meeting point"}, {"text": text}, {"text": "Not included"}]    # next to the page's own travellers data
+    return state
+
+
+def _without_option_meeting(answer):
+    def strip(node):
+        if isinstance(node, dict):
+            if isinstance(node.get("text"), str) and node["text"].startswith("Meet at"):
+                node["text"] = ""
+            for v in node.values():
+                strip(v)
+        elif isinstance(node, list):
+            for v in node:
+                strip(v)
+    copy = json.loads(json.dumps(answer))
+    strip(copy)
+    return copy
+
+
+def test_page_meeting_point_section_is_read():
+    assert activity_info(_state_with_meeting())["meeting_point"].startswith("Meet us at the Crown Tours Office")
+    assert activity_info(STATE)["meeting_point"] is None
+
+
+async def test_option_without_a_meeting_point_gets_the_activity_pages(today_is_before_fixture_date):
+    read = {"script": "window.__INITIAL_STATE__ = " + json.dumps(_state_with_meeting()), "title": "Rome: Vatican tour", "body": ""}
+    session = FakeSession(answers=[_without_option_meeting(TWO_ADULTS)], read=read)
+    async with Client(server_with(session)) as c:
+        r = await c.call_tool("getyourguide_activity_details", args(adults=2))
+    d = r.structured_content
+    assert d["meeting_point"].startswith("Meet us at the Crown Tours Office")
+    assert all(o["meeting_point"] == d["meeting_point"] and "activity page" in o["meeting_point_from"] for o in d["options"])
+    assert "meeting_point_note" not in d
+
+
+async def test_no_meeting_point_anywhere_is_said_not_guessed(today_is_before_fixture_date):
+    session = FakeSession(answers=[_without_option_meeting(TWO_ADULTS)])
+    async with Client(server_with(session)) as c:
+        r = await c.call_tool("getyourguide_activity_details", args(adults=2))
+    d = r.structured_content
+    assert d["meeting_point"] is None and "never guess" in d["meeting_point_note"]

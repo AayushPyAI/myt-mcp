@@ -15,6 +15,7 @@ from mcp.types import ToolAnnotations
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
 from myt_mcp.services import Services
+from myt_mcp.trenitalia.client import TrenitaliaError
 from myt_mcp.trenitalia.parse import FARE_NOTES, check_rows, highlights, minutes, summarize_solutions
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
@@ -22,6 +23,7 @@ COMPACT_ABOVE = 10
 MAX_TRAINS = 150     # a whole day; an all-stations search (Roma + Napoli) has 90+ trains, 10 per request
 SORTS = ("departure", "price", "arrival", "duration")
 TYPES = ("all", "frecce", "intercity", "regional")
+NOT_PUBLISHED_DAYS = 300    # beyond this, a rejected search means the timetable is not published yet
 FAR_DAYS = 30        # beyond this, a day with only Frecce trains usually means regional/Intercity are not published yet
 
 
@@ -148,8 +150,19 @@ def register(mcp: MCPServer, services: Services) -> None:
         if origin["id"] == destination["id"]:
             raise ToolError("from_station and to_station are the same station.")
         departure = datetime.combine(travel_date, time.fromisoformat(depart_after))
-        data = await services.trenitalia().search_many(origin["id"], destination["id"], departure, adults, children, count=max_results,
-                                                               frecce_only=train_type == "frecce", regional_only=train_type == "regional")
+        try:
+            data = await services.trenitalia().search_many(origin["id"], destination["id"], departure, adults, children, count=max_results,
+                                                                   frecce_only=train_type == "frecce", regional_only=train_type == "regional")
+        except TrenitaliaError as e:
+            if "rejected this search (400)" not in str(e) or (travel_date - date.today()).days <= NOT_PUBLISHED_DAYS:
+                raise
+            # a far date is an answer ("not published yet"), not a failure: the quote line has to wait or use another date
+            return {"from": origin["name"], "to": destination["name"], "date": travel_date.isoformat(), "trains": [], "trains_read": 0,
+                    "not_published_yet": True, "source": "https://www.lefrecce.it/",
+                    "note": (f"Trenitalia has not published trains or fares for {travel_date.isoformat()} yet (it answered 'no solutions'; on 17 Oct 2026 it still "
+                             "showed trains for 15 Sep 2027 but not for 15 Dec 2027). This is not an error in the stations. Do NOT estimate or reuse another day's price: "
+                             "tell the operator the fare is not available yet, offer a placeholder line marked 'to be priced' or a date inside the published range, "
+                             "and search again closer to the trip.")}
         trains, skipped = summarize_solutions(data, max_results)
         # A train Trenitalia gives no price for (a night train, a sold-out one) must not spoil the whole day: leave it out and say so.
         read = len(trains)      # trains read from Trenitalia, before anything below leaves some out

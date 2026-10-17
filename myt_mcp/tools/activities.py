@@ -240,16 +240,21 @@ def register(mcp: MCPServer, services: Services) -> None:
         options = []
         for option in parsed["options"]:
             note = group_note(option, requested)
+            if not option.get("meeting_point") and info.get("meeting_point"):    # many options give it only in the page's "Meeting point" section
+                option = {**option, "meeting_point": info["meeting_point"], "meeting_point_from": "the activity page (applies to every option unless the page says otherwise)"}
             options.append({**option, **({"price_note": note} if note else {})})
         answer: dict[str, Any] = {
             "title": info.get("title"), "activity_url": f"https://www.getyourguide.com/{url.split('getyourguide.com/')[1].split('?')[0]}",
             "date": activity_date.isoformat(), "travellers": requested, "prices_are_for": "the whole group together, in EUR, taxes included",
             "any_available": parsed["any_available"], "options": options,
+            "meeting_point": info.get("meeting_point") or next((o["meeting_point"] for o in options if o.get("meeting_point")), None),
             "highlights": info["highlights"], "includes": info["includes"], "not_included": info["not_included"], "cancellation": info["cancellation"],
             "traveller_groups": [{"name": c["name"], "ages": f"{c['min_age']}-{c['max_age']}"} for c in info["categories"]],
         }
         if not parsed["any_available"]:
             answer["note"] = parsed["note"]
+        if not answer["meeting_point"]:
+            answer["meeting_point_note"] = "GetYourGuide's page gave no meeting point text for this activity: say 'meeting point not available' and check the page; never guess one."
         answer["at_a_glance"] = activity_glance([
             {"option": o.get("option"), "time": s.get("time"), "price": s.get("total_price"),
              "price_before_discount": s.get("price_before_discount"), "free_cancellation": free_cancellation(o.get("cancellation")),

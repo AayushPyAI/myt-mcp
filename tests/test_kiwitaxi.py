@@ -201,3 +201,32 @@ async def test_a_404_results_page_means_no_transfer_for_that_route(monkeypatch):
     monkeypatch.setattr(transfers, "_today", lambda: date(2026, 10, 16))
     r = await call(Site(results_status=404), from_place="Fiumicino", to_place="Room Mate Collection Mia Rome", travel_date="2027-03-01", passengers=3)
     assert not r.is_error and r.structured_content["offers"] == [] and "no private transfer" in r.structured_content["note"]
+
+
+# ---------- the place Kiwitaxi suggests must look like the place typed ----------
+
+BUDAPEST = {"id": "internal:9", "type": "airport", "title": "Budapest Airport Ferenc Liszt (BUD)", "address": "Budapest Airport Ferenc Liszt (BUD), Hungary"}
+FLR = {"id": "internal:10", "type": "airport", "title": "Florence Airport (FLR)", "address": "Florence Airport (FLR), Italy"}
+
+
+def test_place_matches_rejects_another_town_and_accepts_codes_and_hotels():
+    from myt_mcp.kiwitaxi.parse import place_matches
+    assert not place_matches("Florence Airport", BUDAPEST) and place_matches("Florence Airport", FLR)
+    assert place_matches("FLR", FLR) and not place_matches("FLR", BUDAPEST) and place_matches("Fiumicino", FCO)
+    assert place_matches("Room Mate Collection Mia Rome", HOTEL) and not place_matches("Furnas", {"title": "Burgas Airport (BOJ)", "address": "Burgas, Bulgaria"})
+    assert place_matches("Hotel Rome", HOTEL)       # 'hotel' is a generic word: only Rome counts, Rome/Roma share their first letters
+
+
+async def test_the_first_suggestion_is_skipped_when_it_is_another_town():
+    site = Site(places={"florence airport": [BUDAPEST, FLR], "room mate": [HOTEL]})
+    found = await client_for(site).search("Florence Airport", "Room Mate Collection Mia Rome", DAY, 3)
+    assert found["chosen_from"]["title"] == "Florence Airport (FLR)"
+
+
+async def test_no_suggestion_that_looks_like_the_typed_place_is_an_error_with_the_suggestions():
+    site = Site(places={"florence airport": [BUDAPEST], "room mate": [HOTEL]})
+    with pytest.raises(KiwitaxiError, match="Budapest Airport.*none of which looks like it.*from_match"):
+        await client_for(site).search("Florence Airport", "Room Mate Collection Mia Rome", DAY, 3)
+    # an explicit pick is trusted: the operator looked at the suggestions
+    found = await client_for(Site(places={"florence airport": [BUDAPEST, FLR], "room mate": [HOTEL]})).search("Florence Airport", "Room Mate Collection Mia Rome", DAY, 3, from_pick=1)
+    assert found["chosen_from"]["title"] == "Florence Airport (FLR)"

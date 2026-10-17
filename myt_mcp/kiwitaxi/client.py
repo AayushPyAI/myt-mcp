@@ -20,7 +20,7 @@ import httpx
 
 from myt_mcp.cache import TTLCache
 from myt_mcp.errors import IntegrationError
-from myt_mcp.kiwitaxi.parse import parse_results
+from myt_mcp.kiwitaxi.parse import parse_results, place_matches
 from myt_mcp.ratelimit import SiteLimiter
 
 ORIGIN = "https://kiwitaxi.com"
@@ -59,6 +59,19 @@ class KiwitaxiClient:
             raise KiwitaxiError("Kiwitaxi's place search returned a page instead of data; the site may have changed.") from None
         return [p for p in found if isinstance(p, dict) and p.get("id") and p.get("title")] if isinstance(found, list) else []
 
+    @staticmethod
+    def _choose(places: list[dict[str, Any]], typed: str, pick: int, name: str, pick_name: str) -> dict[str, Any]:
+        """The suggestion asked for. Without an explicit pick, the first suggestion that really resembles what was typed:
+        Kiwitaxi's own first suggestion can be another town, and a transfer priced between the wrong places is worse than none."""
+        if pick:
+            return places[pick]
+        for place in places:
+            if place_matches(typed, place):
+                return place
+        found = "; ".join(f"{p['title']} ({p.get('address') or 'no address'})" for p in places[:4])
+        raise KiwitaxiError(f"Kiwitaxi suggested {found} for {name} {typed!r}, none of which looks like it, so no price was read. "
+                            f"Try the airport code or a street address with the town, or check the suggestions and pass {pick_name} = 1, 2, 3.")
+
     async def search(self, from_text: str, to_text: str, day: date, passengers: int, from_pick: int = 0, to_pick: int = 0) -> dict[str, Any]:
         key = (" ".join(from_text.lower().split()), " ".join(to_text.lower().split()), day.isoformat(), passengers, from_pick, to_pick)
 
@@ -72,12 +85,12 @@ class KiwitaxiClient:
                     origins = await self.places(http, session, from_text)
                     if len(origins) <= from_pick:
                         raise KiwitaxiError(f"Kiwitaxi knows no place for {from_text!r}; try another name (airport name or code, or a street address with the city).")
-                    origin = origins[from_pick]
+                    origin = self._choose(origins, from_text, from_pick, "from_place", "from_match")
                     await asyncio.sleep(0.4)
                     destinations = await self.places(http, session, to_text, origin["id"])
                     if len(destinations) <= to_pick:
                         raise KiwitaxiError(f"Kiwitaxi knows no place for {to_text!r}; try another name (hotel name or a street address with the city).")
-                    destination = destinations[to_pick]
+                    destination = self._choose(destinations, to_text, to_pick, "to_place", "to_match")
                     params = {"search_session": session, "from": origin["title"], "place_from_id": origin["id"], "place_from_address": origin.get("address") or "",
                               "to": destination["title"], "place_to_id": destination["id"], "place_to_address": destination.get("address") or "",
                               "all_passenger_count": passengers, "passenger_count": passengers, "date_start": day.isoformat()}

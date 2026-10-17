@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 from datetime import date
 from typing import Any
 
@@ -29,6 +30,27 @@ def _first(pattern: str, block: str) -> str | None:
 def date_label(day: date) -> str:
     """How the page writes the date: '1 MAR 2027'."""
     return f"{day.day} {_MONTHS[day.month - 1]} {day.year}"
+
+
+_GENERIC = {"airport", "hotel", "hostel", "apartment", "apartments", "resort", "the", "de", "di", "da", "la", "le", "of", "and", "hotels",
+            "city", "centre", "center", "station", "port", "international", "aeroporto", "aeropuerto"}
+
+
+def _plain(text: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9 ]", " ", unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()).split())
+
+
+def place_matches(query: str, place: dict[str, Any]) -> bool:
+    """True when the place Kiwitaxi suggested is plausibly the one typed. Its first suggestion can be another town
+    ("Florence Airport" -> Budapest Airport, "Furnas" -> Burgas): every distinctive word of the query (airport, hotel and
+    similar words are ignored) must appear in the place's name or address, or at least its first four letters (Rome/Roma),
+    and a three-letter airport code must appear in brackets in the name."""
+    words = _plain(query).split()
+    haystack = _plain(f"{place.get('title') or ''} {place.get('address') or ''}")
+    if len(words) == 1 and len(words[0]) == 3:
+        return f"({words[0]})" in (place.get("title") or "").lower() or words[0] in haystack.split()
+    distinctive = [w for w in words if w not in _GENERIC and len(w) > 1]
+    return all(w in haystack or (len(w) >= 4 and w[:4] in haystack) for w in distinctive) if distinctive else True
 
 
 def _price(text: str | None) -> tuple[float | None, str | None]:
