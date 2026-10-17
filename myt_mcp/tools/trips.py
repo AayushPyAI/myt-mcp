@@ -30,9 +30,13 @@ def strip_contact_details(data: Any) -> Any:
 
 
 def register(mcp: MCPServer, services: Services) -> None:
-    async def trip_v3(trip_id: int) -> dict[str, Any]:
-        """The trip, after checking MYT answered with the trip that was asked for."""
+    async def trip_v3(trip_id: int, fresh: bool = False) -> dict[str, Any]:
+        """The trip, after checking MYT answered with the trip that was asked for. `fresh` drops the cached copy first:
+        use it right after a write made via Claude in Chrome (a screen edit this client did not make itself and so
+        cannot know to invalidate), never for an ordinary read."""
         services.check_trip(trip_id)
+        if fresh:
+            services.myt().invalidate_trip_cache(trip_id)
         v3 = await services.myt().get_trip_v3(trip_id)
         got = (v3.get("trip") or {}).get("trip_id")
         ensure("MYT", [] if got == trip_id else [f"MYT returned trip {got} instead of {trip_id}"])
@@ -66,19 +70,24 @@ def register(mcp: MCPServer, services: Services) -> None:
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     @with_checked_at
-    async def get_trip(trip_id: int) -> Any:
+    async def get_trip(trip_id: int, fresh: bool = False) -> Any:
         """Read a trip by its internal trip_id (from find_trip; NOT the trip number shown in MYT): dates, travellers, the day-by-day itinerary with activities and
-        suppliers, hotels, flights, the trip's suppliers, and which quotation is selected."""
-        return trip_summary(await trip_v3(trip_id))
+        suppliers, hotels, flights, the trip's suppliers, and which quotation is selected. Pass fresh=true to force a live
+        read right after a change made via Claude in Chrome (the screen, not this connector): without it, a read within
+        60 seconds of that change can still show the old data and wrongly look like the change did not take."""
+        return trip_summary(await trip_v3(trip_id, fresh))
 
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     @with_checked_at
-    async def get_quotation(trip_id: int) -> Any:
+    async def get_quotation(trip_id: int, fresh: bool = False) -> Any:
         """Read the selected MYT quotation of a trip, by trip_id (from find_trip; NOT the trip number shown in MYT): every cost line (category, supplier, PP/PS, qty, nights,
         unit price and total, both including the line profit), the markups, and the totals MYT calculated
-        (price per person and per group). Use it to check a quote and compare with calculate_quote."""
-        summary = quotation_summary(await trip_v3(trip_id))
+        (price per person and per group). Use it to check a quote and compare with calculate_quote. **Pass fresh=true when
+        verifying a write just made through Claude in Chrome** (a quote-line edit, a margin, a publish price): the cache can
+        serve a read within 60 seconds of a screen change that looks unchanged even though MYT already saved it (seen 17 Oct 2026,
+        the Margin Prices "Markup" and publish-price save: both worked, but reading them back immediately, uncached, showed the old numbers)."""
+        summary = quotation_summary(await trip_v3(trip_id, fresh))
         if summary is None:
             raise ToolError("This trip has no quotation yet.")
         return summary

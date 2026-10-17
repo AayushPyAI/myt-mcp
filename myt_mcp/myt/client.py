@@ -141,6 +141,13 @@ class MYTClient:
             raise MYTError(f"MYT has no trip number {trip_number}.")
         return data
 
+    def invalidate_trip_cache(self, trip_id: int) -> None:
+        """Drop the cached GetTrip/v3 for one trip. Needed before a read meant to verify a write made OUTSIDE this client
+        (a screen edit via Claude in Chrome): this client's own writes already invalidate themselves, but it has no way
+        to know about a change made by clicking in the browser, so a read within the cache's 60 s window can show the
+        pre-change data and look like the write failed when it did not (found 17 Oct 2026, Margin Prices tab)."""
+        self._v3_cache.invalidate(trip_id)
+
     async def get_trip_v3(self, trip_id: int) -> dict[str, Any]:
         async def load() -> dict[str, Any]:
             data = await self._get("/trip/GetTrip/v3", tripId=trip_id)

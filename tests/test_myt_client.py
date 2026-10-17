@@ -127,3 +127,34 @@ async def test_currency_code_id_rejects_an_unknown_code():
 
     with pytest.raises(MYTError, match="XYZ"):
         await client_for(handler).currency_code_id("XYZ")
+
+
+async def test_invalidate_trip_cache_forces_a_fresh_read():
+    reads = {"n": 0}
+
+    def handler(request):
+        reads["n"] += 1
+        return httpx.Response(200, json={"trip": {"trip_id": 189423}, "read_number": reads["n"]})
+
+    c = client_for(handler)
+    first = await c.get_trip_v3(189423)
+    cached = await c.get_trip_v3(189423)
+    assert cached is first and reads["n"] == 1
+
+    c.invalidate_trip_cache(189423)
+    fresh = await c.get_trip_v3(189423)
+    assert fresh is not first and fresh["read_number"] == 2
+
+
+async def test_invalidate_trip_cache_only_affects_the_named_trip():
+    def handler(request):
+        trip_id = int(request.url.params["tripId"])
+        return httpx.Response(200, json={"trip": {"trip_id": trip_id}})
+
+    c = client_for(handler)
+    await c.get_trip_v3(1)
+    await c.get_trip_v3(2)
+    c.invalidate_trip_cache(1)
+    # trip 1's cache entry is gone; trip 2's is untouched
+    assert c._v3_cache._fresh(1) == (False, None)
+    assert c._v3_cache._fresh(2)[0] is True

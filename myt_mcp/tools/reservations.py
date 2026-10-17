@@ -51,8 +51,10 @@ class ScreenDoc(BaseModel):
 
 
 def register(mcp: MCPServer, services: Services) -> None:
-    async def trip_v3(trip_id: int) -> dict[str, Any]:
+    async def trip_v3(trip_id: int, fresh: bool = False) -> dict[str, Any]:
         services.check_trip(trip_id)
+        if fresh:
+            services.myt().invalidate_trip_cache(trip_id)
         v3 = await services.myt().get_trip_v3(trip_id)
         got = (v3.get("trip") or {}).get("trip_id")
         ensure("MYT", [] if got == trip_id else [f"MYT returned trip {got} instead of {trip_id}"])
@@ -65,35 +67,37 @@ def register(mcp: MCPServer, services: Services) -> None:
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     @with_checked_at
-    async def get_supplier_reservations(trip_id: int, soon_days: int = 7) -> Any:
+    async def get_supplier_reservations(trip_id: int, soon_days: int = 7, fresh: bool = False) -> Any:
         """Supplier reservations of a trip, by trip_id (from find_trip; NOT the trip number) (הזמנות ספקים, שוברים): every
         reservation with supplier, product, dates, quantity, the cost the MYT screen shows and the supplier order's
         STATUS (Ready To Send, Voucher Issued, Reservation Confirmed), plus `voucher_flags`: orders whose voucher is
         not sent although the service starts within `soon_days` days. Voucher numbers, supplier invoices and payments
-        are not in the API (see not_in_api). Read only."""
+        are not in the API (see not_in_api). Pass fresh=true right after a status move made via Claude in Chrome (Skip To
+        COR, Print Voucher...): a read within 60 seconds of a screen change can still show the old status. Read only."""
         check_days(soon_days)
-        return reservations_summary(await trip_v3(trip_id), date.today(), soon_days)
+        return reservations_summary(await trip_v3(trip_id, fresh), date.today(), soon_days)
 
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     @with_checked_at
-    async def get_customer_invoices(trip_id: int) -> Any:
+    async def get_customer_invoices(trip_id: int, fresh: bool = False) -> Any:
         """The customer's invoices of a trip (חשבוניות פרופורמה, לקוח), by trip_id: pro forma or tax invoice number, total, document date, payable-until
         date and the payment schedule (installments with dates and amounts, and whether they add up to the total). The API does not give the paid
         status or the currency: read them on the MYT screen (Balance by trip > Customer invoice, trip filtered). Read only. Never copy the customer's name."""
-        return customer_invoices(await trip_v3(trip_id))
+        return customer_invoices(await trip_v3(trip_id, fresh))
 
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     @with_checked_at
-    async def reconcile_trip(trip_id: int, soon_days: int = 7) -> Any:
+    async def reconcile_trip(trip_id: int, soon_days: int = 7, fresh: bool = False) -> Any:
         """Reconciliation of a trip (התאמה): each supplier reservation against its line in the selected quotation. Shows
         per reservation: cost, quote line total, the profit the quote adds (3%, 13% or 15% is normal), and a verdict
         (ok / MISMATCH, also when the dates differ); reservations with no quote line, quote lines with no reservation,
-        and voucher flags. Read only: it changes nothing in MYT. Report mismatches; do not fix them without the
-        operator's approval."""
+        and voucher flags. Pass fresh=true right after a quote-line or reservation change made via Claude in Chrome, to
+        force a live read instead of one that may still show the pre-change data (the cache lasts 60 seconds). Read only:
+        it changes nothing in MYT. Report mismatches; do not fix them without the operator's approval."""
         check_days(soon_days)
-        return reconcile(await trip_v3(trip_id), date.today(), soon_days)
+        return reconcile(await trip_v3(trip_id, fresh), date.today(), soon_days)
 
     @mcp.tool(annotations=WRITE)
     @tool_errors
@@ -207,14 +211,16 @@ def register(mcp: MCPServer, services: Services) -> None:
         vouchers: list[ScreenDoc] | None = None,
         supplier_invoices: list[ScreenDoc] | None = None,
         supplier_payments: list[ScreenDoc] | None = None,
+        fresh: bool = False,
     ) -> Any:
         """For every supplier reservation of a trip, is there a voucher, a supplier invoice and a supplier payment, and do
         the amounts agree (שוברים, חשבוניות ספקים, תשלומים)? Read the reservations from MYT; YOU read the vouchers, supplier
         invoices and supplier payments of THIS trip from its MYT screens (quote_guide("reservations")) and pass them in. Returns one row per
         reservation with found / missing, amount differences, partial or double payments, and documents that match no
-        reservation. Read only: it creates or changes nothing."""
+        reservation. Pass fresh=true right after a reservation change made via Claude in Chrome, to force a live read.
+        Read only: it creates or changes nothing."""
         return paperwork_check(
-            await trip_v3(trip_id), date.today(),
+            await trip_v3(trip_id, fresh), date.today(),
             [d.model_dump() for d in vouchers or []], [d.model_dump() for d in supplier_invoices or []],
             [d.model_dump() for d in supplier_payments or []],
         )

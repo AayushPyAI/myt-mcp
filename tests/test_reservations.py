@@ -141,13 +141,16 @@ class FakeMYT:
                 create_effect=None, update_effect=None):
         self.v3 = v3
         self.currencies = currencies or {"EUR": 3, "ILS": 1, "USD": 2}
-        self.create_calls, self.update_calls = [], []
+        self.create_calls, self.update_calls, self.invalidate_calls = [], [], []
         self._create_result, self._create_error = create_result if create_result is not None else [999001], create_error
         self._update_error = update_error
         self._create_effect, self._update_effect = create_effect, update_effect   # optional: mutate self.v3 to simulate the write
 
     async def get_trip_v3(self, trip_id):
         return self.v3
+
+    def invalidate_trip_cache(self, trip_id):
+        self.invalidate_calls.append(trip_id)
 
     async def currency_code_id(self, code):
         code = code.strip().upper()
@@ -401,3 +404,31 @@ async def test_write_tools_refuse_a_trip_outside_the_allowed_list():
         update = await c.call_tool("update_supplier_reservation", {"trip_id": 5, "order_id": 1, "reservation_id": 2, "price": 10.0})
     assert create.is_error and "outside the allowed test trips" in create.content[0].text
     assert update.is_error and "outside the allowed test trips" in update.content[0].text
+
+
+# ---------- fresh=true: force a live read past the write-they-did-not-make cache gap ----------
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("tool,args", [
+    ("get_supplier_reservations", {"trip_id": 1001}),
+    ("get_customer_invoices", {"trip_id": 1001}),
+    ("reconcile_trip", {"trip_id": 1001}),
+    ("get_quotation", {"trip_id": 1001}),
+    ("get_trip", {"trip_id": 1001}),
+])
+async def test_fresh_true_invalidates_the_cache_first(tool, args):
+    myt = FakeMYT(_v3([], {}, []))
+    async with Client(await create_server_for(myt)) as c:
+        without = await c.call_tool(tool, args)
+        with_fresh = await c.call_tool(tool, {**args, "fresh": True})
+    assert not without.is_error and not with_fresh.is_error
+    assert myt.invalidate_calls == [1001]       # only the fresh=true call invalidated the cache
+
+
+@pytest.mark.anyio
+async def test_check_reservation_paperwork_fresh_true_invalidates_the_cache():
+    myt = FakeMYT(_v3([], {}, []))
+    async with Client(await create_server_for(myt)) as c:
+        await c.call_tool("check_reservation_paperwork", {"trip_id": 1001})
+        await c.call_tool("check_reservation_paperwork", {"trip_id": 1001, "fresh": True})
+    assert myt.invalidate_calls == [1001]
