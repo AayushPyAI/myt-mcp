@@ -20,7 +20,8 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 
-TRIP_ID = 189423                   # trip 168, the test trip
+TRIPS = {168: 189423, 906: 276310}   # the two test trips (trip number -> MYT id); any other trip is refused
+TRIP_ID = 189423                   # set from --trip in main()
 BASE = "https://www.manageyourtrip.com/api"
 EXTERNAL_ID = "claude-api-test-2026-10-17"
 SUPPLIER_ID = 101768               # "Lisbon Airport Transfers", the placeholder supplier already used in trip 168's quote
@@ -43,7 +44,7 @@ def show(label: str, response: httpx.Response) -> None:
 
 
 def create_body() -> dict:
-    return {"tripId": TRIP_ID, "externalId": EXTERNAL_ID, "comments": "API TEST by Claude 17 Oct 2026 - safe to delete",
+    return {"tripId": TRIP_ID, "externalId": f"{EXTERNAL_ID}-t{TRIP_ID}", "comments": "API TEST by Claude 17 Oct 2026 - safe to delete",
             "products": [{"SupplierId": SUPPLIER_ID, "StartDate": "2027-03-01", "Name": "API TEST - delete me (Claude, 17 Oct 2026)", "PricingTypeId": 1, "TypeId": 1,
                           "Price": 1.0, "CurrencyCodeId": EUR, "Quantity": 1, "Nights": 1, "ArrivalTime": "10:00", "Comments": "API test, delete me"}]}
 
@@ -58,19 +59,22 @@ def find_test_reservation(trip: dict) -> tuple[int, int, float] | None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("what", choices=["create", "update", "status"])
+    parser.add_argument("--trip", type=int, choices=sorted(TRIPS), default=168, help="test trip number: 168 (default) or 906")
     parser.add_argument("--yes", action="store_true", help="really send the call (otherwise only show it)")
     args = parser.parse_args()
+    global TRIP_ID
+    TRIP_ID = TRIPS[args.trip]
     http, key = client()
     trip = read_trip(http, key)
     if (trip.get("trip") or {}).get("trip_id") != TRIP_ID:
-        print("Refusing: the trip returned is not trip 168.")
+        print("Refusing: the trip returned is not the chosen test trip.")
         return 1
     status = (trip["trip"].get("status") or {})
-    print(f"Trip 168 now: status {status.get('name')!r} (id {status.get('id')}), {len(trip.get('reservations') or [])} reservations.")
+    print(f"Trip {args.trip} now: status {status.get('name')!r} (id {status.get('id')}), {len(trip.get('reservations') or [])} reservations.")
 
     if args.what == "create":
         if find_test_reservation(trip):
-            print("A test reservation already exists on trip 168: not creating a second one.")
+            print("A test reservation already exists on this trip: not creating a second one.")
             return 1
         body = create_body()
         print("POST /api/reservations/Create\n" + json.dumps(body, indent=2))
@@ -81,7 +85,7 @@ def main() -> int:
     elif args.what == "update":
         found = find_test_reservation(trip)
         if not found:
-            print("No test reservation on trip 168: run `create --yes` first.")
+            print("No test reservation on this trip: run `create --yes` first.")
             return 1
         order_id, reservation_id, price = found
         body = {"OrderDocId": order_id, "OrderReservations": [{"OrderReservationId": reservation_id, "ReservationDate": "2027-03-01", "Quantity": 1, "Duration": 1,
