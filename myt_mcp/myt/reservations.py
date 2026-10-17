@@ -194,3 +194,26 @@ def reconcile(v3: dict[str, Any], today: date, soon_days: int = 7, profit_pcts: 
         "totals": {"reservations_cost": summary["total_cost"], "rows_ok": len(rows) - bad, "rows_to_check": bad},
         "not_in_api": NOT_IN_API,
     }
+
+
+def customer_invoices(v3: dict[str, Any]) -> dict[str, Any]:
+    """The customer's invoices of a trip as the API carries them (pro forma or tax invoice): number, total, dates and the payment schedule.
+    The API gives no paid status and no currency: both are on the MYT screen (Reports > Balance by trip > Customer invoice)."""
+    rows = []
+    for inv in v3.get("invoices") or []:
+        total = _amount(inv.get("total"))
+        installments = [{"date": _date(i.get("date")) if isinstance(i.get("date"), dict) else i.get("date"), "amount": float(str(i.get("amount") or 0).replace(",", ""))}
+                        for i in inv.get("installments") or []]
+        scheduled = round(sum(i["amount"] for i in installments), 2)
+        rows.append({
+            "invoice_number": inv.get("invoice_number"), "invoice_id": inv.get("invoice_id"),
+            "type": "pro forma" if inv.get("is_proforma") else "invoice", "description": inv.get("description") or None,
+            "total": total, "document_date": _date(inv.get("document_date")), "payable_until": _date(inv.get("payable_until")),
+            "installments": installments, "installments_total": scheduled if installments else None,
+            "installments_match_total": (abs(scheduled - float(total)) <= 0.01) if installments and total is not None else None,
+        })
+    return {
+        "invoices": rows, "count": len(rows),
+        "total_of_invoices": round(sum(float(r["total"] or 0) for r in rows), 2),
+        "not_in_api": "Paid status, the currency and receipts are not in the API. Read them on the MYT screen: Reports > Balance by trip > Customer invoice (trip filtered).",
+    }

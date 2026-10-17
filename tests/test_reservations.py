@@ -211,3 +211,21 @@ def test_totals_never_add_two_currencies():
     assert out["count"] == 2 and out["orders"] == 2
     one = reservations_summary(_v3([eur], {1: "NotSent"}, []), TODAY)
     assert one["total_cost"] == 100.0 and one["total_cost_by_currency"] == {"EUR": 100.0}
+
+
+def test_customer_invoices_from_the_trip_payload():
+    """Shape seen on trip 435 (17 Oct 2026): a pro forma with 9 installments (600 + 8 x 4,212.25 = 34,298) and a single-payment add-on."""
+    def day(iso):
+        return {"date": f"{iso}T00:00:00", "string": iso}
+    v3 = {"invoices": [
+        {"invoice_id": 1, "invoice_number": 243, "description": "", "is_proforma": True, "total": {"amount": 34298.0}, "document_date": day("2026-02-01"),
+         "payable_until": day("2026-01-28"), "installments": [{"amount": "600.00", "date": "6 Jan 2026"}] + [{"amount": "4,212.25", "date": f"26 {m} 2026"} for m in ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug")]},
+        {"invoice_id": 2, "invoice_number": 271, "description": "Add on", "is_proforma": True, "total": {"amount": 1035.0}, "document_date": day("2026-05-18"), "payable_until": day("2026-05-18")},
+    ]}
+    from myt_mcp.myt.reservations import customer_invoices
+    out = customer_invoices(v3)
+    first, second = out["invoices"]
+    assert out["count"] == 2 and out["total_of_invoices"] == 35333.0 and "Paid status" in out["not_in_api"]
+    assert first["type"] == "pro forma" and first["installments_total"] == 34298.0 and first["installments_match_total"] is True and len(first["installments"]) == 9
+    assert second["installments"] == [] and second["installments_match_total"] is None and second["description"] == "Add on"
+    assert customer_invoices({})["invoices"] == []

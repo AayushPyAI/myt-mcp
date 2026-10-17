@@ -13,7 +13,7 @@ from mcp.types import ToolAnnotations
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
 from myt_mcp.myt.paperwork import paperwork_check
-from myt_mcp.myt.reservations import reconcile, reservations_summary
+from myt_mcp.myt.reservations import customer_invoices, reconcile, reservations_summary
 from myt_mcp.services import Services
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
@@ -62,6 +62,15 @@ def register(mcp: MCPServer, services: Services) -> None:
         are not in the API (see not_in_api). Read only."""
         check_days(soon_days)
         return reservations_summary(await trip_v3(trip_id), date.today(), soon_days)
+
+    @mcp.tool(annotations=READ_ONLY)
+    @tool_errors
+    @with_checked_at
+    async def get_customer_invoices(trip_id: int) -> Any:
+        """The customer's invoices of a trip (חשבוניות פרופורמה, לקוח), by trip_id: pro forma or tax invoice number, total, document date, payable-until
+        date and the payment schedule (installments with dates and amounts, and whether they add up to the total). The API does not give the paid
+        status or the currency: read them on the MYT screen (Balance by trip > Customer invoice, trip filtered). Read only. Never copy the customer's name."""
+        return customer_invoices(await trip_v3(trip_id))
 
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
