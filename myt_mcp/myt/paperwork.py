@@ -45,10 +45,25 @@ def _total(docs: list[dict[str, Any]]) -> float:
     return round(sum(float(d.get("amount") or 0) for d in docs), 2)
 
 
+def _orders(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per supplier order. A voucher, invoice or payment belongs to the ORDER, and an order can hold several product rows
+    (trip 435: Arbitrip is one order of six rows, ILS 12,043 in total, with one voucher of ILS 12,043), so costs are added per order."""
+    grouped: dict[Any, list[dict[str, Any]]] = {}
+    for r in rows:
+        grouped.setdefault(r["order_id"], []).append(r)
+    orders = []
+    for members in grouped.values():
+        first = members[0]
+        starts = [m["start"] for m in members if m["start"]]
+        orders.append({**first, "total_cost": round(sum(m["total_cost"] for m in members), 2), "items": len(members), "start": min(starts) if starts else None,
+                       "product": first["product"] if len(members) == 1 else f"{len(members)} items, first: {first['product']}"})
+    return orders
+
+
 def paperwork_check(v3: dict[str, Any], today: date, vouchers: list[dict[str, Any]], invoices: list[dict[str, Any]],
                     payments: list[dict[str, Any]], tolerance: float = AMOUNT_TOLERANCE) -> dict[str, Any]:
     base = reservations_summary(v3, today)
-    rows = base["reservations"]
+    rows = _orders(base["reservations"])
     found: dict[int, dict[str, list[dict[str, Any]]]] = {r["order_id"]: {"voucher": [], "invoice": [], "payment": []} for r in rows}
     unmatched: list[str] = []
     for kind, docs in (("voucher", vouchers), ("invoice", invoices), ("payment", payments)):
@@ -72,8 +87,8 @@ def paperwork_check(v3: dict[str, Any], today: date, vouchers: list[dict[str, An
         voucher_numbers = [d.get("number") for d in f["voucher"] if d.get("number")]
         if not f["voucher"]:
             missing.append("voucher")
-            if r["status_api"] == "VoucherSent":
-                flags.append("status says Voucher Issued but no voucher was found on the screen")
+            if r["status_api"] in ("VoucherSent", "VoucherPaid"):
+                flags.append(f"status says {r['status']} but no voucher was found on the screen")
         invoice_amount = _total(f["invoice"]) if f["invoice"] else None
         if not f["invoice"]:
             missing.append("supplier invoice")
@@ -95,7 +110,7 @@ def paperwork_check(v3: dict[str, Any], today: date, vouchers: list[dict[str, An
         ok = not missing and not flags
         complete += ok
         out_rows.append({
-            "order_id": r["order_id"], "supplier": r["supplier"], "product": r["product"], "start": r["start"], "status": r["status"],
+            "order_id": r["order_id"], "supplier": r["supplier"], "product": r["product"], "items": r["items"], "start": r["start"], "status": r["status"],
             "reservation_cost": cost, "currency": currency,
             "voucher": {"found": bool(f["voucher"]), "numbers": voucher_numbers},
             "supplier_invoice": {"found": bool(f["invoice"]), "amount": invoice_amount},
@@ -104,7 +119,7 @@ def paperwork_check(v3: dict[str, Any], today: date, vouchers: list[dict[str, An
         })
     return {
         "rows": out_rows,
-        "totals": {"reservations": len(rows), "complete": complete, "incomplete": len(rows) - complete},
+        "totals": {"reservations": len(rows), "orders": len(rows), "product_rows": len(base["reservations"]), "complete": complete, "incomplete": len(rows) - complete},
         "documents_not_matched": unmatched,
         "tolerance": f"{tolerance} {rows[0]['currency'] if rows else ''}".strip(),
         "note": "'Missing' means not found among the documents you passed. Read them from this trip's MYT screens only; a payment can legitimately come after the service date.",

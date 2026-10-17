@@ -113,3 +113,27 @@ def test_screen_doc_accepts_the_order_id_as_the_screen_writes_it():
     assert ScreenDoc(order_id=2342199).order_id == 2342199
     assert ScreenDoc(order_id=" 2342199 ").order_id == 2342199
     assert ScreenDoc().order_id is None
+
+
+def test_one_order_with_several_rows_matches_one_voucher_for_the_order_total():
+    """Trip 435 (17 Oct 2026): Arbitrip is ONE order of six rows (ILS 12,043 in total) with ONE voucher of ILS 12,043."""
+    def ils(r):
+        return {**r, "currency": {"name": "ILS"}}
+    arbitrip = [ils(_res(7, 70, "Arbitrip", f"Hotel night {n}", price, 1, 1, f"2026-09-{19 + n}")) for n, price in enumerate((3492.0, 3354.0, 725.0, 1378.0, 1272.0, 1822.0))]
+    other = _res(8, 80, "Terreiro", "Dinner", 130.0, 1, 1, "2026-10-02")
+    other2 = _res(9, 80, "Terreiro", "Dinner 2", 130.0, 1, 1, "2026-10-03")
+    v3 = _v3(arbitrip + [other, other2], {7: "VoucherPaid", 8: "VoucherPaid", 9: "VoucherPaid"}, [])
+    for r in v3["reservations"][:6]:
+        r["order_id"] = 7          # six product rows of one order
+    result = paperwork_check(v3, TODAY, vouchers=[{"supplier": "Arbitrip", "number": "V2295", "amount": 12043.0, "currency": "ILS"}], invoices=[], payments=[])
+    r = rows(result)
+    assert result["totals"]["orders"] == 3 and result["totals"]["product_rows"] == 8
+    assert r[7]["items"] == 6 and r[7]["reservation_cost"] == 12043.0 and r[7]["voucher"] == {"found": True, "numbers": ["V2295"]}
+    assert not result["documents_not_matched"]
+    assert any("Voucher Paid" in f for f in r[8]["flags"])          # paid status without a voucher found is flagged for the others
+
+
+def test_two_orders_of_one_supplier_with_the_same_amount_still_ask_for_the_order_id():
+    v3 = _v3([_res(1, 10, "Terreiro", "Dinner", 130.0, 1, 1, "2026-10-02"), _res(2, 10, "Terreiro", "Dinner 2", 130.0, 1, 1, "2026-10-03")], {1: "VoucherPaid", 2: "VoucherPaid"}, [])
+    result = paperwork_check(v3, TODAY, vouchers=[{"supplier": "Terreiro", "number": "V1", "amount": 130.0, "currency": "EUR"}], invoices=[], payments=[])
+    assert result["documents_not_matched"] and "give the order id" in result["documents_not_matched"][0]
