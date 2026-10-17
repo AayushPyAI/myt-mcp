@@ -8,6 +8,7 @@ from mcp import Client
 
 from myt_mcp.app import create_server
 from myt_mcp.config import Settings
+from myt_mcp.myt.client import MYTError
 from myt_mcp.myt.reservations import reconcile, reservations_summary
 from myt_mcp.services import Services
 
@@ -136,11 +137,39 @@ def test_trip_without_reservations_gives_empty_lists():
 
 
 class FakeMYT:
-    def __init__(self, v3):
+    def __init__(self, v3, *, currencies=None, create_result=None, create_error=None, update_error=None,
+                create_effect=None, update_effect=None):
         self.v3 = v3
+        self.currencies = currencies or {"EUR": 3, "ILS": 1, "USD": 2}
+        self.create_calls, self.update_calls = [], []
+        self._create_result, self._create_error = create_result if create_result is not None else [999001], create_error
+        self._update_error = update_error
+        self._create_effect, self._update_effect = create_effect, update_effect   # optional: mutate self.v3 to simulate the write
 
     async def get_trip_v3(self, trip_id):
         return self.v3
+
+    async def currency_code_id(self, code):
+        code = code.strip().upper()
+        if code not in self.currencies:
+            raise MYTError(f"MYT's currency list has no code {code!r}.")
+        return self.currencies[code]
+
+    async def create_reservation(self, trip_id, products, *, external_id=None, comments=None):
+        self.create_calls.append({"trip_id": trip_id, "products": products, "external_id": external_id, "comments": comments})
+        if self._create_error:
+            raise self._create_error
+        if self._create_effect:
+            self._create_effect(self.v3, products)
+        return self._create_result
+
+    async def update_reservation(self, order_doc_id, reservations, *, trip_id=None):
+        self.update_calls.append({"order_doc_id": order_doc_id, "reservations": reservations})
+        if self._update_error:
+            raise self._update_error
+        if self._update_effect:
+            self._update_effect(self.v3, reservations)
+        return order_doc_id
 
     async def aclose(self):
         pass
@@ -230,3 +259,145 @@ def test_customer_invoices_from_the_trip_payload():
     assert first["type"] == "pro forma" and first["installments_total"] == 34298.0 and first["installments_match_total"] is True and len(first["installments"]) == 9
     assert second["installments"] == [] and second["installments_match_total"] is None and second["description"] == "Add on"
     assert customer_invoices({})["invoices"] == []
+
+
+# ---------- writing a reservation (reservations/Create and /Update) ----------
+
+def _create_adds_reservation(v3, products):
+    p = products[0]
+    v3["reservations"].append({"order_id": 500100, "reservation_id": 500200, "supplier_id": p["SupplierId"],
+                               "supplier_name": "Test Supplier", "product_name": p["Name"], "quantity": p["Quantity"],
+                               "duration": p["Nights"], "price": {"amount": p["Price"]}, "currency": {"name": "EUR"},
+                               "dates": {"start": _d(p["StartDate"])}})
+
+
+def _update_changes_price(v3, reservations):
+    row = reservations[0]
+    for r in v3["reservations"]:
+        if r["reservation_id"] == row["OrderReservationId"]:
+            r["price"]["amount"] = row["Price"]
+            r["quantity"] = row["Quantity"]
+            r["duration"] = row["Duration"]
+
+
+async def create_server_for(myt, settings=None):
+    settings = settings or Settings(allowed_trip_ids=frozenset({1001}))
+    return create_server(settings, Services(settings, myt=myt))
+
+
+@pytest.mark.anyio
+async def test_create_without_confirm_only_previews():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_create_adds_reservation)
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 101768, "product_name": "Test transfer",
+                                                               "start_date": "2027-03-01", "price": 50.0, "currency": "EUR"})
+    d = r.structured_content
+    assert not r.is_error and d["sent"] is False and myt.create_calls == [] and "confirm=true" in d["note"]
+    assert d["product"]["Name"] == "Test transfer" and d["product"]["TypeId"] == 1 and d["product"]["PricingTypeId"] == 1
+    assert d["product"]["CurrencyCodeId"] == 3
+
+
+@pytest.mark.anyio
+async def test_create_with_confirm_sends_and_reads_back():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_create_adds_reservation)
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 101768, "product_name": "Test transfer",
+                                                               "start_date": "2027-03-01", "price": 50.0, "pricing": "PP", "confirm": True})
+    d = r.structured_content
+    assert not r.is_error and d["sent"] is True and d["order_id"] == 500100 and d["reservation_id"] == 500200
+    assert len(myt.create_calls) == 1 and myt.create_calls[0]["products"][0]["PricingTypeId"] == 2
+    assert myt.create_calls[0]["products"][0]["Name"].startswith("Test transfer [") and d["confirmed_by_reading_the_trip_back"] is True
+
+
+@pytest.mark.anyio
+async def test_create_refuses_a_category_other_than_transport():
+    r = (await create_and_call("create_supplier_reservation", trip_id=1001, supplier_id=1, product_name="x",
+                               start_date="2027-03-01", price=10.0, category="Lodging"))
+    assert r.is_error and "Transport" in r.content[0].text and "silently drop" in r.content[0].text
+
+
+async def create_and_call(name, **args):
+    myt = FakeMYT(_v3([], {}, []))
+    async with Client(await create_server_for(myt)) as c:
+        return await c.call_tool(name, args)
+
+
+@pytest.mark.parametrize("extra,expected", [
+    ({"pricing": "XX"}, "pricing"), ({"price": 0}, "price"), ({"quantity": 0}, "quantity"), ({"nights": 0}, "nights"),
+    ({"start_date": "2020-01-01"}, "past"), ({"arrival_time": "25:99"}, "arrival_time"), ({"product_name": "  "}, "product_name"),
+])
+@pytest.mark.anyio
+async def test_create_validates_input(extra, expected):
+    base = {"trip_id": 1001, "supplier_id": 1, "product_name": "Test", "start_date": "2027-03-01", "price": 10.0}
+    r = await create_and_call("create_supplier_reservation", **{**base, **extra})
+    assert r.is_error and expected in r.content[0].text
+
+
+@pytest.mark.anyio
+async def test_create_reports_when_myt_silently_drops_it():
+    myt = FakeMYT(_v3([], {}, []))     # no create_effect: the reservation never appears on read-back
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 1, "product_name": "Ghost",
+                                                               "start_date": "2027-03-01", "price": 10.0, "confirm": True})
+    assert r.is_error and "NOT visible" in r.content[0].text
+
+
+@pytest.mark.anyio
+async def test_create_rejects_an_unknown_currency():
+    r = await create_and_call("create_supplier_reservation", trip_id=1001, supplier_id=1, product_name="Test",
+                              start_date="2027-03-01", price=10.0, currency="XYZ")
+    assert r.is_error and "XYZ" in r.content[0].text
+
+
+def _fresh_transfer_v3():
+    return _v3([_res(1, 10, "Lisbon Airport Transfers", "Old transfer", 80.0, 1, 1, "2027-03-05")], {1: "NotSent"}, [])
+
+
+@pytest.mark.anyio
+async def test_update_without_confirm_previews_with_current_values():
+    myt = FakeMYT(_fresh_transfer_v3())
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("update_supplier_reservation", {"trip_id": 1001, "order_id": 1, "reservation_id": 2, "price": 95.0})
+    d = r.structured_content
+    assert not r.is_error and d["sent"] is False and myt.update_calls == []
+    assert d["current"] == {"price": 80.0, "quantity": 1, "nights": 1, "start": "2027-03-05"}
+    assert d["sending"] == {"OrderReservationId": 2, "ReservationDate": "2027-03-05", "Quantity": 1, "Duration": 1,
+                            "Price": 95.0, "ArrivalTime": "10:00", "Comments": "", "IsActive": True}
+
+
+@pytest.mark.anyio
+async def test_update_with_confirm_sends_full_row_and_confirms():
+    myt = FakeMYT(_fresh_transfer_v3(), update_effect=_update_changes_price)
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("update_supplier_reservation", {"trip_id": 1001, "order_id": 1, "reservation_id": 2, "price": 95.0, "confirm": True})
+    d = r.structured_content
+    assert not r.is_error and d["sent"] is True and d["new"]["price"] == 95.0 and d["confirmed_by_reading_the_trip_back"] is True
+    sent = myt.update_calls[0]["reservations"][0]
+    assert sent["ReservationDate"] == "2027-03-05" and sent["Quantity"] == 1 and sent["Price"] == 95.0   # unchanged fields carried over
+
+
+@pytest.mark.anyio
+async def test_update_unknown_reservation_is_refused():
+    myt = FakeMYT(_fresh_transfer_v3())
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("update_supplier_reservation", {"trip_id": 1001, "order_id": 1, "reservation_id": 999, "price": 10.0})
+    assert r.is_error and "No reservation 999" in r.content[0].text
+
+
+@pytest.mark.anyio
+async def test_update_reports_when_myt_silently_fails_to_apply_it():
+    myt = FakeMYT(_fresh_transfer_v3())   # no update_effect: price never changes
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("update_supplier_reservation", {"trip_id": 1001, "order_id": 1, "reservation_id": 2, "price": 95.0, "confirm": True})
+    assert r.is_error and "does not read back" in r.content[0].text
+
+
+@pytest.mark.anyio
+async def test_write_tools_refuse_a_trip_outside_the_allowed_list():
+    myt = FakeMYT(_v3([], {}, []))
+    async with Client(await create_server_for(myt)) as c:
+        create = await c.call_tool("create_supplier_reservation", {"trip_id": 5, "supplier_id": 1, "product_name": "x",
+                                                                    "start_date": "2027-03-01", "price": 10.0})
+        update = await c.call_tool("update_supplier_reservation", {"trip_id": 5, "order_id": 1, "reservation_id": 2, "price": 10.0})
+    assert create.is_error and "outside the allowed test trips" in create.content[0].text
+    assert update.is_error and "outside the allowed test trips" in update.content[0].text

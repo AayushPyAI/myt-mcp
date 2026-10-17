@@ -33,6 +33,10 @@ class TTLCache(Generic[V]):
             return True, hit[2]
         return False, None
 
+    def invalidate(self, key: Hashable) -> None:
+        """Drop one cached entry, e.g. after a write that makes it stale."""
+        self._data.pop(key, None)
+
     async def get_or_load(self, key: Hashable, loader: Callable[[], Awaitable[V]]) -> V:
         found, value = self._fresh(key)
         if found:

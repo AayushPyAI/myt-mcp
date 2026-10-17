@@ -230,3 +230,53 @@ def customer_invoices(v3: dict[str, Any]) -> dict[str, Any]:
         "total_of_invoices": round(sum(r["total"] for r in rows), 2),
         "not_in_api": "Paid status and receipts are not in the API; a single-payment invoice carries no currency here. Read them on the MYT screen: Reports > Balance by trip > Customer invoice (trip filtered).",
     }
+
+
+# --- writing a reservation (reservations/Create and /Update) ---------------------------------------------------------
+
+TRANSPORT_TYPE_ID = 1          # the only TypeId confirmed to work with reservations/Create (17 Oct 2026)
+KNOWN_CREATE_CATEGORIES = {"Transport": TRANSPORT_TYPE_ID}
+CATEGORY_NOTE = ("MYT's write API only reliably creates 'Transport' reservations (flights, trains, transfers, car rental): a "
+                 "live test on 17 Oct 2026 sent one product of each TypeId 1-7 and MYT answered 200 but silently dropped all "
+                 "but TypeId 1 (Transport), with no error naming which or why. Other categories (Lodging, Food, Staff, "
+                 "Attraction, Other, DMC) need category ids this API does not document; use Claude in Chrome for those "
+                 "until MYT support confirms the missing fields.")
+
+
+def build_create_product(*, supplier_id: int, start_date: str, name: str, price: float, currency_code_id: int,
+                         pricing_type_id: int, type_id: int, quantity: float, nights: int, arrival_time: str, comments: str) -> dict[str, Any]:
+    """One entry of reservations/Create's `products` list, in MYT's own field names."""
+    return {"SupplierId": supplier_id, "StartDate": start_date, "Name": name, "PricingTypeId": pricing_type_id, "TypeId": type_id,
+            "Price": price, "CurrencyCodeId": currency_code_id, "Quantity": quantity, "Nights": nights,
+            "ArrivalTime": arrival_time, "Comments": comments}
+
+
+def find_reservation(v3: dict[str, Any], *, order_id: int | None = None, reservation_id: int | None = None,
+                     name_contains: str | None = None) -> dict[str, Any] | None:
+    """One raw reservation entry of a GetTrip/v3 answer, by order id, reservation id or a product-name fragment."""
+    for r in v3.get("reservations") or []:
+        if order_id is not None and r.get("order_id") != order_id:
+            continue
+        if reservation_id is not None and r.get("reservation_id") != reservation_id:
+            continue
+        if name_contains is not None and name_contains not in (r.get("product_name") or ""):
+            continue
+        return r
+    return None
+
+
+def build_update_row(current: dict[str, Any], *, price: float | None, quantity: float | None, nights: int | None,
+                     start_date: str | None, arrival_time: str | None, comments: str | None) -> dict[str, Any]:
+    """One entry of reservations/Update's `OrderReservations` list. MYT needs the WHOLE row, not a partial patch: a row
+    missing the date or quantity answers 400 "All Reservations must have id and Date" (seen 17 Oct 2026); any field not
+    given here is filled in from the reservation's current value so a one-field change never blanks the others."""
+    return {
+        "OrderReservationId": current.get("reservation_id"),
+        "ReservationDate": start_date or _date((current.get("dates") or {}).get("start")),
+        "Quantity": int(quantity if quantity is not None else current.get("quantity") or 1),
+        "Duration": int(nights if nights is not None else current.get("duration") or 1),
+        "Price": float(price if price is not None else _amount(current.get("price")) or 0),
+        "ArrivalTime": arrival_time or "10:00",
+        "Comments": comments if comments is not None else "",
+        "IsActive": True,
+    }
