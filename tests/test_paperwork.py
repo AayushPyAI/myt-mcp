@@ -137,3 +137,13 @@ def test_two_orders_of_one_supplier_with_the_same_amount_still_ask_for_the_order
     v3 = _v3([_res(1, 10, "Terreiro", "Dinner", 130.0, 1, 1, "2026-10-02"), _res(2, 10, "Terreiro", "Dinner 2", 130.0, 1, 1, "2026-10-03")], {1: "VoucherPaid", 2: "VoucherPaid"}, [])
     result = paperwork_check(v3, TODAY, vouchers=[{"supplier": "Terreiro", "number": "V1", "amount": 130.0, "currency": "EUR"}], invoices=[], payments=[])
     assert result["documents_not_matched"] and "give the order id" in result["documents_not_matched"][0]
+
+
+def test_a_rejected_order_expects_no_documents():
+    """Trip 435: 10 rows are 'Rejected By Operator' (a replaced attempt): no voucher, invoice or payment is expected, so none is 'missing'."""
+    v3 = _v3([_res(1, 10, "Old Co", "Tour", 100.0, 1, 1, "2026-09-18"), _res(2, 20, "New Co", "Tour", 120.0, 1, 1, "2026-09-18")], {1: "RejectedByTo", 2: "VoucherPaid"}, [])
+    result = paperwork_check(v3, TODAY, vouchers=[{"order_id": 2, "number": "V9"}], invoices=[], payments=[])
+    r = rows(result)
+    assert r[1]["missing"] == [] and r[1]["documents_expected"] is False and r[1]["complete"] is False
+    assert r[2]["documents_expected"] is True and r[2]["missing"] == ["supplier invoice", "supplier payment"]
+    assert result["totals"] == {"reservations": 2, "orders": 2, "product_rows": 2, "complete": 0, "not_expected_rejected": 1, "incomplete": 1}

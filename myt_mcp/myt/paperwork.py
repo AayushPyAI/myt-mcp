@@ -74,7 +74,7 @@ def paperwork_check(v3: dict[str, Any], today: date, vouchers: list[dict[str, An
             else:
                 found[row["order_id"]][kind].append(doc)
 
-    out_rows, complete = [], 0
+    out_rows, complete, skipped = [], 0, 0
     for r in rows:
         f = found[r["order_id"]]
         flags: list[str] = []
@@ -107,19 +107,23 @@ def paperwork_check(v3: dict[str, Any], today: date, vouchers: list[dict[str, An
                 flags.append(f"paid {paid} is MORE than {'the invoice' if expected == invoice_amount else 'the reservation cost'} {expected}")
             elif expected - paid > tolerance:
                 flags.append(f"paid {paid} is LESS than {'the invoice' if expected == invoice_amount else 'the reservation cost'} {expected} (partial)")
+        not_expected = r["status_api"] == "RejectedByTo" and not (f["voucher"] or f["invoice"] or f["payment"])
+        if not_expected:        # rejected by the operator and replaced: no voucher, invoice or payment is expected
+            missing, flags = [], []
         ok = not missing and not flags
-        complete += ok
+        complete += ok and not not_expected
+        skipped += not_expected
         out_rows.append({
             "order_id": r["order_id"], "supplier": r["supplier"], "product": r["product"], "items": r["items"], "start": r["start"], "status": r["status"],
             "reservation_cost": cost, "currency": currency,
             "voucher": {"found": bool(f["voucher"]), "numbers": voucher_numbers},
             "supplier_invoice": {"found": bool(f["invoice"]), "amount": invoice_amount},
             "supplier_payment": {"found": bool(f["payment"]), "paid": paid},
-            "missing": missing, "flags": flags, "complete": ok,
+            "missing": missing, "flags": flags, "complete": ok and not not_expected, "documents_expected": not not_expected,
         })
     return {
         "rows": out_rows,
-        "totals": {"reservations": len(rows), "orders": len(rows), "product_rows": len(base["reservations"]), "complete": complete, "incomplete": len(rows) - complete},
+        "totals": {"reservations": len(rows), "orders": len(rows), "product_rows": len(base["reservations"]), "complete": complete, "not_expected_rejected": skipped, "incomplete": len(rows) - complete - skipped},
         "documents_not_matched": unmatched,
         "tolerance": f"{tolerance} {rows[0]['currency'] if rows else ''}".strip(),
         "note": "'Missing' means not found among the documents you passed. Read them from this trip's MYT screens only; a payment can legitimately come after the service date.",
