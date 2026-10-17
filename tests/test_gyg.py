@@ -396,7 +396,8 @@ def test_shortlist_is_cheapest_best_rated_and_most_reviewed_with_enough_reviews(
     picks = shortlist(rows)
     # 36 EUR / 4.9 (8813) / 4.8 (16683): 561819 is the cheapest (tie on 36 -> more reviews is 552524) and the best rated; 552524 the most reviewed
     assert [(p["activity_id"], p["why"]) for p in picks] == [
-        (552524, "Cheapest with 20+ reviews; Most reviewed"), (561819, "Best rated with 20+ reviews")]
+        (552524, f"Cheapest of the {len(rows)} read, with 20+ reviews; Most reviewed of the {len(rows)} read"),
+        (561819, f"Best rated of the {len(rows)} read, with 20+ reviews")]
     assert shortlist([]) == [] and shortlist([r for r in rows if r["price_basis"] == "per group"]) == []
 
 

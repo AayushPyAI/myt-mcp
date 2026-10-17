@@ -93,9 +93,9 @@ def activity_shortlist(rows: list[dict[str, Any]], id_key: str, min_reviews: int
     """Up to three results worth an exact price check: the cheapest, the best rated and the most reviewed, among the
     per-person results with at least `min_reviews` reviews (a result can win several labels; it is listed once)."""
     solid = [r for r in rows if r.get("price_basis", "per person") == "per person" and r.get("from_price") is not None and (r.get("reviews") or 0) >= min_reviews]
-    picks = [(f"Cheapest with {min_reviews}+ reviews", min(solid, key=lambda r: (r["from_price"], -r["reviews"]), default=None)),
-             (f"Best rated with {min_reviews}+ reviews", min(solid, key=lambda r: (-(r.get("rating") or 0), -r["reviews"]), default=None)),
-             ("Most reviewed", min(solid, key=lambda r: -r["reviews"], default=None))]
+    picks = [(f"Cheapest of the {len(rows)} read, with {min_reviews}+ reviews", min(solid, key=lambda r: (r["from_price"], -r["reviews"]), default=None)),
+             (f"Best rated of the {len(rows)} read, with {min_reviews}+ reviews", min(solid, key=lambda r: (-(r.get("rating") or 0), -r["reviews"]), default=None)),
+             (f"Most reviewed of the {len(rows)} read", min(solid, key=lambda r: -r["reviews"], default=None))]
     out: list[dict[str, Any]] = []
     for label, row in picks:
         if not row:

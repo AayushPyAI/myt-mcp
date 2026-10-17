@@ -439,7 +439,7 @@ async def test_rows_are_ranked_flagged_and_listed_for_an_exact_price_check():
     few = [i for i, a in enumerate(rows) if a["few_reviews"]]
     assert few == list(range(len(rows) - len(few), len(rows)))                    # results with few reviews come last
     picks = d["shortlist_for_exact_price"]
-    assert 1 <= len(picks) <= 3 and all(p["reviews"] >= 20 and p["url"] for p in picks) and picks[0]["why"].startswith("Cheapest with 20+ reviews")
+    assert 1 <= len(picks) <= 3 and all(p["reviews"] >= 20 and p["url"] for p in picks) and picks[0]["why"].startswith("Cheapest of the ") and "read, with 20+ reviews" in picks[0]["why"]
     solid = [a for a in rows if not a["few_reviews"] and a["from_price"] is not None]
     assert picks[0]["from_price"] == min(a["from_price"] for a in solid)
 

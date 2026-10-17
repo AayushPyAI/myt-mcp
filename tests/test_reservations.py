@@ -183,3 +183,4 @@ def test_worklist_orders_by_urgency_and_gives_a_next_step():
     assert "Never Send Request" in by_id[1]["next_step"]
     assert "voucher" in by_id[5]["next_step"].lower()
     assert "payment" in by_id[4]["next_step"].lower()
+    assert "API cannot show" in by_id[4]["next_step"] and "by status" in by_id[5]["next_step"]     # never claim an invoice or payment is missing: the API cannot see them

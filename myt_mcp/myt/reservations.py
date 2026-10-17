@@ -39,8 +39,8 @@ def _same_product(a: str | None, b: str | None) -> bool:
 NEXT_STEP = {
     "NotSent": "Confirm it (row menu > Skip To COR) or issue the voucher (Skip To Voucher & Download). Never Send Request: it emails the supplier.",
     None: "Confirm it (row menu > Skip To COR) or issue the voucher (Skip To Voucher & Download). Never Send Request: it emails the supplier.",
-    "ConfirmedByTo": "Issue the voucher (Print Voucher on the row menu: not tested yet), then add the supplier invoice and the payment.",
-    "VoucherSent": "Check the supplier invoice (Create/Edit Invoice) and the PAYMENTS tab; mark paid only after the operator confirms the payment.",
+    "ConfirmedByTo": "Voucher not issued yet (by status). Issue it (Print Voucher on the row menu: not tested yet), then check the supplier invoice and the payment on the MYT screens: the API cannot show whether they exist.",
+    "VoucherSent": "Voucher issued (by status). Check the supplier invoice (Create/Edit Invoice) and the PAYMENTS tab on the MYT screen: the API cannot show them. Mark paid only after the operator confirms the payment.",
 }
 URGENCY_ORDER = {"overdue": 0, "today": 1, "soon": 2, "later": 3, "done": 4}
 
