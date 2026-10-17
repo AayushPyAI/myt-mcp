@@ -13,7 +13,8 @@ from typing import Any
 from myt_mcp.myt.summaries import _amount, _date, quotation_summary
 
 # API status name -> the name MYT's Supplier Reservations screen shows (seen on the test trip; others pass through unchanged).
-STATUS_ON_SCREEN = {"NotSent": "Ready To Send", "VoucherSent": "Voucher Issued", "ConfirmedByTo": "Reservation Confirmed"}
+STATUS_ON_SCREEN = {"NotSent": "Ready To Send", "VoucherSent": "Voucher Issued", "ConfirmedByTo": "Reservation Confirmed",
+                    "VoucherPaid": "Voucher Paid", "VoucherInPayment": "Voucher In Payment Process", "RejectedByTo": "Rejected By Operator"}
 DEFAULT_PROFIT_PCTS = (3.0, 13.0, 15.0)     # contract rate, default and usual line profit (to be confirmed by the client)
 RATIO_TOLERANCE = 0.005
 NOT_IN_API = ("Voucher numbers, supplier invoices, supplier payments and customer invoices are not in MYT's API. Read them from the "
@@ -40,6 +41,9 @@ NEXT_STEP = {
     "NotSent": "Confirm it (row menu > Skip To COR) or issue the voucher (Skip To Voucher & Download). Never Send Request: it emails the supplier.",
     None: "Confirm it (row menu > Skip To COR) or issue the voucher (Skip To Voucher & Download). Never Send Request: it emails the supplier.",
     "ConfirmedByTo": "Voucher not issued yet (by status). Issue it (Print Voucher on the row menu: not tested yet), then check the supplier invoice and the payment on the MYT screens: the API cannot show whether they exist.",
+    "VoucherPaid": "Voucher paid (by status). Check on the PAYMENTS tab that the payment amount and supplier match this reservation.",
+    "VoucherInPayment": "Payment is in process (by status). Check the PAYMENTS tab for the payment and its date; mark nothing yourself.",
+    "RejectedByTo": "Rejected by the operator (by status): no voucher is expected. If the service is still in the future, ask the operator whether to re-request or replace it.",
     "VoucherSent": "Voucher issued (by status). Check the supplier invoice (Create/Edit Invoice) and the PAYMENTS tab on the MYT screen: the API cannot show them. Mark paid only after the operator confirms the payment.",
 }
 URGENCY_ORDER = {"overdue": 0, "today": 1, "soon": 2, "later": 3, "done": 4}
@@ -47,8 +51,10 @@ URGENCY_ORDER = {"overdue": 0, "today": 1, "soon": 2, "later": 3, "done": 4}
 
 def _urgency(api_status: str | None, days: int | None, soon_days: int) -> str:
     """How pressing the reservation is: a service that has started or starts today without a voucher comes first."""
-    if api_status == "VoucherSent":
+    if api_status in ("VoucherSent", "VoucherPaid"):
         return "done"
+    if api_status == "RejectedByTo" and (days is None or days < 0):
+        return "done"           # rejected and the service date has passed: nothing is expected any more
     if days is None:
         return "later"
     if days < 0:
@@ -87,7 +93,7 @@ def reservations_summary(v3: dict[str, Any], today: date, soon_days: int = 7) ->
         days = (_iso(start) - today).days if _iso(start) else None
         row["service_in_days"] = days
         row["urgency"] = _urgency(api_status, days, soon_days)
-        row["next_step"] = NEXT_STEP.get(api_status, "Read the row on the MYT screen: this status is not one of the three seen so far.")
+        row["next_step"] = NEXT_STEP.get(api_status, "Read the row on the MYT screen: this status is not one of the six seen so far.")
         rows.append(row)
         if api_status in (None, "NotSent") and days is not None and days <= soon_days:
             when = f"starts in {days} day(s)" if days >= 0 else f"started {-days} day(s) ago"
@@ -96,10 +102,15 @@ def reservations_summary(v3: dict[str, Any], today: date, soon_days: int = 7) ->
     by_status: dict[str, int] = {}
     for row in rows:
         by_status[row["status"] or "unknown"] = by_status.get(row["status"] or "unknown", 0) + 1
+    totals: dict[str, float] = {}
+    for row in rows:        # never add EUR and ILS together: one total per currency
+        totals[row["currency"] or "?"] = round(totals.get(row["currency"] or "?", 0.0) + row["total_cost"], 2)
     return {
         "reservations": rows,
         "count": len(rows),
-        "total_cost": round(sum(r["total_cost"] for r in rows), 2),
+        "orders": len({r["order_id"] for r in rows}),
+        "total_cost": next(iter(totals.values())) if len(totals) == 1 else (0.0 if not totals else None),
+        "total_cost_by_currency": totals,
         "by_status": by_status,
         "voucher_flags": flags,
         "worklist": [
@@ -107,7 +118,7 @@ def reservations_summary(v3: dict[str, Any], today: date, soon_days: int = 7) ->
              "urgency": r["urgency"], "service_in_days": r["service_in_days"], "next_step": r["next_step"]}
             for r in sorted(rows, key=lambda x: (URGENCY_ORDER[x["urgency"]], x["start"] or "", x["order_id"] or 0)) if r["urgency"] != "done"
         ],
-        "status_names": "status is the name MYT's screen shows; status_api is the API's own name. Only these three were seen so far.",
+        "status_names": "status is the name MYT's screen shows; status_api is the API's own name. Seen so far: Ready To Send, Voucher Issued, Reservation Confirmed, Voucher Paid, Voucher In Payment Process, Rejected By Operator. count is the number of product rows; orders is the number of supplier orders.",
         "not_in_api": NOT_IN_API,
     }
 

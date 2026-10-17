@@ -184,3 +184,30 @@ def test_worklist_orders_by_urgency_and_gives_a_next_step():
     assert "voucher" in by_id[5]["next_step"].lower()
     assert "payment" in by_id[4]["next_step"].lower()
     assert "API cannot show" in by_id[4]["next_step"] and "by status" in by_id[5]["next_step"]     # never claim an invoice or payment is missing: the API cannot see them
+
+
+def test_statuses_seen_on_a_finished_trip_are_not_called_overdue():
+    """Found on trip 435 (17 Oct 2026): Voucher Paid, Voucher In Payment Process and Rejected By Operator were all listed as overdue."""
+    v3 = _v3(
+        [_res(1, 10, "Paid Co", "Car", 212.71, 1, 1, "2026-09-21"),
+         _res(2, 20, "Pay Co", "Car 2", 116.72, 1, 1, "2026-09-29"),
+         _res(3, 30, "Rej Co", "Tour", 100.0, 1, 1, "2026-09-18"),
+         _res(4, 40, "Rej Future Co", "Tour 2", 90.0, 1, 1, "2026-10-20")],
+        {1: "VoucherPaid", 2: "VoucherInPayment", 3: "RejectedByTo", 4: "RejectedByTo"}, [])
+    out = reservations_summary(v3, TODAY)
+    by_id = {r["order_id"]: r for r in out["reservations"]}
+    assert (by_id[1]["status"], by_id[1]["urgency"]) == ("Voucher Paid", "done") and "PAYMENTS tab" in by_id[1]["next_step"]
+    assert by_id[2]["status"] == "Voucher In Payment Process" and by_id[2]["urgency"] == "overdue" and "Payment is in process" in by_id[2]["next_step"]
+    assert (by_id[3]["status"], by_id[3]["urgency"]) == ("Rejected By Operator", "done")            # past and rejected: closed
+    assert by_id[4]["urgency"] == "soon" and "re-request" in by_id[4]["next_step"]                     # future and rejected: surfaced
+    assert [w["order_id"] for w in out["worklist"]] == [2, 4]
+
+
+def test_totals_never_add_two_currencies():
+    eur = _res(1, 10, "A", "Hotel", 100.0, 1, 1, "2026-10-20")
+    ils = {**_res(2, 20, "B", "Tour", 1000.0, 1, 1, "2026-10-21"), "currency": {"name": "ILS"}}
+    out = reservations_summary(_v3([eur, ils], {1: "NotSent", 2: "NotSent"}, []), TODAY)
+    assert out["total_cost"] is None and out["total_cost_by_currency"] == {"EUR": 100.0, "ILS": 1000.0}
+    assert out["count"] == 2 and out["orders"] == 2
+    one = reservations_summary(_v3([eur], {1: "NotSent"}, []), TODAY)
+    assert one["total_cost"] == 100.0 and one["total_cost_by_currency"] == {"EUR": 100.0}
