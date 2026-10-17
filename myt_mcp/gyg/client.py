@@ -32,7 +32,7 @@ import httpx
 from myt_mcp.browser import BrowserSession
 from myt_mcp.cache import TTLCache
 from myt_mcp.errors import IntegrationError
-from myt_mcp.gyg.parse import activity_id_from_url, activity_info, state_from_script
+from myt_mcp.gyg.parse import activity_id_from_url, activity_info, search_page, state_from_script
 from myt_mcp.ratelimit import SiteLimiter
 
 ORIGIN = "https://www.getyourguide.com"
@@ -85,10 +85,11 @@ class GygClient:
     async def aclose(self) -> None:
         """The shared browser session is closed by its owner."""
 
-    async def search(self, query: str, day: date | None, pages: int) -> dict[str, Any]:
+    async def search(self, query: str, day: date | None, pages: int, stop_words: tuple[str, ...] = ()) -> dict[str, Any]:
         """`pages` pages (24 results each) of GetYourGuide's own search, in its own (popularity) order.
-        {"answers": [...], "stopped": reason or None}; a failure after the first page keeps what was read."""
-        key = (" ".join(query.lower().split()), day.isoformat() if day else None, pages)
+        {"answers": [...], "stopped": reason or None, "unrelated_from_page": n or None}; a failure after the first page keeps what was read.
+        With `stop_words`, reading stops at the first page (from page 2) where no title holds any of them: the rest is padding."""
+        key = (" ".join(query.lower().split()), day.isoformat() if day else None, pages, stop_words)
 
         async def load() -> dict[str, Any]:
             await self._limiter.acquire()
@@ -100,7 +101,7 @@ class GygClient:
                 # the search service answers plain HTTP (only the activity pages are behind a browser check); fall back to the browser if it does not
                 headers = {"accept-currency": "EUR", "visitor-platform": "desktop", "x-gyg-app-type": "Web", "visitor-id": uuid.uuid4().hex.upper()[:26]}
                 try:
-                    return await self._read_pages(self._http_post, f"{SRP_API}?{urlencode(params)}", payload, headers, pages)
+                    return await self._read_pages(self._http_post, f"{SRP_API}?{urlencode(params)}", payload, headers, pages, stop_words)
                 except IntegrationError as e:
                     log.info("GetYourGuide search over HTTP failed (%s); using the browser", e)
 
@@ -120,7 +121,7 @@ class GygClient:
             if not read.get("visitor_id"):
                 raise GygError("GetYourGuide's search page had an unexpected format; the site may have changed.")
             headers = {"accept-currency": "EUR", "visitor-platform": "desktop", "x-gyg-app-type": "Web", "visitor-id": read["visitor_id"]}
-            return await self._read_pages(self._browser_post, f"{SRP_API}?{urlencode(params)}", payload, headers, pages)
+            return await self._read_pages(self._browser_post, f"{SRP_API}?{urlencode(params)}", payload, headers, pages, stop_words)
 
         return await self._searches.get_or_load(key, load)
 
@@ -135,7 +136,8 @@ class GygClient:
     async def _browser_post(self, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
         return await self._session.fetch(ORIGIN, f"{ORIGIN}/", "POST", url, body, headers)
 
-    async def _read_pages(self, post, url: str, payload: dict[str, Any], headers: dict[str, str], pages: int) -> dict[str, Any]:
+    async def _read_pages(self, post, url: str, payload: dict[str, Any], headers: dict[str, str], pages: int,
+                          stop_words: tuple[str, ...] = ()) -> dict[str, Any]:
         """Page 1..`pages` of the search; a failure after the first page keeps what was read."""
         answers: list[dict[str, Any]] = []
         for number in range(1, pages + 1):
@@ -146,10 +148,14 @@ class GygClient:
             except IntegrationError as e:
                 if number == 1:
                     raise
-                return {"answers": answers, "stopped": f"page {number} could not be read ({e}); the answer covers pages 1-{number - 1}."}
+                return {"answers": answers, "stopped": f"page {number} could not be read ({e}); the answer covers pages 1-{number - 1}.", "unrelated_from_page": None}
+            if stop_words and number >= 2:
+                titles = [r["title"].lower() for r in search_page(answers[-1])[0]]
+                if titles and not any(w in t for t in titles for w in stop_words):
+                    return {"answers": answers, "stopped": None, "unrelated_from_page": number}    # a whole page of other activities: the list has drifted
             if not any(isinstance(b, dict) and b.get("type") == "loadMore" for b in answers[-1].get("content") or []):
                 break   # no "Show more" after this page: it was the last one
-        return {"answers": answers, "stopped": None}
+        return {"answers": answers, "stopped": None, "unrelated_from_page": None}
 
     async def _srp_page(self, post, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
         r = await post(url, body, headers)

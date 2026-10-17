@@ -526,3 +526,35 @@ async def test_no_meeting_point_anywhere_is_said_not_guessed(today_is_before_fix
         r = await c.call_tool("getyourguide_activity_details", args(adults=2))
     d = r.structured_content
     assert d["meeting_point"] is None and "never guess" in d["meeting_point_note"]
+
+
+# ---------- read every relevant result, stop when the list drifts to other activities ----------
+
+UNRELATED = json.loads(json.dumps(SEARCH_PAGE).replace("Pasta", "Museum").replace("pasta", "museum"))
+
+
+async def test_reading_stops_at_the_first_page_with_no_relevant_title(today_is_before_fixture_date):
+    session = search_session(SEARCH_PAGE, UNRELATED, SEARCH_PAGE)       # the third page must never be requested
+    r = await find(session, read_all_relevant=True, title_contains=["pasta"])
+    d = r.structured_content
+    assert len(session.posts) == 2
+    relevant = [row for row in search_page(SEARCH_PAGE)[0] if "pasta" in row["title"].lower()]
+    assert d["coverage"]["all_relevant_read"] is True and d["coverage"]["relevant_read"] == len(relevant) and d["coverage"]["pages_read"] == 2
+    assert "Read all relevant results" in d["note"] and "page 2 had none" in d["note"] and all("pasta" in a["title"].lower() for a in d["activities"])
+
+
+async def test_reading_goes_on_while_pages_stay_relevant(today_is_before_fixture_date):
+    other = json.loads(json.dumps(SEARCH_PAGE).replace('"activityId": 552524', '"activityId": 9552524'))
+    session = search_session(SEARCH_PAGE, other, UNRELATED)
+    d = (await find(session, read_all_relevant=True, title_contains=["pasta"])).structured_content
+    assert len(session.posts) == 3 and d["coverage"]["all_relevant_read"] is True
+
+
+async def test_read_all_relevant_needs_the_words_that_tell_relevant_from_padding(today_is_before_fixture_date):
+    r = await find(search_session(SEARCH_PAGE), read_all_relevant=True)
+    assert r.is_error and "title_contains" in r.content[0].text
+
+
+async def test_without_the_option_coverage_keeps_its_old_shape(today_is_before_fixture_date):
+    d = (await find(search_session(SEARCH_PAGE), title_contains=["pasta"])).structured_content
+    assert "all_relevant_read" not in d["coverage"] and "relevant_read" not in d["coverage"]

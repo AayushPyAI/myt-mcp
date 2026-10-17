@@ -277,6 +277,7 @@ def register(mcp: MCPServer, services: Services) -> None:
         min_rating: float | None = None,
         max_hours: float | None = None,
         title_contains: list[str] | None = None,
+        read_all_relevant: bool = False,
     ) -> dict[str, Any]:
         """Search GetYourGuide for tours and activities, e.g. "Florence pasta cooking class". Use this, not the GetYourGuide connector
         (the connector only draws cards in the chat; Claude gets no prices, ratings or links from it).
@@ -291,7 +292,9 @@ def register(mcp: MCPServer, services: Services) -> None:
         results were read; say "cheapest of the N read". Choose from the traveller's wishes: sort_by "price" (budget), "rating",
         "reviews" (most popular), "duration" (shortest first) or "popularity" (default); min_price / max_price = EUR "from" price shown;
         free_cancellation_only; min_rating (e.g. 4.5); max_hours; title_contains = keep only titles with any of these words (e.g. ["cooking", "pasta"]:
-        removes the padding). Drop results that are not what was asked. Never guess a link."""
+        removes the padding). Drop results that are not what was asked. For a "cheapest" question give `title_contains` and set `read_all_relevant` true:
+        it reads up to 12 pages but stops at the first page (from page 2) where no title holds those words, and `coverage.all_relevant_read` says the
+        relevant results were all read (then "cheapest of the N relevant" is fair). Never guess a link."""
         if not query or sum(ch.isalnum() for ch in query) < 2:
             raise ToolError("query needs words, e.g. 'Florence pasta cooking class'.")
         if len(query) > 200:
@@ -314,7 +317,9 @@ def register(mcp: MCPServer, services: Services) -> None:
             raise ToolError("activity_date is in the past.")
         words = [w.strip().lower() for w in title_contains or [] if w and w.strip()]
 
-        read_pages = await services.gyg().search(query, activity_date, pages)
+        if read_all_relevant and not words:
+            raise ToolError("read_all_relevant needs title_contains: the words that tell a relevant result from padding (e.g. [\"vatican\"]).")
+        read_pages = await services.gyg().search(query, activity_date, 12 if read_all_relevant else pages, tuple(words) if read_all_relevant else ())
         read: list[dict[str, Any]] = []
         seen: set[Any] = set()
         total = None
@@ -344,6 +349,8 @@ def register(mcp: MCPServer, services: Services) -> None:
         shown = rows[:max_results]
 
         everything = total is not None and len(read) >= total
+        relevant_read = [r for r in read if any(w in r["title"].lower() for w in words)] if words else []
+        all_relevant = bool(read_all_relevant and read_pages.get("unrelated_from_page"))
         answer: dict[str, Any] = {
             "query": query, "date": activity_date.isoformat() if activity_date else None, "sorted_by": sort_by,
             "filters": {"min_price": min_price, "max_price": max_price, "free_cancellation_only": free_cancellation_only,
@@ -358,9 +365,16 @@ def register(mcp: MCPServer, services: Services) -> None:
                           "that passed the filters) with the url, the date, adults and child_ages: the 'from' price here is only the lowest starting price. "
                           "Also search Viator with the same words and show both sites side by side."),
         }
+        if read_all_relevant:
+            answer["coverage"]["relevant_read"] = len(relevant_read)
+            answer["coverage"]["all_relevant_read"] = all_relevant
         notes = []
         if not read:
             notes.append("GetYourGuide found no activities for this search; try other words (city + activity).")
+        elif all_relevant:
+            notes.append(f"Read all relevant results: {len(relevant_read)} titles with {', '.join(words)} in {len(read_pages['answers'])} pages; page "
+                         f"{read_pages['unrelated_from_page']} had none, so the rest is other activities. Say 'cheapest of the {len(relevant_read)} relevant results' "
+                         f"(of {total} GetYourGuide lists for the city search), not 'the cheapest on GetYourGuide'.")
         elif not everything:
             notes.append(f"Read {len(read)} of {total} results (GetYourGuide's popularity order, most relevant first; later pages drift to other activities of the city). "
                          f"Say 'cheapest of the {len(read)} read' and 'best of the {len(read)} read', never just 'the cheapest' or 'the best'. To read more, search again with a higher `pages` (up to 12).")
