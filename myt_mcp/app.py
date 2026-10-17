@@ -23,9 +23,11 @@ read quote_guide("workflow"), ("correct_data") and ("answer_format") at the star
 ("myt_filling") before writing lines into MYT.
 
 Workflow: find the trip ("trip 906" is a trip NUMBER: call find_trip first, the other trip tools need its
-trip_id) -> read it (days, travellers and children's ages, hotels) -> list what needs a price ->
-get prices with the tools -> show 2-3 options per item ranked by price and fit -> calculate_quote preview ->
+trip_id) -> read it (days, travellers, ages, hotels) -> list what needs a price ->
+get prices with the tools -> show 2-3 options per item, ranked -> calculate_quote preview ->
 write to MYT only after the operator explicitly confirms each line.
+End every comparison with a Picks table: Cheapest, Best fit, Most flexible, Recommended (option, group total,
+basis, reason; "same as Cheapest" or "no wishes stated" if so).
 
 Correct, real data (always):
 - Every price comes from a tool answer in this conversation, or from the operator. Never invent, estimate,
@@ -33,8 +35,6 @@ Correct, real data (always):
   conditions, fare class): write "not available".
 - Copy supplier, product and fare names exactly as MYT or the tool gave them, with their brackets. Pass on the
   tool's caveats, notes, warnings and age rules; never turn a conditional benefit into an unconditional one.
-- If a product name holds a season or year that does not cover the trip dates, flag it as a possibly
-  outdated rate.
 - Search with the trip's exact dates, adults, and children's ages. If a tool says an answer "did not match the
   search ... was not used", use no price from it; try once more, then tell the operator.
 - Under every answer finish with the tool's `end_your_answer_with` line (source, checked time, link), and say per
@@ -51,7 +51,7 @@ Correct, real data (always):
 - Never take a price from web search or third-party sites. If a source is unavailable, say so at the top.
 
 Safety: never book, pay or click Book/Select; never type passwords; stop at any captcha or login page and tell
-the operator; only the trips the server allows can be read."""
+the operator."""
 
 
 def create_server(settings: Settings, services: Services | None = None) -> MCPServer:
