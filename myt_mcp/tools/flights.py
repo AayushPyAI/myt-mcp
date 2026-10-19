@@ -74,7 +74,7 @@ def register(mcp: MCPServer, services: Services) -> None:
         ensure("SATA", check_answer(answer, origin, destination, departure_date.isoformat(),
                                     return_date.isoformat() if return_date else None,
                                     {"adults": adults, "children": children, "infants": infants}))
-        result = summarize_availability(answer, max_results)
+        result = summarize_availability(answer, max_results, {"adults": adults, "children": children, "infants": infants})
         reply: dict[str, Any] = {
             "search": {"from": origin, "to": destination, "departure_date": departure_date.isoformat(),
                        "return_date": return_date.isoformat() if return_date else None,

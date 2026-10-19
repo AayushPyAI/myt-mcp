@@ -73,6 +73,18 @@ def test_one_way_options():
     assert "note" not in summarize_availability(ISLANDS, 10)                      # everything shown: nothing to add
 
 
+def test_per_person_split_is_group_total_divided_by_travellers():
+    """per_passenger_type is a GROUP total per type (193.30 + 62.65 = 255.95): one adult is 96.65, not 193.30."""
+    d = summarize_availability(ISLANDS, 3, PAX_2_1)
+    first = d["options"][0]
+    assert first["per_passenger_type"] == {"adults": 193.3, "children": 62.65}
+    assert first["per_person_by_type"] == {"adults": 96.65, "children": 62.65}
+    assert round(sum(first["per_passenger_type"].values()), 2) == first["total_price"]
+    assert "TOTAL for all travellers of that type" in d["per_passenger_type_note"] and "per_person_by_type" in d["per_passenger_type_note"]
+    assert summarize_availability(ISLANDS, 3)["options"][0]["per_person_by_type"] == {}          # no traveller counts: nothing to divide by
+    assert summarize_availability(ISLANDS, 3, {"adults": 2, "children": 0, "infants": 0})["options"][0]["per_person_by_type"] == {"adults": 96.65}
+
+
 def test_round_trip_options():
     d = summarize_availability(ROUND_TRIP, 10)
     first = d["options"][0]

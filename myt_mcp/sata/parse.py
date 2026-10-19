@@ -59,7 +59,13 @@ def _varied(options: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     return sorted((first + rest)[:limit], key=options.index)
 
 
-def summarize_availability(answer: dict[str, Any], max_results: int) -> dict[str, Any]:
+def _per_person(totals: dict[str, Any], travellers: dict[str, int] | None) -> dict[str, float]:
+    """One person's price per type: the type's group total divided by how many travel."""
+    return {t: round(v / travellers[t], 2) for t, v in totals.items()
+            if v is not None and travellers and travellers.get(t)}
+
+
+def summarize_availability(answer: dict[str, Any], max_results: int, travellers: dict[str, int] | None = None) -> dict[str, Any]:
     data = answer.get("data") or {}
     flights = {s["id"]: _flight(s) for b in data.get("bounds") or [] for sector in b.get("sectors") or []
                for s in sector.get("sectorSolutions") or [] if isinstance(s, dict) and "id" in s}
@@ -78,9 +84,11 @@ def summarize_availability(answer: dict[str, Any], max_results: int) -> dict[str
     options = []
     for flight_ids, fares in groups.items():
         cheapest_fares, cheapest = min(fares.items(), key=lambda kv: kv[1]["totalTripPrice"]["cash"])
+        by_type = {PAX.get(t, t): v.get("cash") for t, v in (cheapest.get("totalPricePerPaxType") or {}).items()}
         option = {
             "total_price": cheapest["totalTripPrice"]["cash"],
-            "per_passenger_type": {PAX.get(t, t): v.get("cash") for t, v in (cheapest.get("totalPricePerPaxType") or {}).items()},
+            "per_passenger_type": by_type,
+            "per_person_by_type": _per_person(by_type, travellers),
             "legs": [{**flights[fid], "fare": families.get(ff, {}).get("fare")} for fid, ff in zip(flight_ids, cheapest_fares)],
             # the same fare on every leg (e.g. all "BSC"): what each fare costs on these flights
             "price_by_fare": {families[ffs[0]]["fare"]: it["totalTripPrice"]["cash"] for ffs, it in sorted(fares.items(), key=lambda kv: kv[1]["totalTripPrice"]["cash"])
@@ -99,6 +107,8 @@ def summarize_availability(answer: dict[str, Any], max_results: int) -> dict[str
         "total_options": len(options),
         "fare_conditions": conditions,
         "fare_names_note": "SATA's data gives fare codes only (e.g. SPL, BSC); use the code with its fare_conditions, not a made-up fare name.",
+        "per_passenger_type_note": ("per_passenger_type is the TOTAL for all travellers of that type together (the adults' figure covers every adult), "
+                                    "not one person's price. For ONE person use per_person_by_type; never present a per_passenger_type figure as per person."),
     }
     if len(options) > len(chosen):
         cheapest_other = min((o["total_price"] for o in options if o not in chosen), default=None)
