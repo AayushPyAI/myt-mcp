@@ -102,6 +102,11 @@ CHECKS = [
 ]
 
 
+# Sources the agency uses only in the operator's logged-in Chrome (decision 16 Oct 2026). The server tool gives public
+# prices and Ofran blocks Indian IPs (403), so a failure here is expected and is reported as SKIP, not FAIL.
+BROWSER_ONLY = {"Ofran": "browser only: search Ofran in the operator's logged-in Chrome (Claude in Chrome), not with this tool"}
+
+
 def _kiwitaxi(d: dict[str, Any]) -> str:
     """The matched airport must be Florence's, and every offer must have a EUR price."""
     place = d["matched_from"]["name"]
@@ -113,7 +118,7 @@ def _kiwitaxi(d: dict[str, Any]) -> str:
 
 async def main() -> int:
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-    failures = 0
+    failures = skipped = 0
     async with Client(create_server(Settings.from_env())) as c:
         for name, tool, args, show in CHECKS:
             started = time.time()
@@ -124,8 +129,12 @@ async def main() -> int:
                 data = _payload(r)
                 line = f"PASS  {show(data)}  (checked {data.get('checked_at', '?')})"
             except Exception as e:  # report every source, whatever fails
-                failures += 1
-                line = f"FAIL  {str(e)[:220]}"
+                if name in BROWSER_ONLY:
+                    skipped += 1
+                    line = f"SKIP  {BROWSER_ONLY[name]} ({str(e)[:90]})"
+                else:
+                    failures += 1
+                    line = f"FAIL  {str(e)[:220]}"
             print(f"{name:<11} {time.time() - started:5.1f}s  {line}", flush=True)
         started = time.time()
         try:
@@ -141,8 +150,8 @@ async def main() -> int:
             failures += 1
             line = f"FAIL  {str(e)[:220]}"
         print(f"{'GetYourGuide':<11} {time.time() - started:5.1f}s  {line}")
-    total = len(CHECKS) + 2
-    print(f"\n{total - failures} of {total} sources OK")
+    total = len(CHECKS) + 2 - skipped
+    print(f"\n{total - failures} of {total} sources OK" + (f" ({skipped} browser-only source skipped)" if skipped else ""))
     return 1 if failures else 0
 
 
