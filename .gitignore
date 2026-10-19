@@ -19,7 +19,6 @@ __pycache__/
 .coverage
 htmlcov/
 .idea/
-.vscode/
 
 # recordings, transcripts and exports that must never be pushed
 *.mp3
@@ -29,3 +28,7 @@ htmlcov/
 *.mov
 *transcript*
 *.zip
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
