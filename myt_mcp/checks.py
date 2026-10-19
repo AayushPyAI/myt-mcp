@@ -61,7 +61,7 @@ REMINDER = ("Before you answer: copy every name, date and price exactly as this 
             "end_your_answer_with. Before you compare options or sources call quote_guide('comparison'); before a hotel or car search call quote_guide('filters') and apply the operator's filters or the trip's defaults; in a long chat call quote_guide('correct_data') again before writing to MYT.")
 
 _SOURCES = {
-    "find_trip": "MYT (ManageYourTrip)", "get_trip": "MYT (ManageYourTrip)", "get_quotation": "MYT (ManageYourTrip)",
+    "find_trip": "MYT (ManageYourTrip)", "get_trip": "MYT (ManageYourTrip)", "get_quotation": "MYT (ManageYourTrip)", "update_minisite": "Selected Places mini-site",
     "get_trip_participants": "MYT (ManageYourTrip)", "get_supplier_reservations": "MYT (ManageYourTrip)", "reconcile_trip": "MYT (ManageYourTrip)", "check_reservation_paperwork": "MYT (ManageYourTrip)", "train_prices": "Trenitalia (lefrecce.it)",
     "sata_flight_prices": "SATA (azoresairlines.pt)", "lounge_prices": "Aspire Lounges", "viator_search_activities": "Viator",
     "viator_activity_details": "Viator", "getyourguide_activity_details": "GetYourGuide", "getyourguide_find_activities": "GetYourGuide",

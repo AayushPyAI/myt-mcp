@@ -40,6 +40,8 @@ class Settings:
     tap_enabled: bool = True
     mozio_enabled: bool = True
     sata_enabled: bool = True
+    minisite_webhook_url: str = "https://minisite.selectedplaces.co.il/site-link-webhook.php"
+    minisite_auth_code: str = ""
     scrape_min_interval_seconds: float = 5.0
     scrape_max_per_hour: int = 60
     scrape_cache_minutes: float = 10.0
@@ -79,6 +81,8 @@ class Settings:
             tap_enabled=env.get("TAP_ENABLED", "true").lower() not in ("0", "false", "no"),
             mozio_enabled=env.get("MOZIO_ENABLED", "true").lower() not in ("0", "false", "no"),
             sata_enabled=env.get("SATA_ENABLED", "true").lower() not in ("0", "false", "no"),
+            minisite_webhook_url=(env.get("MINISITE_WEBHOOK_URL") or "https://minisite.selectedplaces.co.il/site-link-webhook.php").strip(),
+            minisite_auth_code=env.get("MINISITE_AUTH_CODE", "").strip(),
             scrape_min_interval_seconds=min_interval,
             scrape_max_per_hour=max_per_hour,
             scrape_cache_minutes=cache_minutes,

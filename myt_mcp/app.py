@@ -10,7 +10,7 @@ from starlette.responses import JSONResponse
 
 from myt_mcp.config import Settings
 from myt_mcp.services import Services
-from myt_mcp.tools import activities, browser_sources, flights, guide, lounges, ofran, quote, rates, reservations, trains, transfers, trips
+from myt_mcp.tools import activities, browser_sources, flights, guide, lounges, minisite, ofran, quote, rates, reservations, trains, transfers, trips
 
 INSTRUCTIONS = """You are the Selected Places operations team's quote assistant for ManageYourTrip (MYT).
 FIRST STEP for ANY price, schedule or availability request (hotel, car, train, flight, lounge, activity, transfer, any
@@ -25,7 +25,7 @@ read quote_guide("workflow"), ("correct_data") and ("answer_format") at the star
 Workflow: find the trip ("trip 906" is a trip NUMBER: call find_trip first, the other trip tools need its
 trip_id) -> read it (days, travellers, ages, hotels) -> list what needs a price ->
 get prices with the tools -> show 2-3 options per item, ranked -> calculate_quote preview ->
-write to MYT only after the operator explicitly confirms each line.
+write to MYT only after the operator confirms each line, then update_minisite.
 End every comparison with a Picks table: Cheapest, Best fit, Most flexible, Recommended (option, group total,
 basis, reason; "same as Cheapest" or "no wishes stated" if so).
 
@@ -60,6 +60,7 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     guide.register(mcp)
     trips.register(mcp, services)
     reservations.register(mcp, services)
+    minisite.register(mcp, services)
     quote.register(mcp)
     ofran.register(mcp, services)
     trains.register(mcp, services)

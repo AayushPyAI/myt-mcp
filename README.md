@@ -7,6 +7,7 @@ MCP server that lets Claude read ManageYourTrip (MYT) trips and quotes, preview 
 |---|---|
 | `find_trip`, `get_trip`, `get_trip_participants` | Read trips, itinerary and travellers (MYT public API) |
 | `get_quotation` | Read the selected quote: lines, markups, MYT's per-person and group totals |
+| `update_minisite` | After a quote exists: POST the mini-site webhook (preview, then confirm) and return the customer `trip_url` |
 | `quote_guide` | The operators' playbook, one topic at a time (workflow, correct data, flights, activities, hotels…) |
 | `calculate_quote` | Preview a quote with MYT's pricing rule (13% line profit × 5% conversion + fixed markups) |
 | `ofran_find_location`, `ofran_car_prices` | Ofran pick-up points and live car offers, cheapest first |
