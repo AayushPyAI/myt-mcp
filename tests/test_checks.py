@@ -287,3 +287,12 @@ def test_transfer_rules_and_source_data_are_pointed_to_from_the_core_instruction
     for rule in ("Rules for every transfer answer", "SAME time on RateHawk, Mozio and Kiwitaxi", "pickup_time_was_default",
                  "not \"N adults\"", "same capacity", "showing the cheapest N of M read", "known pattern"):
         assert rule in text, rule
+
+
+def test_links_for_every_source_open_the_quotation_and_same_filter_everywhere():
+    from myt_mcp.guide import sections
+
+    text = sections()["answer_format"]
+    for rule in ("Last line = a URL for every source", "A site name with a time but no URL does not count",
+                 "open the quotation yourself", "never a reason", "same on every source", "Show connecting flights only when the operator asks"):
+        assert rule in text, rule
