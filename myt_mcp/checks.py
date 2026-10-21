@@ -60,6 +60,15 @@ REMINDER = ("Before you answer: copy every name, date and price exactly as this 
             "price AND the list price when both exist; label Cheapest, Recommended and Most flexible with a one-line reason; end with "
             "end_your_answer_with. Before you compare options or sources call quote_guide('comparison'); before a hotel or car search call quote_guide('filters') and apply the operator's filters or the trip's defaults; in a long chat call quote_guide('correct_data') again before writing to MYT.")
 
+NOT_PROVIDED_RULE = ("Any fee, condition, inclusion, baggage weight, cancellation term, meal, seat, address, phone, rating or other detail that is NOT a "
+                     "field of this answer is written 'not shown'. Never fill it from memory, from another answer or from what a site 'usually' does; "
+                     "every number you quote must be a field of this answer.")
+# details a tool is known NOT to return (checked against its real answer): said to Claude at the point of use
+NOT_PROVIDED = {
+    "tap_flight_prices": ["change fee or its amount", "refund penalty amount", "checked-bag weight (only whether a bag is included)", "seat selection", "meals"],
+    "tap_fare_calendar": ["change fee or its amount", "refund penalty amount", "checked-bag weight", "seat selection", "meals"],
+}
+
 _SOURCES = {
     "find_trip": "MYT (ManageYourTrip)", "get_trip": "MYT (ManageYourTrip)", "get_quotation": "MYT (ManageYourTrip)", "update_minisite": "Selected Places mini-site",
     "get_trip_participants": "MYT (ManageYourTrip)", "get_supplier_reservations": "MYT (ManageYourTrip)", "reconcile_trip": "MYT (ManageYourTrip)", "check_reservation_paperwork": "MYT (ManageYourTrip)", "train_prices": "Trenitalia (lefrecce.it)",
@@ -95,6 +104,9 @@ def with_checked_at(fn: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
             result["data_age_minutes"] = int((time.time() - oldest) // 60)
             result["end_your_answer_with"] = _cite(fn.__name__, result)
             result["remember"] = REMINDER
+            result["not_provided_rule"] = NOT_PROVIDED_RULE
+            if fn.__name__ in NOT_PROVIDED:
+                result["not_provided"] = NOT_PROVIDED[fn.__name__]
         return result
 
     return wrapper

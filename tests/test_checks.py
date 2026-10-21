@@ -339,3 +339,45 @@ def test_every_leg_every_source_no_out_of_scope_and_exact_links():
                  "marked \"connecting\""):
         assert rule in flights, rule
     assert "Links are exact pages, not home pages" in fmt and "One link per source AND per leg" in fmt
+
+
+GOOD = """Sources checked: TAP, SATA, Skyscanner | Not checked: El Al (route not served) 
+Filters used: direct (trip default), 3 adults (operator). TAP read 7 of 7. In MYT supplier? TAP AIR PORTUGAL: yes.
+Cheapest ... Best fit ... Most flexible ... Recommended ...
+Sources: https://booking.flytap.com/booking/flights/deeplink?origin=FLR&destination=LIS | https://www.skyscanner.net/transport/flights/flr/lis/270306/"""
+
+
+def test_check_answer_accepts_a_complete_draft_and_lists_what_is_missing():
+    from myt_mcp.tools.answer_check import check_answer_text
+
+    assert check_answer_text(GOOD, "flights")["ok"] is True
+    bad = ("Cheapest TAP 462.90. Recommended CLANEW. Not checked: RateHawk, El Al (skipped for time). All adults. TAP CLANEW change fee €100.\n"
+           "Sources: TAP (flytap.com), https://www.israir.co.il")
+    r = check_answer_text(bad, "flights")
+    text = " ".join(r["missing"] + r["warnings"]).lower()
+    assert r["ok"] is False
+    for expected in ("sources checked", "exact links", "picks rows", "filters used", "for time", "all adults", "change fee"):
+        assert expected in text, expected
+
+
+async def test_check_answer_tool_and_not_provided_fields_reach_claude():
+    from mcp import Client
+
+    from myt_mcp.app import INSTRUCTIONS, create_server
+    from myt_mcp.checks import NOT_PROVIDED, NOT_PROVIDED_RULE
+    from myt_mcp.config import Settings
+
+    async with Client(create_server(Settings())) as c:
+        tools = {t.name: t for t in (await c.list_tools()).tools}
+        assert "check_answer" in tools and tools["check_answer"].annotations.read_only_hint
+        r = await c.call_tool("check_answer", {"draft": "Cheapest only", "kind": "hotels"})
+        assert not r.is_error and r.structured_content["ok"] is False and r.structured_content["missing"]
+    assert "check_answer" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+    assert "change fee or its amount" in NOT_PROVIDED["tap_flight_prices"] and "never fill it from memory" in NOT_PROVIDED_RULE.lower()
+
+
+def test_answer_format_tells_claude_to_call_check_answer_and_to_respect_not_provided():
+    from myt_mcp.guide import sections
+
+    text = sections()["answer_format"]
+    assert "call `check_answer` with your draft" in text and "`not_provided`" in text and "TAP never returns a change fee" in text

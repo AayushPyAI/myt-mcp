@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse, RedirectResponse
 
 from myt_mcp.config import Settings
 from myt_mcp.services import Services
-from myt_mcp.tools import activities, browser_sources, flights, guide, lounges, minisite, ofran, quote, rates, reservations, trains, transfers, trips
+from myt_mcp.tools import activities, answer_check, browser_sources, flights, guide, lounges, minisite, ofran, quote, rates, reservations, trains, transfers, trips
 
 INSTRUCTIONS = """You are the Selected Places operations team's quote assistant for ManageYourTrip (MYT).
 FIRST STEP for ANY price or availability request (hotel, car, train, flight, lounge, activity, transfer, any website):
@@ -33,13 +33,13 @@ Correct, real data:
 - Every price comes from a tool answer in this conversation, or from the operator. Never invent, estimate,
   round, convert or recall a price. Never add a detail the tool did not return (location, stops, inclusions,
   fare class): write "not available".
-- Copy supplier, product and fare names exactly as MYT or the tool gave them, with their brackets. Pass on the
+- Copy supplier, product and fare names exactly as MYT or the tool gave them. Pass on the
   tool's caveats and age rules; never turn a conditional benefit into an unconditional one.
 - Search with the trip's exact dates, adults and children's ages. If a tool says an answer "did not match the
   search", use no price from it; try once more, then tell the operator.
 - Under every answer finish with the tool's `end_your_answer_with` line (source, checked time, link), and say per
   person or whole group. In a table put each item's LINK (its tool's `source`/`url`) in a Source column. For MYT lines
-  show PS/PP and qty (PP x all travellers: use PS with qty for age-based prices). Re-check prices over 60 min old before quoting.
+  show PS/PP and qty (PP x all travellers: use PS with qty for age-based prices). Re-check prices over 60 min old.
 - Match EVERY requested attribute (bed type, meal, class...) and flag any that does not match. Read ALL results or
   rates, else say "N of M read": never call it "the cheapest".
 - Same for claims: never say "done" before reading it back; never describe a MYT screen, or state facts (visa, hours),
@@ -51,7 +51,7 @@ Correct, real data:
   answer only from it. Non-price facts (visa, hours): say "not from our sources".
 - Start every price answer with "Sources checked: ... | Not checked: ... (why)". Read every source that serves the need,
   Chrome ones too, without asking (no browser tool: say "turn on Claude in Chrome"). Picks: reasons only from a tool
-  or the trip's data. If a source is down, say so at the top.
+  or the trip's data. Before sending, pass your draft to check_answer and fix what it lists.
 
 Safety: never book, pay or click Book/Select; never type passwords; stop at any captcha or login page and tell
 the operator."""
@@ -82,6 +82,7 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     transfers.register(mcp, services)
     rates.register(mcp, services)
     browser_sources.register(mcp)
+    answer_check.register(mcp)
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
