@@ -390,3 +390,13 @@ def test_every_price_tool_with_a_known_gap_lists_it():
                  "kiwitaxi_transfer_prices", "mozio_transfer_prices"):
         assert NOT_PROVIDED[tool], tool
     assert "waiting time" in NOT_PROVIDED["kiwitaxi_transfer_prices"] and "platform" in NOT_PROVIDED["train_prices"]
+
+
+def test_check_answer_catches_not_asked_on_request_and_asks_for_a_recheck():
+    from myt_mcp.tools.answer_check import check_answer_text
+
+    draft = GOOD.replace("Not checked: El Al (route not served)", "Not checked: El Al (you didn't ask for the full sweep, available on request)")
+    r = check_answer_text(draft, "flights")
+    assert r["ok"] is False and any("didn't ask" in m or "on request" in m for m in r["missing"])
+    assert "call check_answer again" in r["next"]
+    assert check_answer_text(GOOD, "flights")["ok"] is True

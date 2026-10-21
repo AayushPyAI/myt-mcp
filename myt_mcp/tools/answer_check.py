@@ -28,6 +28,12 @@ BANNED = {
     "this pass": "'not this pass' is not a reason for 'Not checked'",
     "to keep it short": "'to keep it short' is not a reason for 'Not checked'",
     "say the word": "never ask permission to read a listed source: read it",
+    "not asked": "'not asked' / 'you didn't ask' is not a reason for 'Not checked': read the source",
+    "didn't ask": "'you didn't ask' is not a reason for 'Not checked': read the source",
+    "did not ask": "'you did not ask' is not a reason for 'Not checked': read the source",
+    "on request": "never offer to read a listed source 'on request': read it now",
+    "happy to run": "never offer to read a listed source later: read it now",
+    "would need the quotation": "'In MYT supplier?' is checked by you: open the quotation (or test trip 906) and type the supplier name in Search supplier",
     "fully confirms": "do not claim a missing result 'confirms' something; write what you saw and 'my judgement'",
 }
 
@@ -79,7 +85,8 @@ def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
         "missing": missing,
         "warnings": warnings,
         "next": ("Nothing is missing. Fix the warnings if they apply, then send." if ok
-                 else "Fix every item under `missing` (read the source or write the exact reason), then send the answer. Do not send it as it is."),
+                 else "Fix EVERY item under `missing` (read the source, or write an allowed reason), then call check_answer again with the fixed draft. "
+                      "Send the answer only when `ok` is true."),
     }
 
 
