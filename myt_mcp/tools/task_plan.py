@@ -111,10 +111,7 @@ PLANS: dict[str, dict[str, Any]] = {
     },
 }
 
-ISRAEL = ("ben gurion", "tel aviv", "tlv")
-NO_ISRAIR = ("lisbon", "lis ", "humberto", "porto", "opo", "madeira", "funchal", "fnc", "azores", "ponta delgada", "pdl", "terceira", "faro")
-PORTUGAL = NO_ISRAIR + ("portugal", "pico", "faial", "horta", "santa maria", "flores")
-ITALY = ("rome", "fco", "fiumicino", "florence", "flr", "firenze", "milan", "venice", "naples", "bologna", "italy")
+ISRAEL = ("ben gurion", "tel aviv", "tlv")   # one airport: the only place name this planner matches; every other route is left to the tools' own answers
 
 
 def _has(text: str, words: tuple[str, ...]) -> bool:
@@ -122,30 +119,21 @@ def _has(text: str, words: tuple[str, ...]) -> bool:
     return any(w in low for w in words)
 
 
-def leg_sources(leg: dict[str, Any]) -> dict[str, Any]:
-    """Which sources can serve one flight leg of the trip (by the airport names MYT gives)."""
+def leg_sources(leg: dict[str, Any], israir_cities: list[str] | None = None) -> dict[str, Any]:
+    """The sources to read for one flight leg of the trip. No list of countries or airports is kept here: every tool answers for itself
+    (an honest "route not sold" is the reason for 'Not checked'), and Israir's live list of cities is passed in."""
     a, b = str(leg.get("from") or ""), str(leg.get("to") or "")
     both = f"{a} / {b}"
-    israel, portugal, italy = _has(both, ISRAEL), _has(both, PORTUGAL), _has(both, ITALY)
-    use = ["RateHawk Air tickets (Chrome)", "Skyscanner (Chrome, comparison)", "tap_flight_prices"]
-    skip: dict[str, str] = {}
-    if portugal:
-        use.append("sata_flight_prices")
-    else:
-        skip["sata_flight_prices"] = "no Portuguese airport on this leg (try it only if unsure)"
-    if israel and not _has(both, NO_ISRAIR):
-        use += ["israir_flight_prices", "El Al (Chrome)"]
-    elif israel:
-        use.append("El Al (Chrome)")
-        skip["israir_flight_prices"] = "Israir does not sell Lisbon, Porto, Madeira or the Azores"
-    else:
-        skip["israir_flight_prices"] = "no Tel Aviv airport on this leg"
-        skip["El Al"] = "no Tel Aviv airport on this leg"
-    if italy:
-        use.append("ITA Airways (via RateHawk Air or Skyscanner)")
-    batch = "batch" in str(leg.get("note") or "").lower()
-    out = {"leg": f"{a} -> {b}", "flight_in_mytrip": leg.get("flight"), "departure": leg.get("departure"), "read": use, "do_not_use": skip}
-    if batch:
+    read = ["RateHawk Air tickets (Chrome)", "Skyscanner (Chrome, comparison)",
+            "tap_flight_prices (if it does not sell the route its answer says so: that is the reason)",
+            "sata_flight_prices (same)"]
+    if _has(both, ISRAEL):
+        read += ["El Al (Chrome)", "israir_flight_prices ONLY if the other end's city code is in `israir_sells`; if it is not, write 'Israir does not sell it'"]
+    out: dict[str, Any] = {"leg": f"{a} -> {b}", "flight_in_mytrip": leg.get("flight"), "departure": leg.get("departure"), "read": read,
+                           "also": "If either end is in Italy also read ITA Airways (through RateHawk Air or Skyscanner); read every source that can serve this route, not only these."}
+    if israir_cities is not None and _has(both, ISRAEL):
+        out["israir_sells"] = israir_cities
+    if "batch" in str(leg.get("note") or "").lower():
         out["batch_seat"] = "agency block seat: public fares are comparison only; the price comes from the operator"
     return out
 
@@ -157,7 +145,7 @@ def trip_block(trip: dict[str, Any]) -> dict[str, Any]:
             "first_check": "get_supplier_reservations: if there are none, say so at the top (Planning and reservations are the operator's step before the quote)"}
 
 
-def build_plan(kind: str, trip: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_plan(kind: str, trip: dict[str, Any] | None = None, israir_cities: list[str] | None = None) -> dict[str, Any]:
     plan = PLANS[kind]
     out: dict[str, Any] = {
         "kind": kind, "follow_this": "This plan is part of the rules: do every step. Details of each rule: quote_guide(...) topics named below.",
@@ -170,7 +158,7 @@ def build_plan(kind: str, trip: dict[str, Any] | None = None) -> dict[str, Any]:
     if trip:
         out["trip"] = trip_block(trip)
         if kind == "flights":
-            out["legs_of_the_trip"] = [leg_sources(f) for f in trip.get("flights", [])]
+            out["legs_of_the_trip"] = [leg_sources(f, israir_cities) for f in trip.get("flights", [])]
             out["legs_note"] = "Price every leg; for a leg with no direct flight on any source, show connecting options marked 'connecting'."
     else:
         out["trip"] = "No trip given: ask the operator for the dates, travellers and places, or pass trip_id (from find_trip) to fill them in."
@@ -193,4 +181,10 @@ def register(mcp: MCPServer, services: Services) -> None:
             if (v3.get("trip") or {}).get("trip_id") != trip_id:
                 raise ToolError(f"MYT returned another trip than {trip_id}; nothing was planned.")
             trip = trip_summary(v3)
-        return build_plan(kind, trip)
+        cities: list[str] | None = None
+        if kind == "flights" and trip:
+            try:
+                cities = sorted((await services.israir().cities()).keys())
+            except Exception:    # Israir down or switched off: the plan still works, the tool will say what it sells
+                cities = None
+        return build_plan(kind, trip, cities)

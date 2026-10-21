@@ -60,12 +60,12 @@ def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
             missing.append('"Filters used: ..." with the source of each filter (operator or trip)')
         elif not any(w in line.lower() for w in ("operator", "trip", "your answer", "you said", "default")):
             warnings.append("Filters used: say where each filter comes from (operator, the trip, or the operator's answer to your question)")
-    if not re.search(r"\b\d+\s+of\s+\d+\b", low) and "read" not in low:
-        warnings.append('say how many results you read: "N of M"')
+    if kind in COMPARING and not re.search(r"\b\d+\s+of\s+\d+\b", low):
+        missing.append('how many results you read per source: "N of M"')
     if kind in NEEDS_SUPPLIER_CHECK and "myt supplier" not in low:
-        warnings.append('"In MYT supplier?" for the Cheapest, Best fit and Recommended supplier (yes / no / not checked: why)')
+        missing.append('"In MYT supplier?" for the Cheapest, Best fit and Recommended supplier (yes / no / not checked: why)')
     if kind in {"cars", "transfers"} and not re.search(r"pick-?\s?up", low):
-        warnings.append("say the pick-up time used (the same on every source)")
+        missing.append("the pick-up time used (the same on every source)")
 
     for phrase, why in BANNED.items():
         if phrase in low:

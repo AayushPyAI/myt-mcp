@@ -356,7 +356,7 @@ def test_check_answer_accepts_a_complete_draft_and_lists_what_is_missing():
     r = check_answer_text(bad, "flights")
     text = " ".join(r["missing"] + r["warnings"]).lower()
     assert r["ok"] is False
-    for expected in ("sources checked", "exact links", "picks rows", "filters used", "for time", "all adults", "change fee"):
+    for expected in ("sources checked", "exact links", "picks rows", "filters used", "for time", "all adults", "change fee", "n of m", "myt supplier"):
         assert expected in text, expected
 
 
@@ -415,10 +415,14 @@ def test_task_plan_gives_every_kind_a_plan_and_picks_sources_per_leg():
             "flights": [{"flight": "6H581", "from": "Ben Gurion Airport", "to": "Rome FCO Fiumicino Airport", "note": "BATCH 02"},
                         {"from": "Lisbon International Airport", "to": "Aeroporto de Ponta Delgada Joao Paulo II"},
                         {"from": "Aeroporto de Ponta Delgada Joao Paulo II", "to": "Ben Gurion Airport", "flight": "6H582", "note": "BATCH 02"}]}
-    legs = build_plan("flights", trip)["legs_of_the_trip"]
-    assert "israir_flight_prices" in legs[0]["read"] and "El Al (Chrome)" in legs[0]["read"] and "batch_seat" in legs[0]
-    assert "israir_flight_prices" in legs[1]["do_not_use"] and "sata_flight_prices" in legs[1]["read"]       # Lisbon -> Ponta Delgada
-    assert "israir_flight_prices" in legs[2]["do_not_use"] and "El Al (Chrome)" in legs[2]["read"]           # Ponta Delgada -> Tel Aviv
+    legs = build_plan("flights", trip, ["ATH", "ROM", "TLV"])["legs_of_the_trip"]
+    assert "El Al (Chrome)" in " ".join(legs[0]["read"]) and "batch_seat" in legs[0] and legs[0]["israir_sells"] == ["ATH", "ROM", "TLV"]
+    assert "israir_sells" not in legs[1] and not any("El Al" in x for x in legs[1]["read"])          # Lisbon -> Ponta Delgada: no Israel
+    assert any("El Al" in x for x in legs[2]["read"]) and "batch_seat" in legs[2]                       # Ponta Delgada -> Tel Aviv
+    for leg in legs:                                                                                  # every leg: the two Chrome sources and both Portugal tools
+        assert {"RateHawk Air tickets (Chrome)", "Skyscanner (Chrome, comparison)"} <= set(leg["read"])
+    athens = build_plan("flights", {"flights": [{"from": "Ben Gurion Airport", "to": "Athens International Airport"}]}, ["ATH", "TLV"])["legs_of_the_trip"][0]
+    assert "israir_sells" in athens and "no list of countries" not in athens["also"]                    # a route nobody coded still gets the full plan
     assert build_plan("flights", trip)["trip"]["ages_known"] is False
 
 
@@ -444,3 +448,14 @@ async def test_task_plan_tool_is_read_only_and_refuses_another_trip():
         assert not ok.is_error and "NEVER a review-score filter" in ok.structured_content["filters"]
         bad = await c.call_tool("task_plan", {"kind": "flights", "trip_id": 5})
         assert bad.is_error and "another trip" in bad.content[0].text
+
+
+def test_check_answer_requires_pickup_time_for_cars_and_transfers_and_n_of_m_for_all():
+    from myt_mcp.tools.answer_check import check_answer_text
+
+    car = ("Sources checked: Ofran, RateHawk | Not checked: none\nFilters used: automatic (operator).\nCheapest Best fit Most flexible Recommended\n"
+           "Sources: https://ofran.co.il/reservation/results?x=1")
+    text = " ".join(check_answer_text(car, "cars")["missing"]).lower()
+    assert "pick-up" in text and "n of m" in text and "myt supplier" in text
+    lounge = check_answer_text("Sources checked: Aspire | Not checked: none\n1 of 1 read. Cheapest Best fit Most flexible Recommended\nhttps://www.aspirelounges.com/a/b", "lounges")
+    assert lounge["ok"] is True      # lounges need no supplier check and no filters line
