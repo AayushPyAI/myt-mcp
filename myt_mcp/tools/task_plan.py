@@ -53,7 +53,7 @@ PLANS: dict[str, dict[str, Any]] = {
     "hotels": {
         "ask_once": ["stars, budget per night and area / longest distance from the centre (when the trip has no hotel yet)", "meal plan and free cancellation: required or not", "adults and children's ages"],
         "sources": [
-            {"name": "RateHawk", "how": "Claude in Chrome (citizenship Israel)", "use": "always"},
+            {"name": "RateHawk", "how": "ratehawk_hotels_recipe: open its url in the logged-in Chrome, run its script (price_asc, then rating), pass the answers unchanged to compose_answer", "use": "always"},
             {"name": "Arbitrip", "how": "Claude in Chrome", "use": "always"},
             {"name": "the hotel's own site", "how": "Claude in Chrome, only for a hotel the operator names and with her OK", "use": "optional"},
         ],

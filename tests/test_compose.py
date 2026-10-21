@@ -87,3 +87,65 @@ async def test_compose_answer_tool_is_registered_and_read_only():
         r = await c.call_tool("compose_answer", {"kind": "lounges", "filters_used": [], "sources_read": [{"name": "Aspire", "read": 1, "of": 1, "link": "https://www.aspirelounges.com/airports/tlv/"}],
                                                  "not_checked": [], "offers": [{"source": "Aspire", "name": "TLV lounge", "price_total": 160, "currency": "EUR"}]})
         assert not r.is_error and r.structured_content["ok"] is True and "Aspire (1 of 1 read)" in r.structured_content["answer"]
+
+
+SAMPLE_RH = {"ok": True, "header": "Lisbon: 1160 accommodation options available", "sort": "Price (low to high)", "start_page": 1, "pages_read": 1, "rows_read": 3,
+             "stopped": None, "price_order": "ascending", "rows": [
+    {"p": 1, "name": "White House Lisbon Hostel", "stars": 1, "distance": "3 km from the Lisbon center", "score": "9.0", "reviews": None, "room": "Bed in Dorm", "bed": None,
+     "meal": "No meals", "cancellation": "No free cancellation", "payment": "Pay by wire transfer", "price": "EUR 61", "basis": "for 2 nights for 2 guests", "path": "/hotel/portugal/lisbon/mid1/white/"},
+    {"p": 1, "name": "Hotel Alegria", "stars": 3, "distance": "700 m from the Lisbon center", "score": "9.4", "reviews": "1765 reviews", "room": "Double", "bed": "full double bed",
+     "meal": "Breakfast incl.", "cancellation": "Free cancellation", "payment": "Pay by wire transfer", "price": "EUR 513", "basis": "for 2 nights for 2 guests", "path": "/hotel/portugal/lisbon/mid2/alegria/"},
+    {"p": 1, "name": "Hotel Four", "stars": 4, "distance": "1.2 km from the Lisbon center", "score": "8.8", "reviews": "900 reviews", "room": "Twin", "bed": "twin beds",
+     "meal": "Breakfast incl.", "cancellation": "Free cancellation", "payment": "Pay by wire transfer", "price": "EUR 450", "basis": "for 2 nights for 2 guests", "path": "/hotel/portugal/lisbon/mid3/four/"}]}
+
+
+def test_ratehawk_recipe_url_and_script_are_built_from_the_search():
+    from datetime import date
+
+    from myt_mcp.recipes import ratehawk_hotels_recipe
+
+    r = ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "price_asc", True, True, 4, 2)
+    assert r["url"] == ("https://www.ratehawk.com/hotel/portugal/lisbon/?dates=03.05.2027-05.05.2027&guests=2&meal_types=breakfast&payment=freecancellation"
+                        "&stars=4&sort=price.asc&page=1")
+    assert r["expect_sort"] == "Price (low to high)" and "__MAX_PAGES__" not in r["script"] and "const MAX_PAGES = 2;" in r["script"]
+    assert "zenpagination-button-next" in r["script"] and "page counter says" in r["script"]
+    with pytest.raises(ValueError):
+        ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "price_asc", False, False, None, 99)
+
+
+def test_ratehawk_rows_become_offers_without_retyping_and_the_cheapest_is_checked_against_the_price_sorted_list():
+    import json
+
+    from myt_mcp.recipes import offers_from_ratehawk
+
+    offers, src, problems, by_price = offers_from_ratehawk([json.dumps(SAMPLE_RH)], ["https://www.ratehawk.com/hotel/portugal/lisbon/?x=1"], {"breakfast": True, "free_cancellation": True, "stars_min": 3}, "Hotels")
+    assert not problems and by_price is True and src[0].of == 1160 and src[0].read == 3
+    names = {o.name: o for o in offers}
+    assert names["White House Lisbon Hostel"].fits is False and names["Hotel Alegria"].fits is True and names["Hotel Four"].fits is True
+    assert names["Hotel Four"].price_total == 450 and names["Hotel Four"].currency == "EUR" and names["Hotel Four"].details["reviews"] == 900
+    assert names["Hotel Alegria"].flexible is True and names["White House Lisbon Hostel"].flexible is None
+    bad = dict(SAMPLE_RH, start_page=3)
+    assert any("page 1" in p for p in offers_from_ratehawk([json.dumps(bad)], [], None, "Hotels")[2])
+    assert any("script reported" in p for p in offers_from_ratehawk([json.dumps({"ok": False, "error": "x"})], [], None, "Hotels")[2])
+    assert any("not the script's JSON" in p for p in offers_from_ratehawk(["not json"], [], None, "Hotels")[2])
+
+
+async def test_compose_answer_takes_the_ratehawk_script_answer_directly():
+    import json
+
+    from mcp import Client
+
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+
+    async with Client(create_server(Settings())) as c:
+        tools = {t.name for t in (await c.list_tools()).tools}
+        assert "ratehawk_hotels_recipe" in tools
+        r = await c.call_tool("compose_answer", {
+            "kind": "hotels", "filters_used": ["breakfast (operator)", "free cancellation (operator)"], "sources_read": [], "not_checked": [], "offers": [],
+            "ratehawk_results": [json.dumps(SAMPLE_RH)], "ratehawk_urls": ["https://www.ratehawk.com/hotel/portugal/lisbon/?dates=03.05.2027-05.05.2027&guests=2&sort=price.asc&page=1"],
+            "hotel_wishes": {"breakfast": True, "free_cancellation": True}, "myt_supplier": {"Hotel Four": "not checked: test"}})
+        d = r.structured_content
+        assert not r.is_error and d["ok"] is True, d
+        assert "RateHawk (3 of 1160 read)" in d["answer"] and "Hotel Four" in d["answer"] and "| Cheapest |" in d["answer"]
+        assert "list sorted by price was NOT read" not in d["answer"]
