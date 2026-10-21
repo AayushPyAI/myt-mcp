@@ -11,15 +11,15 @@ from starlette.responses import JSONResponse, RedirectResponse
 
 from myt_mcp.config import Settings
 from myt_mcp.services import Services
-from myt_mcp.tools import activities, answer_check, browser_sources, flights, guide, lounges, minisite, ofran, quote, rates, reservations, trains, transfers, trips
+from myt_mcp.tools import activities, answer_check, browser_sources, flights, guide, lounges, minisite, ofran, quote, rates, reservations, task_plan, trains, transfers, trips
 
 INSTRUCTIONS = """You are the Selected Places operations team's quote assistant for ManageYourTrip (MYT).
 FIRST STEP for ANY price or availability request (hotel, car, train, flight, lounge, activity, transfer, any website):
 use THESE tools, never web search or other connectors: hotel_prices, transfer_prices, other_source_prices (any other
 site), the source tools below, quote_guide for the topic's rules, even if the operator names a website.
-The operator decides; you search, prepare. Playbook: quote_guide tool:
-read quote_guide("workflow"), ("correct_data"), ("answer_format"), ("source_data") at the start of a quote, the topic's section
-(flights, trains, hotels, cars...) before you price it, and ("myt_filling") before writing lines into MYT.
+The operator decides; you search, prepare. For any price request call task_plan(kind, trip_id) FIRST and follow every
+step (questions, sources, fields, answer shape). Playbook: quote_guide("workflow"), ("correct_data"),
+("answer_format"), ("source_data"), the topic; ("myt_filling") before writing lines into MYT.
 
 Workflow: find the trip ("trip 906" is a trip NUMBER: call find_trip first, the other trip tools need its
 trip_id) -> read it and its supplier reservations (the operator sets itinerary and reservations BEFORE the
@@ -83,6 +83,7 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     rates.register(mcp, services)
     browser_sources.register(mcp)
     answer_check.register(mcp)
+    task_plan.register(mcp, services)
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:

@@ -400,3 +400,47 @@ def test_check_answer_catches_not_asked_on_request_and_asks_for_a_recheck():
     assert r["ok"] is False and any("didn't ask" in m or "on request" in m for m in r["missing"])
     assert "call check_answer again" in r["next"]
     assert check_answer_text(GOOD, "flights")["ok"] is True
+
+
+def test_task_plan_gives_every_kind_a_plan_and_picks_sources_per_leg():
+    from myt_mcp.app import INSTRUCTIONS
+    from myt_mcp.tools.task_plan import PLANS, build_plan
+
+    assert "task_plan(kind, trip_id)" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+    for kind in PLANS:
+        plan = build_plan(kind)
+        assert plan["sources_to_read"] and plan["fields_to_read_for_every_option"] and plan["never"]
+        assert any("check_answer" in line for line in plan["answer_shape"]) and plan["final_step"].startswith("check_answer")
+    trip = {"number": "168", "start": "2027-03-01", "end": "2027-03-11", "paying_participants": 3, "status": "Planning Trip", "quotation": {"number": "82-2"},
+            "flights": [{"flight": "6H581", "from": "Ben Gurion Airport", "to": "Rome FCO Fiumicino Airport", "note": "BATCH 02"},
+                        {"from": "Lisbon International Airport", "to": "Aeroporto de Ponta Delgada Joao Paulo II"},
+                        {"from": "Aeroporto de Ponta Delgada Joao Paulo II", "to": "Ben Gurion Airport", "flight": "6H582", "note": "BATCH 02"}]}
+    legs = build_plan("flights", trip)["legs_of_the_trip"]
+    assert "israir_flight_prices" in legs[0]["read"] and "El Al (Chrome)" in legs[0]["read"] and "batch_seat" in legs[0]
+    assert "israir_flight_prices" in legs[1]["do_not_use"] and "sata_flight_prices" in legs[1]["read"]       # Lisbon -> Ponta Delgada
+    assert "israir_flight_prices" in legs[2]["do_not_use"] and "El Al (Chrome)" in legs[2]["read"]           # Ponta Delgada -> Tel Aviv
+    assert build_plan("flights", trip)["trip"]["ages_known"] is False
+
+
+async def test_task_plan_tool_is_read_only_and_refuses_another_trip():
+    from mcp import Client
+
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    from myt_mcp.services import Services
+
+    class WrongTripMYT:
+        async def get_trip_v3(self, trip_id):
+            return {"trip": {"trip_id": trip_id + 1}}
+
+        async def aclose(self):
+            pass
+
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings, myt=WrongTripMYT()))) as c:
+        tools = {t.name: t for t in (await c.list_tools()).tools}
+        assert "task_plan" in tools and tools["task_plan"].annotations.read_only_hint
+        ok = await c.call_tool("task_plan", {"kind": "hotels"})
+        assert not ok.is_error and "NEVER a review-score filter" in ok.structured_content["filters"]
+        bad = await c.call_tool("task_plan", {"kind": "flights", "trip_id": 5})
+        assert bad.is_error and "another trip" in bad.content[0].text
