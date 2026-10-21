@@ -305,3 +305,18 @@ def test_car_rules_pickup_time_filter_sources_fields_and_supplier_check():
     for rule in ("Rules for every car answer", "10:00 is not a default", "Filters used, each with its source", "Same filters on both sites",
                  "the rental company", "\"In MYT supplier?\"", "open the detail page of the cheapest"):
         assert rule in text, rule
+
+
+def test_ofran_page_hotel_filters_picks_names_and_overclaims_rules():
+    from myt_mcp.guide import sections
+
+    cars, hotels, fmt = sections()["cars"], sections()["hotels"], sections()["answer_format"]
+    for rule in ("The rental company is a logo image", "alt text", "public price, not the agent price", "EUR 280.95", "For rental plan details",
+                 "Down then Enter", "Access Denied"):
+        assert rule in cars, rule
+    for rule in ("\"Review 8+\" (or any score) is NOT a default", "a hotel scored 7.7 must not appear under \"8+\"", "ask once for the area",
+                 "Recommended must fit the area"):
+        assert rule in hotels, rule
+    for rule in ("Picks table always has four rows", "trip 906, read only", "No names of travellers or customers", "No claims you cannot prove",
+                 "Basis wording must match the source"):
+        assert rule in fmt, rule
