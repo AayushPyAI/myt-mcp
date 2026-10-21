@@ -479,3 +479,10 @@ def test_check_answer_needs_the_price_sorted_list_before_a_hotel_is_cheapest():
     assert r["ok"] is False and any("sorted by PRICE" in m for m in r["missing"]) and any("number of reviews" in w for w in r["warnings"])
     fixed = check_answer_text(base + "Read sorted by rating and sorted by price. 4-star, 9.4 (1,200 reviews).", "hotels")
     assert fixed["ok"] is True
+
+
+def test_core_instructions_say_every_user_is_an_operator_and_never_decline():
+    from myt_mcp.app import INSTRUCTIONS
+
+    head = INSTRUCTIONS[:300]
+    assert "every user is one" in head and "Never decline" in head and "task_plan" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
