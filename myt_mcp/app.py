@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse, RedirectResponse
 
 from myt_mcp.config import Settings
 from myt_mcp.services import Services
-from myt_mcp.tools import activities, answer_check, browser_sources, flights, guide, lounges, minisite, ofran, quote, rates, reservations, task_plan, trains, transfers, trips
+from myt_mcp.tools import activities, answer_check, browser_sources, compose_answer, flights, guide, lounges, minisite, ofran, quote, rates, reservations, task_plan, trains, transfers, trips
 
 INSTRUCTIONS = """You are the Selected Places operations team's quote assistant for ManageYourTrip (MYT).
 FIRST STEP for ANY price or availability request (hotel, car, train, flight, lounge, activity, transfer, any website):
@@ -38,7 +38,7 @@ Correct, real data:
 - Search with the trip's exact dates, adults and children's ages. If a tool says an answer "did not match the
   search", use no price from it; try once more, then tell the operator.
 - Under every answer finish with the tool's `end_your_answer_with` line (source, checked time, link), and say per
-  person or whole group. In a table put each item's LINK (its tool's `source`/`url`) in a Source column. For MYT lines
+  person or whole group. For MYT lines
   show PS/PP and qty (PP x all travellers: use PS with qty for age-based prices). Re-check prices over 60 min old.
 - Match EVERY requested attribute (bed type, meal, class...) and flag any that does not match. Read ALL results or
   rates, else say "N of M read": never call it "the cheapest".
@@ -49,9 +49,9 @@ Correct, real data:
 - V1 vs V2: compare_quotes. Reservations, vouchers, reconciliation: get_supplier_reservations, reconcile_trip, quote_guide("reservations").
 - Asked "can you do X in MYT?" (status, vouchers, uploads, margins): call connector_capabilities first,
   answer only from it. Non-price facts (visa, hours): say "not from our sources".
-- Start every price answer with "Sources checked: ... | Not checked: ... (why)". Read every source that serves the need,
-  Chrome ones too, without asking (no browser tool: say "turn on Claude in Chrome"). Picks: reasons only from a tool
-  or the trip's data. Before sending, pass your draft to check_answer and fix what it lists.
+- Read every source that serves the need, Chrome ones too, without asking (no browser tool: say "turn on Claude in
+  Chrome"). Then build the answer with compose_answer (rows, sources with links, filters, MYT supplier) and show its
+  text unchanged; it writes the lines, picks and "not shown". If it returns problems, fix them and call it again.
 
 Safety: never book, pay or click Book/Select; never type passwords; stop at any captcha or login page and tell
 the operator."""
@@ -83,6 +83,7 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     rates.register(mcp, services)
     browser_sources.register(mcp)
     answer_check.register(mcp)
+    compose_answer.register(mcp)
     task_plan.register(mcp, services)
 
     @mcp.custom_route("/health", methods=["GET"])

@@ -242,7 +242,7 @@ def test_every_price_answer_starts_with_sources_checked():
 def test_sources_checked_line_is_in_the_core_instructions_every_chat_gets():
     from myt_mcp.app import INSTRUCTIONS
 
-    assert "Sources checked: ... | Not checked: ... (why)" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+    assert "compose_answer" in INSTRUCTIONS and "Read every source" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700    # the answer lines are written by compose_answer
 
 
 def test_read_every_source_and_reasons_come_from_a_source_in_every_category():
@@ -252,7 +252,7 @@ def test_read_every_source_and_reasons_come_from_a_source_in_every_category():
     text = sections()["answer_format"]
     assert "Read every source, ask nothing first" in text and "never answer \"say the word and I will pull it\"" in text
     assert "Reasons only from a source" in text and "my judgement, not from a source" in text
-    assert "without asking" in INSTRUCTIONS and "reasons only from a tool" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+    assert "without asking" in INSTRUCTIONS and "compose_answer" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
 
 
 def test_filters_are_always_applied_but_only_with_a_source_and_the_same_on_every_site():
@@ -372,7 +372,7 @@ async def test_check_answer_tool_and_not_provided_fields_reach_claude():
         assert "check_answer" in tools and tools["check_answer"].annotations.read_only_hint
         r = await c.call_tool("check_answer", {"draft": "Cheapest only", "kind": "hotels"})
         assert not r.is_error and r.structured_content["ok"] is False and r.structured_content["missing"]
-    assert "check_answer" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+    assert "compose_answer" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
     assert "change fee or its amount" in NOT_PROVIDED["tap_flight_prices"] and "never fill it from memory" in NOT_PROVIDED_RULE.lower()
 
 
