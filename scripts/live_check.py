@@ -71,8 +71,12 @@ async def _gyg(c: Client) -> str:
     return f"{d['title'][:40]}: " + (f"€{best} for 2 adults, {meeting}" if best else "no options that day")
 
 
+TEST_TRIP_ID = 276310   # trip 906 ("test"), read only here; used when ALLOWED_TRIP_IDS is empty (any trip allowed)
+
+
 def _trip_ids() -> list[int]:
-    return [int(x) for x in os.environ.get("ALLOWED_TRIP_IDS", "").split(",") if x.strip()]
+    ids = [int(x) for x in os.environ.get("ALLOWED_TRIP_IDS", "").split(",") if x.strip()]
+    return ids or [TEST_TRIP_ID]
 
 
 CHECKS = [
