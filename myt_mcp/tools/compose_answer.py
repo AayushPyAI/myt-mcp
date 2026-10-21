@@ -42,9 +42,10 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool(name="ratehawk_hotels_recipe", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
     async def ratehawk_hotels_recipe_tool(country: str, city: str, check_in: date, check_out: date, adults: int = 2, sort: Literal["price_asc", "price_desc", "rating"] = "price_asc",
-                                          breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, max_pages: int = 3) -> dict[str, Any]:
+                                          breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, max_pages: int = 3,
+                                          children_ages: list[int] | None = None) -> dict[str, Any]:
         """FOR HOTELS ON RATEHAWK: returns the exact results URL and a tested read-only SCRIPT for the operator's logged-in Chrome. Open the url with Claude in
         Chrome, run the script with the javascript tool (it reads every hotel card on `max_pages` pages, 20 a page, and checks the sort, the page and
         the count), then give its answer text unchanged to compose_answer (`ratehawk_results`, `ratehawk_urls`). Run it once with sort='price_asc' and
-        once with sort='rating'. Never read the list by eye. `country` and `city` are the words in RateHawk's address (portugal, lisbon). Adults only."""
-        return ratehawk_hotels_recipe(country, city, check_in, check_out, adults, sort, breakfast, free_cancellation, stars, max_pages)
+        once with sort='rating'. Never read the list by eye. `country` and `city` are the words in RateHawk's address (portugal, lisbon). Give `children_ages` for children."""
+        return ratehawk_hotels_recipe(country, city, check_in, check_out, adults, sort, breakfast, free_cancellation, stars, max_pages, children_ages)

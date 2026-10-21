@@ -59,6 +59,7 @@ await (async () => {
   const prices = rows.map((r) => parseFloat((r.price || '').replace(/[^\d.]/g, ''))).filter((x) => !isNaN(x));
   const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]);
   const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
-  return JSON.stringify({ ok: true, header, sort: label, start_page: startPage, pages_read: rows.length ? Math.max(...rows.map((r) => r.p)) : 0, rows_read: rows.length,
+  const residency = (location.search.match(/[?&]residency=([a-z-]+)/) || [])[1] || null;
+  return JSON.stringify({ ok: true, header, sort: label, residency, start_page: startPage, pages_read: rows.length ? Math.max(...rows.map((r) => r.p)) : 0, rows_read: rows.length,
     stopped, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed', rows });
 })()

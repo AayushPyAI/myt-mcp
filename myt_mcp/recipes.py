@@ -21,7 +21,7 @@ RATEHAWK_SORTS = {"price_asc": ("price.asc", "Price (low to high)"), "price_desc
 
 
 def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: date, adults: int, sort: str = "price_asc", breakfast: bool = False,
-                           free_cancellation: bool = False, stars: int | None = None, max_pages: int = 3) -> dict[str, Any]:
+                           free_cancellation: bool = False, stars: int | None = None, max_pages: int = 3, children_ages: list[int] | None = None) -> dict[str, Any]:
     if sort not in RATEHAWK_SORTS:
         raise ValueError(f"sort must be one of {sorted(RATEHAWK_SORTS)}")
     if not 1 <= max_pages <= 10:
@@ -29,7 +29,12 @@ def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: d
     if check_out <= check_in:
         raise ValueError("check_out must be after check_in")
     slug = lambda t: re.sub(r"[^a-z0-9]+", "-", t.strip().lower()).strip("-")        # noqa: E731
-    params: list[tuple[str, str]] = [("dates", f"{check_in:%d.%m.%Y}-{check_out:%d.%m.%Y}"), ("guests", str(adults))]
+    ages = list(children_ages or [])
+    if any(not 0 <= a <= 17 for a in ages):
+        raise ValueError("children's ages must be 0-17")
+    # RateHawk writes guests as "<adults>and<age>and<age>" (seen 21 Oct 2026 with 2 adults and one child of 6: guests=2and6); one child is tested, more are the same pattern
+    guests = "and".join([str(adults)] + [str(a) for a in ages])
+    params: list[tuple[str, str]] = [("dates", f"{check_in:%d.%m.%Y}-{check_out:%d.%m.%Y}"), ("guests", guests)]
     if breakfast:
         params.append(("meal_types", "breakfast"))
     if free_cancellation:
@@ -46,7 +51,7 @@ def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: d
                   "Wait about 10 seconds until the results show, then run `script` with the javascript tool (it only reads the page and presses Forward).",
                   "If its answer has ok=false, do what `error` says (usually: open the url again) and run it once more; never read the list by eye instead.",
                   "Pass the answer text, unchanged, as `ratehawk_results` (and this `url` as `ratehawk_urls`) to compose_answer. Run the recipe a second time with sort='rating' and pass both.",
-                  "Children: this URL has adults only. For children use RateHawk's form (not tested here) and say so."],
+                  "Children: the url already has them (guests=2and6 means 2 adults and a child of 6). One child was tested; with two or more, check the page's guest count says the same."],
         "never": "Do not retype, shorten or summarise the rows: compose_answer reads the script's own text.",
     }
 
@@ -107,8 +112,7 @@ def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, 
             offer = Offer(group=group, source="RateHawk", name=r.get("name") or "not shown", price_total=price, currency=cur,
                           price_basis=(r.get("basis") or "whole stay").replace("for ", "whole stay: ", 1),
                           details={"stars": stars, "score": r.get("score"), "reviews": _int(r.get("reviews")), "distance_from_centre": r.get("distance"),
-                                   "meal": meal or None, "cancellation": canc or None, "room_bed": " / ".join(x for x in (r.get("room"), r.get("bed")) if x) or None,
-                                   "price_basis": r.get("basis")},
+                                   "meal": meal or None, "cancellation": canc or None, "room_bed": " / ".join(x for x in (r.get("room"), r.get("bed")) if x) or None},
                           flexible=canc.lower().startswith("free cancellation") or None, fits=fits, supplier=r.get("name"),
                           link=("https://www.ratehawk.com" + r["path"]) if r.get("path") else None)
             by_path.setdefault(path, offer)

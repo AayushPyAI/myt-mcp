@@ -149,3 +149,24 @@ async def test_compose_answer_takes_the_ratehawk_script_answer_directly():
         assert not r.is_error and d["ok"] is True, d
         assert "RateHawk (3 of 1160 read)" in d["answer"] and "Hotel Four" in d["answer"] and "| Cheapest |" in d["answer"]
         assert "list sorted by price was NOT read" not in d["answer"]
+
+
+def test_a_hotel_pick_with_a_low_score_or_few_reviews_gets_a_caution_from_its_own_numbers():
+    low = Offer(group="L", source="RateHawk", name="Hostel", price_total=117, currency="EUR", details={"score": "6.4", "reviews": 27}, fits=True)
+    good = Offer(group="L", source="RateHawk", name="Hotel", price_total=300, currency="EUR", details={"score": "9.1", "reviews": 900}, fits=True)
+    _, notes = picks("hotels", [low, good], True)
+    assert any("Caution on the Best fit (Hostel)" in n and "6.4" in n and "27" in n for n in notes)
+    _, notes = picks("hotels", [good], True)
+    assert not any("Caution" in n for n in notes)
+
+
+def test_ratehawk_recipe_writes_children_into_the_guests_value_and_refuses_bad_ages():
+    from datetime import date
+
+    from myt_mcp.recipes import ratehawk_hotels_recipe
+
+    r = ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "rating", children_ages=[6])
+    assert "guests=2and6" in r["url"] and "sort=rating" in r["url"] and "residency" in r["script"]
+    assert "guests=2and6and8" in ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "rating", children_ages=[6, 8])["url"]
+    with pytest.raises(ValueError):
+        ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "rating", children_ages=[30])

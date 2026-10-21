@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 # the details every kind of offer must show ("not shown" when the source did not give them)
 REQUIRED_DETAILS: dict[str, list[str]] = {
     "flights": ["stops", "fare", "checked_bag", "refund_change", "per_person"],
-    "hotels": ["stars", "score", "reviews", "distance_from_centre", "meal", "cancellation", "price_basis"],
+    "hotels": ["stars", "score", "reviews", "distance_from_centre", "meal", "cancellation", "room_bed"],
     "cars": ["company", "gearbox", "seats_bags", "excess", "fuel", "mileage", "deposit", "cancellation"],
     "transfers": ["capacity", "waiting_time", "cancellation", "provider", "meeting_point"],
     "trains": ["class_fare", "changes", "seats_left", "conditions"],
@@ -169,6 +169,19 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool) -> tuple[list[tup
 
     def label(o: Offer | None) -> str:
         return "not determined" if o is None else f"{o.source}: {o.name} - {_money(o.price_total, o.currency)} ({o.price_basis})"
+    if kind == "hotels":      # a caution made only from the row's own numbers
+        for title, o in (("Best fit", best), ("Recommended", rec)):
+            if o is None:
+                continue
+            try:
+                score = float(str(o.details.get("score")))
+            except ValueError:
+                score = None
+            reviews = o.details.get("reviews")
+            if (score is not None and score < 7.5) or (isinstance(reviews, int) and reviews < 50) or o.details.get("score") in (None, ""):
+                notes.append(f"Caution on the {title} ({o.name}): score {o.details.get('score') or 'not shown'} from {reviews if reviews is not None else 'not shown'} review(s). "
+                             "Ask the operator for a minimum score or star level if this is too low.")
+                break
     rows_out = [("Cheapest", label(cheapest), cheap_reason),
                 ("Best fit", label(best), best_reason),
                 ("Most flexible", label(flexible), "the cheapest option the source says is refundable or free to cancel" if flexible else "not determined: no refundable or free-cancellation option was read"),
