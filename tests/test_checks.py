@@ -216,3 +216,30 @@ def test_skyscanner_shows_best_and_cheapest_together_and_asks_the_rest_once():
     text = "\n".join(sections().values())
     for rule in ("Best** tab and its **Cheapest** tab together", "Skyscanner's Best", "Ask the operator ONCE", "Want to see more"):
         assert rule in text, rule
+
+
+def test_flights_say_sources_checked_never_assume_adults_and_skip_israir_for_portugal():
+    from myt_mcp.guide import sections
+
+    flights, other, correct = sections()["flights"], sections()["other_sources"], sections()["correct_data"]
+    assert flights.startswith("## Flights: which sources to use")
+    for rule in ("Sources checked: ... | Not checked", "do not call it for those legs", "Never write \"all adults\"", "always read Skyscanner too"):
+        assert rule in flights, rule
+    assert "Skyscanner, El Al, ITA Airways" not in other and "NOT in this list" in other
+    assert "Travellers' ages are not in MYT" in correct
+
+
+def test_every_price_answer_starts_with_sources_checked():
+    from myt_mcp.guide import sections
+
+    text = sections()["answer_format"]
+    assert "First line of EVERY price answer" in text and "Sources checked: ... | Not checked" in text
+    for need in ("hotels", "cars", "flights", "trains", "transfers", "activities", "airport lounges"):
+        assert f"**{need}**" in text, need
+    assert "Never skip a source silently" in text
+
+
+def test_sources_checked_line_is_in_the_core_instructions_every_chat_gets():
+    from myt_mcp.app import INSTRUCTIONS
+
+    assert "Sources checked: ... | Not checked: ... (why)" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700

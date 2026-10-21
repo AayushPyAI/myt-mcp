@@ -84,3 +84,10 @@ async def test_a_past_date_without_year_moves_to_the_next_occurrence_and_says_so
 async def test_a_future_date_has_no_date_note():
     out = (await call("hotel_prices", {"hotel_or_city": "Florence", "check_in": future(20), "check_out": future(23)})).structured_content
     assert "date_note" not in out
+
+
+@pytest.mark.parametrize("asked", ["Skyscanner", "El Al", "elal.com"])
+async def test_skyscanner_and_el_al_are_read_in_the_operators_chrome_not_unconnected(asked):
+    out = (await call("other_source_prices", {"site_or_topic": asked})).structured_content
+    assert "operator's own Chrome" in out["no_prices_here"] and "web search" in out["no_prices_here"]
+    assert "Claude in Chrome" in out["how"] and "Skyscanner" in out["playbook"]

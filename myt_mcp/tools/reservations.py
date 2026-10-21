@@ -116,7 +116,7 @@ def register(mcp: MCPServer, services: Services) -> None:
         Without confirm=True this only shows exactly what would be sent and changes nothing: show it to the operator first.
         With confirm=True, after the operator's explicit yes, it sends the write, reads the trip back, and reports the new
         order id and reservation id, or an error if MYT did not actually create it (MYT can answer success while silently
-        dropping a product it does not support). Only the trips in ALLOWED_TRIP_IDS can be touched. The new order starts as
+        dropping a product it does not support). If ALLOWED_TRIP_IDS lists trips only those can be touched; when it is empty, any trip the operator names. The new order starts as
         "Ready To Send" like any manual reservation; moving its status on is a separate, screen-only action."""
         services.check_trip(trip_id)
         if category not in KNOWN_CREATE_CATEGORIES:
@@ -168,8 +168,8 @@ def register(mcp: MCPServer, services: Services) -> None:
         move an order's status (Ready To Send, Voucher Issued...): that is screen-only. Only pass the fields that change;
         anything left out keeps its current value (MYT's Update needs the whole row, so this fills the rest in for you).
         Without confirm=True this only shows what would be sent. With confirm=True, after the operator's explicit yes, it
-        sends the write and reads the trip back to confirm the new values really took. Only the trips in ALLOWED_TRIP_IDS
-        can be touched."""
+        sends the write and reads the trip back to confirm the new values really took. If ALLOWED_TRIP_IDS lists trips only those
+        can be touched; when it is empty, any trip the operator names."""
         services.check_trip(trip_id)
         if price is not None and price <= 0:
             raise ToolError("price must be more than 0.")

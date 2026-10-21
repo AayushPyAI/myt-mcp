@@ -28,7 +28,7 @@ def register(mcp: MCPServer, services: Services) -> None:
         has none). Without confirm=true this only shows what would be sent and changes nothing: show it to the operator
         first. After they explicitly say the quote is ready and to connect/update the mini-site, call again with
         confirm=true. Never report a link as live unless this tool returned sent=true and a trip_url. Only trips in
-        ALLOWED_TRIP_IDS can be touched."""
+        If ALLOWED_TRIP_IDS lists trips only those can be touched; when it is empty, any trip the operator names."""
         services.check_trip(trip_id)
         v3 = await services.myt().get_trip_v3(trip_id)
         got = (v3.get("trip") or {}).get("trip_id")

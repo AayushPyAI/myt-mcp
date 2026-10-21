@@ -23,6 +23,7 @@ NO_BROWSER = 'If no browser tool is available in this chat, say exactly: "Please
 
 # site or topic keyword -> (what it is, the connected source to offer instead)
 CONNECTED = ("tap", "israir", "mozio", "kiwitaxi")   # these have their own tool: say so instead of "not connected"
+BROWSER_READ = ("skyscanner", "el al", "elal")   # no tool, but read in the operator's Chrome (quote_guide("flights")): not "not connected"
 OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "tripadvisor": ("activities and reviews", "Viator and GetYourGuide tools (viator_search_activities, getyourguide_find_activities)"),
     "booking.com": ("hotels", "RateHawk and Arbitrip via the hotel_prices tool"),
@@ -32,11 +33,11 @@ OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "hilton": ("hotels (a hotel's own website)", "RateHawk and Arbitrip via the hotel_prices tool"),
     "pestana": ("hotels (a hotel's own website)", "RateHawk and Arbitrip via the hotel_prices tool"),
     "bensaude": ("hotels (a hotel's own website)", "RateHawk and Arbitrip via the hotel_prices tool"),
-    "skyscanner": ("flights", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
+    "skyscanner": ("flights (comparison only, read in the operator's Chrome)", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
     "tap": ("flights (connected)", "tap_flight_prices and tap_fare_calendar"),
     "israir": ("flights (connected)", "israir_flight_prices"),
-    "el al": ("flights", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
-    "elal": ("flights", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
+    "el al": ("flights (read in the operator's Chrome)", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
+    "elal": ("flights (read in the operator's Chrome)", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
     "ryanair": ("flights", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
     "easyjet": ("flights", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
     "ita airways": ("flights", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal), israir_flight_prices (Israir, from or to Tel Aviv); other airlines are not connected yet"),
@@ -160,7 +161,7 @@ def register(mcp: MCPServer) -> None:
     async def other_source_prices(site_or_topic: str) -> dict[str, Any]:
         """USE THIS FIRST when the operator names a website or provider that has no tool here (Tripadvisor,
         Booking.com, Airbnb, Agoda, Skyscanner, El Al, Ryanair, easyJet, Sixt, Europcar, Rentalcars, Priority Pass,
-        a hotel's own site, and similar; TAP, Israir, Mozio and Kiwitaxi have their own tools) or asks you to check "the web". It tells you what is not
+        a hotel's own site, and similar; TAP, Israir, Mozio and Kiwitaxi have their own tools; Skyscanner and El Al are read in the operator's Chrome) or asks you to check "the web". It tells you what is not
         connected and which connected source to offer instead. It returns no prices. Never use web search or
         another connector to get a price."""
         wanted = _clean_text(site_or_topic, "site_or_topic").lower()
@@ -169,6 +170,12 @@ def register(mcp: MCPServer) -> None:
         if hit in CONNECTED:
             return {"no_prices_here": "This returns no price: this source IS connected, call its tool. Never use web search or another connector for a price.",
                     "asked_for": site_or_topic.strip()[:200], "category": what, "offer_instead": instead, "playbook": sections().get("other_sources", "")}
+        if hit in BROWSER_READ:
+            return {"no_prices_here": "This returns no price. This source is read in the operator's own Chrome with Claude in Chrome (Skyscanner is comparison only), not by a tool. "
+                                      "Never use web search or another connector for a price.",
+                    "asked_for": site_or_topic.strip()[:200], "category": what, "offer_instead": instead,
+                    "how": "Follow quote_guide('flights'): the Skyscanner and El Al sections. If no browser tool is available in this chat, say exactly: Please turn on Claude in Chrome for this chat.",
+                    "playbook": sections().get("flights", "")}
         return {
             "no_prices_here": "This source is not connected. Do not use web search, another connector or a third-party site for prices.",
             "asked_for": site_or_topic.strip()[:200],
