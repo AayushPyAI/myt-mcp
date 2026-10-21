@@ -1,7 +1,7 @@
   // Output: claude.ai cuts long tool answers, and a cut or re-typed answer is not the page's data. So the rows leave in short, self-contained
   // PARTS (about PART_CHARS each), in a compact form (columns named once, columns that never change moved to `common`). Part 1 is returned; the
   // others stay in window.__mytParts and are fetched with one short expression. The server decodes and joins the parts and checks none is missing.
-  const PART_CHARS = 5500;
+  const PART_CHARS = 3500;
   const RUN = Date.now().toString(36);
   const emit = (head, rows) => {
     const keys = rows.length ? Object.keys(rows[0]) : [];

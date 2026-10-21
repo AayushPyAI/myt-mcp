@@ -7,6 +7,7 @@ it reads the draft and lists what is missing or doubtful. It reads nothing from 
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Literal
 
@@ -20,6 +21,7 @@ COMPARING = {"flights", "hotels", "cars", "transfers", "trains", "activities", "
 NEEDS_FILTERS = {"flights", "hotels", "cars", "transfers", "trains", "activities"}
 NEEDS_SUPPLIER_CHECK = {"flights", "hotels", "cars", "transfers", "activities"}
 PICKS = ("Cheapest", "Best fit", "Most flexible", "Recommended")
+log = logging.getLogger("myt_mcp")
 URL = re.compile(r"https?://[^\s)|,;<>\"']+", re.I)
 # phrase -> why it is not allowed
 BANNED = {
@@ -112,4 +114,6 @@ def register(mcp: MCPServer) -> None:
         line, a link for every source, the four Picks rows, "Filters used" with their sources, "N of M", forbidden excuses
         ("for time", "out of scope"), "all adults" said without the operator, and numbers a tool never returns (TAP change fees).
         It reads no site and changes nothing. Fix what it lists, then send. `kind` is the kind of answer ("general" for the rest)."""
-        return check_answer_text(draft, kind)
+        out = check_answer_text(draft, kind)
+        log.info("CHECK check_answer kind=%s ok=%s missing=%s", kind, out.get("ok"), "; ".join(out.get("missing", []))[:600])      # rule messages only, never the draft
+        return out

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
 from mcp.server.mcpserver import MCPServer
@@ -10,6 +11,8 @@ from mcp.types import ToolAnnotations
 from myt_mcp.compose import NotChecked, Offer, SourceRead, apply_wishes, compose
 from myt_mcp.sites import convert_all, register_all
 from myt_mcp.errors import tool_errors
+
+log = logging.getLogger("myt_mcp")
 
 Kind = Literal["flights", "hotels", "cars", "transfers", "trains", "activities", "lounges"]
 
@@ -37,6 +40,7 @@ def register(mcp: MCPServer) -> None:
         if items:
             extra, srcs, problems, by_price, site_notes = convert_all(items, wishes or hotel_wishes)
             if problems:
+                log.info("CHECK compose_answer site_results refused: %s", "; ".join(dict.fromkeys(problems))[:800])
                 return {"ok": False, "problems": list(dict.fromkeys(problems)),
                         "next": "Fix these (run the recipe again as the problem says) and call compose_answer again. Do not write the answer yourself."}
             offers += extra
@@ -46,6 +50,9 @@ def register(mcp: MCPServer) -> None:
             if site_notes:
                 notes = (notes + " " + " ".join(site_notes)).strip()
         apply_wishes(offers, wishes or hotel_wishes)
-        return compose(kind, filters_used, sources_read, not_checked, offers, myt_supplier or {}, pickup_time, sorted_by_price, notes)
+        out = compose(kind, filters_used, sources_read, not_checked, offers, myt_supplier or {}, pickup_time, sorted_by_price, notes)
+        log.info("CHECK compose_answer kind=%s ok=%s items=%s offers=%s problems=%s", kind, out.get("ok"), [(i.get("site"), len(i.get("result", ""))) for i in items], len(offers),
+                 "; ".join(out.get("problems", []))[:800])          # sizes and rule messages only, never the rows
+        return out
 
     register_all(mcp)
