@@ -296,3 +296,12 @@ def test_links_for_every_source_open_the_quotation_and_same_filter_everywhere():
     for rule in ("Last line = a URL for every source", "A site name with a time but no URL does not count",
                  "open the quotation yourself", "never a reason", "same on every source", "Show connecting flights only when the operator asks"):
         assert rule in text, rule
+
+
+def test_car_rules_pickup_time_filter_sources_fields_and_supplier_check():
+    from myt_mcp.guide import sections
+
+    text = sections()["cars"]
+    for rule in ("Rules for every car answer", "10:00 is not a default", "Filters used, each with its source", "Same filters on both sites",
+                 "the rental company", "\"In MYT supplier?\"", "open the detail page of the cheapest"):
+        assert rule in text, rule
