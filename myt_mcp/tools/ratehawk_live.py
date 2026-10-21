@@ -29,9 +29,9 @@ READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
 
 async def read_page(services: Services, recipe: dict[str, Any]) -> list[str]:
     """Opens the recipe's url in the server's browser, runs its script and returns every part of the script's answer."""
-    body = recipe["script"].strip()
-    if body.startswith("await "):
-        body = body[len("await "):]
+    script = recipe["script"]
+    start = script.index("await (async () => {")        # the script's header comments come first; evaluate() takes an expression, so drop the top-level `await`
+    body = script[start + len("await "):].strip()
 
     async def act(page: Any) -> list[str]:
         await page.goto(recipe["url"], wait_until="domcontentloaded")
@@ -49,12 +49,12 @@ def register(mcp: MCPServer, services: Services) -> None:
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     async def ratehawk_hotels(country: str, city: str, check_in: date, check_out: date, adults: int = 2, children_ages: list[int] | None = None,
-                              breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, pages: int = 3,
+                              breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, pages: int = 3, show: int = 12,
                               myt_supplier: dict[str, str] | None = None) -> dict[str, Any]:
         """HOTELS ON RATEHAWK IN ONE CALL: the server opens RateHawk in its own logged-in browser, reads the price-sorted list (`pages` x 20 hotels)
         and the rating-sorted list, checks sort, page and count, and returns `answer`: the finished table with Cheapest / Best fit / Most flexible /
         Recommended, cautions and links. Show `answer` unchanged; do not rewrite it. `country` and `city` are the words in RateHawk's address
-        (portugal, lisbon). `stars` = minimum stars. Arbitrip is not read by this tool: read it in Claude in Chrome and say so in your reply.
+        (portugal, lisbon). `stars` = minimum stars; `show` = rows in the table (the picks always use every row read). Arbitrip is not read by this tool: read it in Claude in Chrome and say so in your reply.
         If it says RateHawk is not logged in, tell the operator to sign in once in the automation Chrome window; never try another route."""
         try:
             price_run = ratehawk_hotels_recipe(country, city, check_in, check_out, adults, "price_asc", breakfast, free_cancellation, stars, pages, children_ages)
@@ -72,8 +72,10 @@ def register(mcp: MCPServer, services: Services) -> None:
         filters = [f"{label} (operator)" for on, label in ((breakfast, "Breakfast included"), (free_cancellation, "Free cancellation")) if on]
         filters += [f"{stars}+ stars (operator)"] if stars else []
         filters.append("Guests: " + " and ".join([f"{adults} adults"] + [f"child {a}" for a in children_ages or []]) + " (operator)")
+        for src in sources:
+            src.link = f"{price_run['url']} (price-sorted) and {rating_run['url']} (rating-sorted)"
         apply_wishes(offers, wishes)
         out = compose("hotels", filters, sources, [NotChecked(name="Arbitrip", reason="no browser tool for Arbitrip in this tool: read it separately")],
-                      offers, myt_supplier or {}, None, by_price, " ".join(notes))
+                      offers, myt_supplier or {}, None, by_price, " ".join(notes), max_rows=show)
         log.info("CHECK ratehawk_hotels ok=%s offers=%s problems=%s", out.get("ok"), len(offers), "; ".join(out.get("problems", []))[:600])
         return out

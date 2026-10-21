@@ -97,7 +97,7 @@ def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, 
             problems.append("the RateHawk list was not read from page 1")
         if data.get("stopped") and "page counter" in str(data["stopped"]):
             problems.append(f"the RateHawk reader stopped early: {data['stopped']}")
-        if data.get("price_order") == "mixed":
+        if data.get("price_order") == "mixed" and str(data.get("sort", "")).startswith("Price"):      # a rating-sorted list has no price order
             problems.append("the prices of the RateHawk list are not in one order: the page may have changed while reading")
         read = max(read, int(data.get("rows_read") or 0))
         total = total or _int(data.get("header"))

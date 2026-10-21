@@ -380,8 +380,19 @@ async def test_ratehawk_hotels_reads_in_the_server_browser_and_refuses_when_logg
         def browser(self):
             return self._b
 
-    recipe = {"url": "https://www.ratehawk.com/hotel/x/", "script": "await (async () => { return 1; })()"}
+    recipe = {"url": "https://www.ratehawk.com/hotel/x/", "script": "// header comment\nawait (async () => { return 1; })()"}
     parts = await ratehawk_live.read_page(Svc(Page("https://www.ratehawk.com/hotel/x/", ["p1", "p2"])), recipe)
     assert parts == ["p1", "p2"]
     with pytest.raises(BrowserError, match="not logged in"):
         await ratehawk_live.read_page(Svc(Page("https://www.ratehawk.com/accounts/login/?next=/", [])), recipe)
+
+
+def test_table_is_limited_but_the_picks_use_every_row_and_a_thin_recommendation_is_replaced():
+    rows = [Offer(group="H", source="RateHawk", name=f"Hotel {i}", price_total=100 + i, currency="EUR", price_basis="whole stay", fits=True, flexible=True,
+                  details={"stars": 3, "score": "6.4" if i == 0 else "8.5", "reviews": 20 if i == 0 else 300, "distance_from_centre": "1 km", "meal": "Breakfast", "cancellation": "Free cancellation", "room_bed": "Double"},
+                  link=f"https://x.test/{i}") for i in range(30)]
+    out = compose("hotels", ["Breakfast (operator)"], [SourceRead(name="RateHawk", read=30, of=100, link="https://x.test/list")], [NotChecked(name="Arbitrip", reason="no browser tool: test")], rows, {}, None, True, "", max_rows=5)
+    a = out["answer"]
+    assert out["ok"] and a.count("| RateHawk | Hotel ") < 30 and "of the 30 options read" in a
+    assert "| Cheapest | RateHawk: Hotel 0 " in a                       # the cheapest is still found among all rows
+    assert "| Recommended | RateHawk: Hotel 1 " in a and "is thin" in a  # the thin Best fit (6.4 from 20 reviews) is not the recommendation

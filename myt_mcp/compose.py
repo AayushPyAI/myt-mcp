@@ -126,6 +126,14 @@ def _primary_currency(rows: list[Offer]) -> str | None:
     return max(counts, key=lambda c: (counts[c], c == pool[0].currency))
 
 
+def _solid(o: Offer) -> bool:
+    """A hotel whose own numbers are not thin: score 7.5 or more from at least 50 reviews."""
+    try:
+        return float(str(o.details.get("score"))) >= 7.5 and int(o.details.get("reviews")) >= 50
+    except (TypeError, ValueError):
+        return False
+
+
 def picks(kind: str, rows: list[Offer], sorted_by_price: bool) -> tuple[list[tuple[str, str, str]], list[str]]:
     """Cheapest, Best fit, Most flexible, Recommended for one group: (label, option, reason) rows and notes. All reasons come from the rows' own numbers."""
     notes: list[str] = []
@@ -172,6 +180,13 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool) -> tuple[list[tup
     else:
         rec, rec_reason = best, "the Best fit; within 10% of the cheapest option that meets every wish"
 
+    if kind == "hotels" and rec is not None and not _solid(rec):      # a thin cheapest pick must not be the whole recommendation
+        solid = [o for o in fitting if _solid(o)]
+        if solid:
+            alt = min(solid, key=lambda o: o.price_total)
+            rec, rec_reason = alt, (f"the Best fit ({rec.name}: score {rec.details.get('score') or 'not shown'}, {rec.details.get('reviews') if rec.details.get('reviews') is not None else 'not shown'} reviews) "
+                                    "is thin, so the recommendation is the cheapest option that meets every wish with score 7.5+ from 50+ reviews")
+
     def label(o: Offer | None) -> str:
         return "not determined" if o is None else f"{o.source}: {o.name} - {_money(o.price_total, o.currency)} ({o.price_basis})"
     if kind == "hotels":      # a caution made only from the row's own numbers
@@ -195,7 +210,7 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool) -> tuple[list[tup
 
 
 def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
-            myt_supplier: dict[str, str], pickup_time: str | None, sorted_by_price: bool, notes: str) -> dict[str, Any]:
+            myt_supplier: dict[str, str], pickup_time: str | None, sorted_by_price: bool, notes: str, max_rows: int | None = None) -> dict[str, Any]:
     problems = validate(kind, filters_used, sources_read, not_checked, offers, myt_supplier, pickup_time)
     if problems:
         return {"ok": False, "problems": problems, "next": "Fix every problem (read the source, or write an allowed reason / the missing field) and call compose_answer again. Do not write the answer yourself."}
@@ -216,7 +231,19 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
         keys = list(dict.fromkeys(required + [k for o in rows for k in o.details if k not in required]))
         lines += ["", f"### {g}", "", "| Source | Option | " + " | ".join(k.replace("_", " ") for k in keys) + " | Price | Basis | Quotable | Link |",
                   "|" + "---|" * (len(keys) + 6)]
-        for o in sorted(rows, key=lambda r: (r.price_total is None, r.price_total or 0)):
+        pk, pnotes = picks(kind, rows, sorted_by_price)
+        ordered = sorted(rows, key=lambda r: (r.price_total is None, r.price_total or 0))
+        shown = ordered
+        if max_rows and len(ordered) > max_rows:       # the picks always use EVERY row read; the table shows the cheapest, the picks and (hotels) the best rated
+            keep = {id(o) for o in ordered[:max_rows]}
+            keep |= {id(o) for _, text, _ in pk for o in rows if text.startswith(f"{o.source}: {o.name} - ")}
+            if kind == "hotels":
+                keep |= {id(o) for o in sorted((o for o in rows if _solid(o)), key=lambda r: -float(str(r.details.get("score"))))[:5]}
+            shown = [o for o in ordered if id(o) in keep]
+            show_note = f"Showing {len(shown)} of the {len(ordered)} options read: the cheapest, the picks and the best rated. The picks are chosen from all {len(ordered)}."
+        else:
+            show_note = None
+        for o in shown:
             cells = []
             for k in keys:
                 v = o.details.get(k)
@@ -226,7 +253,8 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
             tag = " (connecting)" if o.connecting else ""
             lines.append(f"| {o.source} | {_cell(o.name)}{tag} | " + " | ".join(cells)
                          + f" | {_money(o.price_total, o.currency)} | {_cell(o.price_basis)} | {'yes' if o.quotable else 'comparison only'} | {o.link or 'see Sources'} |")
-        pk, pnotes = picks(kind, rows, sorted_by_price)
+        if show_note:
+            lines += ["", show_note]
         lines += ["", "| Pick | Option | Reason |", "|---|---|---|"] + [f"| {a} | {b} | {c} |" for a, b, c in pk] + [f"- {n}" for n in pnotes]
         for label, text, _ in pk:
             if label in ("Cheapest", "Best fit", "Recommended") and text != "not determined":
