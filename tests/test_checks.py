@@ -329,3 +329,13 @@ def test_hotels_read_the_whole_filtered_list_and_details_only_after_approval():
     for rule in ("Reading depth (list level)", "read the WHOLE filtered list", "at most 10 clicks", "once sorted by rating and once by price",
                  "never call any hotel \"the cheapest\"", "Detail level", "only after the operator approves"):
         assert rule in text, rule
+
+
+def test_every_leg_every_source_no_out_of_scope_and_exact_links():
+    from myt_mcp.guide import sections
+
+    flights, fmt = sections()["flights"], sections()["answer_format"]
+    for rule in ("Every leg gets every source that can serve it", "\"Out of scope\", \"not this pass\"", "RateHawk Air tickets and Skyscanner on EVERY leg",
+                 "marked \"connecting\""):
+        assert rule in flights, rule
+    assert "Links are exact pages, not home pages" in fmt and "One link per source AND per leg" in fmt
