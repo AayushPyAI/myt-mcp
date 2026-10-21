@@ -253,3 +253,13 @@ def test_read_every_source_and_reasons_come_from_a_source_in_every_category():
     assert "Read every source, ask nothing first" in text and "never answer \"say the word and I will pull it\"" in text
     assert "Reasons only from a source" in text and "my judgement, not from a source" in text
     assert "without asking" in INSTRUCTIONS and "reasons only from a tool" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+
+
+def test_filters_are_always_applied_but_only_with_a_source_and_the_same_on_every_site():
+    from myt_mcp.guide import sections
+
+    text = sections()["answer_format"]
+    for rule in ("Same filters on every site, and only filters with a source", "Never add a filter that comes from neither",
+                 "Most flexible = look at every fare", "ends with the link of every source", "you check yourself, never \"say the word\""):
+        assert rule in text, rule
+    assert "Always apply filters, never read an unfiltered list" in sections()["filters"]
