@@ -276,3 +276,14 @@ def test_source_data_lists_the_fields_to_read_from_every_source():
     for field in ("cancellation", "bed type", "excess and insurance", "whole fare ladder", "not shown", "not read"):
         assert field in text, field
     assert "quote_guide(\"source_data\")" in sections()["answer_format"]
+
+
+def test_transfer_rules_and_source_data_are_pointed_to_from_the_core_instructions():
+    from myt_mcp.app import INSTRUCTIONS
+    from myt_mcp.guide import sections
+
+    assert '("source_data")' in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+    text = sections()["transfers"]
+    for rule in ("Rules for every transfer answer", "SAME time on RateHawk, Mozio and Kiwitaxi", "pickup_time_was_default",
+                 "not \"N adults\"", "same capacity", "showing the cheapest N of M read", "known pattern"):
+        assert rule in text, rule

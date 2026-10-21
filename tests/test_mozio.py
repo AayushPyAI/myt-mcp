@@ -223,3 +223,11 @@ async def test_tool_validation(extra, expected, before_the_fixture_date):
 async def test_tool_kill_switch(before_the_fixture_date):
     r = await call(FakePage(good_responses()), settings=Settings(mozio_enabled=False), from_place="PDL", to_place="Furnas", travel_date="2027-03-08")
     assert r.is_error and "switched off" in r.content[0].text
+
+
+async def test_a_default_pickup_time_is_flagged_and_a_given_one_is_not(before_the_fixture_date):
+    base = dict(from_place="PDL", to_place="Terra Nostra Garden Hotel, Furnas", travel_date="2027-03-08", passengers=3)
+    default = (await call(FakePage(good_responses()), **base)).structured_content
+    assert default["pickup_time"] == "12:00" and "pickup_time_was_default" in default and "ask the operator" in default["pickup_time_was_default"]
+    given = (await call(FakePage(good_responses()), **base, pickup_time="12:00")).structured_content
+    assert "pickup_time_was_default" not in given

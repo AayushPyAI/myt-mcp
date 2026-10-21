@@ -78,7 +78,7 @@ def register(mcp: MCPServer, services: Services) -> None:
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     @with_checked_at
-    async def mozio_transfer_prices(from_place: str, to_place: str, travel_date: date, passengers: int = 2, pickup_time: str = "12:00",
+    async def mozio_transfer_prices(from_place: str, to_place: str, travel_date: date, passengers: int = 2, pickup_time: str | None = None,
                                     max_results: int = 12) -> dict[str, Any]:
         """Private transfer prices from Mozio (mozio.com, a marketplace of local providers): every vehicle offer (sedan, van, bus,
         business class) with the price for the WHOLE booking one way in EUR, passengers and bags it takes, provider and rating,
@@ -87,8 +87,8 @@ def register(mcp: MCPServer, services: Services) -> None:
         "FCO"), or a place, hotel name or address with the town ("Terra Nostra Garden Hotel, Furnas, Portugal"). The answer says
         what Mozio matched for each (`matched_from`, `matched_to`): check it is the right place; `only_the_town` true means Mozio
         priced to the centre of the town, not to a street address, so give the hotel's name and address for an exact price.
-        `passengers` = everyone travelling. `pickup_time` is 24-hour HH:MM (default 12:00); the price can differ by time of day, so
-        use the real arrival time. A busy route can have 40+ offers: `max_results` (1-50, default 12) shows the cheapest private offers
+        `passengers` = everyone travelling. `pickup_time` is 24-hour HH:MM; if you leave it out 12:00 is used and the answer says so (`pickup_time_was_default`):
+        the price can differ by time of day, so give the real time from the flight, or ask the operator. A busy route can have 40+ offers: `max_results` (1-50, default 12) shows the cheapest private offers
         that take the whole group, ranked; `coverage` says how many Mozio listed. Scheduled shuttle buses (per-person tickets on fixed
         times) are not private transfers and are not priced here. Takes about 20 seconds. Nothing is booked."""
         if not 1 <= max_results <= 50:
@@ -101,6 +101,8 @@ def register(mcp: MCPServer, services: Services) -> None:
             raise ToolError("travel_date is in the past.")
         if not 1 <= passengers <= 16:
             raise ToolError("passengers must be between 1 and 16.")
+        pickup_was_default = pickup_time is None
+        pickup_time = "12:00" if pickup_was_default else pickup_time
         m = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)", pickup_time.strip())
         if not m:
             raise ToolError("pickup_time must be 24-hour HH:MM, for example 14:30.")
@@ -110,6 +112,9 @@ def register(mcp: MCPServer, services: Services) -> None:
         ensure("Mozio", check_offers(parsed, travel_date, passengers, "EUR"))
         base = {"date": travel_date.isoformat(), "pickup_time": pickup_time.strip(), "passengers": passengers,
                 "matched_from": parsed["from"], "matched_to": parsed["to"], "source": found["url"]}
+        if pickup_was_default:
+            base["pickup_time_was_default"] = ("No pick-up time was given, so 12:00 was used. Say so, and use the same time on every source: take it from the trip's flight, "
+                                               "or ask the operator once.")
         if not parsed["offers"]:
             return {**base, "offers": [], "note": "Mozio shows no transfer between these two places for this date and time (no provider covers it, or the "
                                                    "place was not understood). Check `matched_from` / `matched_to`; if they are right, ask the operator for another source."}
