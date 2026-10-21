@@ -98,8 +98,13 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
             if not any(w in f.lower() for w in SOURCE_WORDS):
                 problems.append(f"filter '{f}': say where it comes from (operator / trip / default)")
     if not offers:
-        problems.append("offers is empty")
+        problems.append("offers is empty: pass the site script's answer parts in site_results (or the rows you read in offers)")
     names = {s.name.lower() for s in sources_read}
+    if kind == "hotels":      # the agency compares RateHawk and Arbitrip for every hotel request: a source neither read nor excused is a hole in the answer
+        covered = names | {n.name.lower() for n in not_checked}
+        for src in ("ratehawk", "arbitrip"):
+            if src not in covered:
+                problems.append(f"{src.capitalize()} is neither in sources_read nor in not_checked: read it (see task_plan) or give an allowed reason in not_checked")
     for o in offers:
         if o.source.lower() not in names:
             problems.append(f"offer '{o.name}' comes from '{o.source}', which is not in sources_read")

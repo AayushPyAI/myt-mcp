@@ -20,11 +20,14 @@ Kind = Literal["flights", "hotels", "cars", "transfers", "trains", "activities",
 def register(mcp: MCPServer) -> None:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
-    async def compose_answer(kind: Kind, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
-                             myt_supplier: dict[str, str] | None = None, pickup_time: str | None = None, sorted_by_price: bool = True,
-                             notes: str = "", site_results: list[dict[str, str]] | None = None, ratehawk_results: list[str] | None = None,
-                             ratehawk_urls: list[str] | None = None, wishes: dict[str, Any] | None = None, hotel_wishes: dict[str, Any] | None = None) -> dict[str, Any]:
-        """BUILD THE FINAL ANSWER with this tool for every price or comparison request and show its `answer` text as it is. Pass the rows you
+    async def compose_answer(kind: Kind, site_results: list[dict[str, str]] | None = None, wishes: dict[str, Any] | None = None, filters_used: list[str] | None = None,
+                             sources_read: list[SourceRead] | None = None, not_checked: list[NotChecked] | None = None, offers: list[Offer] | None = None,
+                             myt_supplier: dict[str, str] | None = None, pickup_time: str | None = None, sorted_by_price: bool = True, notes: str = "",
+                             ratehawk_results: list[str] | None = None, ratehawk_urls: list[str] | None = None, hotel_wishes: dict[str, Any] | None = None) -> dict[str, Any]:
+        """BUILD THE FINAL ANSWER with this tool for every price or comparison request and show its `answer` text as it is; never write the table or the
+        picks yourself. SHORTEST CALL for a Chrome site with a recipe: compose_answer(kind, site_results=[every part of every script answer, unchanged],
+        wishes={...}, not_checked=[a source you could not read, with an allowed reason]); the server fills the rest and tells you in `problems` what is missing.
+        Longer form: pass the rows you
         read (from the tools) as `offers`, the sources with how many you read (`read` of `of`) and their exact links, the sources you did not read
         with an allowed reason, the filters with their source (operator / trip / default), and the MYT supplier check per pick (`myt_supplier`,
         e.g. {"TAP AIR PORTUGAL": "yes"}). For a Chrome site that has a recipe tool (ratehawk_hotels_recipe, ...) pass the script's answer UNCHANGED in
@@ -32,8 +35,14 @@ def register(mcp: MCPServer) -> None:
         `wishes` = the operator's wishes ({"breakfast": true, "free_cancellation": true, "stars_min": 4}). The server fills missing fields with "not
         shown", picks Cheapest, Best fit, Most flexible and Recommended by fixed rules (10% rule, one currency, quotable rows only), and writes the
         required lines and links. If something is missing it returns `problems`: fix them and call again. It reads no site and changes nothing."""
-        offers = list(offers)
-        sources_read = list(sources_read)
+        offers = list(offers or [])
+        sources_read = list(sources_read or [])
+        not_checked = list(not_checked or [])
+        wishes = wishes or hotel_wishes
+        if not filters_used and wishes:       # the operator's own wishes are the filters: no need to type them again
+            filters_used = [f"{label} (operator)" for key, label in (("breakfast", "Breakfast included"), ("free_cancellation", "Free cancellation")) if wishes.get(key)]
+            filters_used += [f"{wishes['stars_min']}+ stars (operator)"] if wishes.get("stars_min") else []
+        filters_used = list(filters_used or [])
         items = list(site_results or [])
         for raw, url in zip(ratehawk_results or [], list(ratehawk_urls or []) + [""] * len(ratehawk_results or [])):     # the first version's parameters
             items.append({"site": "ratehawk_hotels", "result": raw, "url": url})

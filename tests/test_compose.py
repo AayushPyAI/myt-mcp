@@ -142,7 +142,8 @@ async def test_compose_answer_takes_the_ratehawk_script_answer_directly():
         tools = {t.name for t in (await c.list_tools()).tools}
         assert "ratehawk_hotels_recipe" in tools
         r = await c.call_tool("compose_answer", {
-            "kind": "hotels", "filters_used": ["breakfast (operator)", "free cancellation (operator)"], "sources_read": [], "not_checked": [], "offers": [],
+            "kind": "hotels", "filters_used": ["breakfast (operator)", "free cancellation (operator)"], "sources_read": [],
+            "not_checked": [{"name": "Arbitrip", "reason": "login/captcha/block: test"}], "offers": [],
             "ratehawk_results": [json.dumps(SAMPLE_RH)], "ratehawk_urls": ["https://www.ratehawk.com/hotel/portugal/lisbon/?dates=03.05.2027-05.05.2027&guests=2&sort=price.asc&page=1"],
             "hotel_wishes": {"breakfast": True, "free_cancellation": True}, "myt_supplier": {"Hotel Four": "not checked: test"}})
         d = r.structured_content
@@ -321,3 +322,24 @@ def test_hand_typed_rows_without_a_proof_of_a_wish_do_not_fit():
     plain = Offer(group="Hotels", source="X", name="C", price_total=1, currency="EUR", price_basis="whole stay")
     apply_wishes([plain], None)
     assert plain.fits is None
+
+
+@pytest.mark.anyio
+async def test_a_minimal_compose_call_works_and_a_missing_hotel_source_is_refused():
+    import json
+
+    from mcp import Client
+
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+
+    item = {"site": "ratehawk_hotels", "result": json.dumps(SAMPLE_RH), "url": "https://www.ratehawk.com/hotel/portugal/lisbon/?dates=03.05.2027-05.05.2027&guests=2&sort=price.asc&page=1"}
+    async with Client(create_server(Settings())) as c:
+        r = await c.call_tool("compose_answer", {"kind": "hotels", "site_results": [item], "wishes": {"breakfast": True, "free_cancellation": True},
+                                                 "myt_supplier": {"Hotel Four": "not checked: test"}})
+        d = r.structured_content
+        assert d["ok"] is False and any("Arbitrip is neither in sources_read nor in not_checked" in x for x in d["problems"]) and not any("Ratehawk" in x for x in d["problems"])
+        r = await c.call_tool("compose_answer", {"kind": "hotels", "site_results": [item], "wishes": {"breakfast": True, "free_cancellation": True},
+                                                 "not_checked": [{"name": "Arbitrip", "reason": "login/captcha/block: test"}], "myt_supplier": {"Hotel Four": "not checked: test"}})
+        d = r.structured_content
+        assert d["ok"] is True and "Breakfast included (operator)" in d["answer"] and "Free cancellation (operator)" in d["answer"], d
