@@ -243,3 +243,13 @@ def test_sources_checked_line_is_in_the_core_instructions_every_chat_gets():
     from myt_mcp.app import INSTRUCTIONS
 
     assert "Sources checked: ... | Not checked: ... (why)" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+
+
+def test_read_every_source_and_reasons_come_from_a_source_in_every_category():
+    from myt_mcp.app import INSTRUCTIONS
+    from myt_mcp.guide import sections
+
+    text = sections()["answer_format"]
+    assert "Read every source, ask nothing first" in text and "never answer \"say the word and I will pull it\"" in text
+    assert "Reasons only from a source" in text and "my judgement, not from a source" in text
+    assert "without asking" in INSTRUCTIONS and "reasons only from a tool" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
