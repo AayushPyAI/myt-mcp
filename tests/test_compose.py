@@ -233,3 +233,36 @@ async def test_compose_answer_builds_a_car_answer_from_the_recipe_result():
         assert "RateHawk Car rental (3 of 3 read)" in d["answer"] and "Ford Focus" in d["answer"] and "Pick-up time used on every source: 10:00 on both days" in d["answer"]
         pick = [l for l in d["answer"].splitlines() if l.startswith("| Recommended")][0]
         assert "Ford Focus" in pick and "Corsa" not in pick
+
+
+TRANSFERS_RESULT = {"ok": True, "form": {"from": "Leonardo da Vinci Rome Fiumicino Airport (FCO)", "to": "Room Mate Collection Mia, Rome Colosseum", "when": "1 Mar, Mon, 16:30", "passengers": "2 adults, 1 child"},
+                    "rows_read": 3, "sort_tab": None, "price_order": "ascending", "rows": [
+    {"vehicle": "Toyota Prius, Toyota Corolla or similar", "vehicle_class": "Economy", "passengers": "3", "bags": "3", "waiting": "60 min. waiting time included ", "meeting": "Meeting with a plate ",
+     "flight_tracking": True, "cancellation": "Free cancellation 24h before the trip", "price": 81, "currency": "EUR", "child_seat": "Including seats for children € 4"},
+    {"vehicle": "Mercedes E-class", "vehicle_class": "Business", "passengers": "3", "bags": "3", "waiting": "60 min. waiting time included ", "meeting": "Meeting with a plate ",
+     "flight_tracking": True, "cancellation": "Free cancellation 24h before the trip", "price": 120, "currency": "EUR", "child_seat": None},
+    {"vehicle": "VW T5 or similar", "vehicle_class": "Minibus", "passengers": "16", "bags": "16", "waiting": "60 min. waiting time included ", "meeting": "Meeting with a plate ",
+     "flight_tracking": True, "cancellation": "No free cancellation", "price": 427, "currency": "EUR", "child_seat": "Including seats for children € 4"}]}
+
+
+def test_ratehawk_transfers_checks_what_the_page_searched_against_the_request():
+    import json
+
+    from myt_mcp.sites.ratehawk_transfers import convert, ratehawk_transfers_recipe
+
+    r = ratehawk_transfers_recipe("Rome FCO", "Room Mate Collection Mia", "2027-03-01", "16:30", 2, [8])
+    assert r["expect"]["children"] == 1 and "Transfers tab" in r["steps"][0] and "cards" in r["script"]
+    with pytest.raises(ValueError):
+        ratehawk_transfers_recipe("a", "b", "2027-03-01", "4pm", 2)
+    ok = convert(json.dumps(TRANSFERS_RESULT), {"expect": {"pickup": "Rome FCO Fiumicino", "dropoff": "Room Mate Collection Mia", "day": "2027-03-01", "time": "16:30", "adults": 2, "children": 1}}, "Transfers")
+    assert not ok.problems and ok.read == 3 and ok.sorted_by_price is True
+    by = {o.name.split(":")[0]: o for o in ok.offers}
+    assert by["Economy"].price_total == 81 and by["Economy"].flexible is True and by["Minibus"].flexible is None and by["Economy"].fits is True
+    wrong_time = convert(json.dumps(TRANSFERS_RESULT), {"expect": {"pickup": "FCO", "dropoff": "Mia", "day": "2027-03-01", "time": "10:00", "adults": 2, "children": 1}}, "Transfers")
+    assert any("not at 10:00" in p for p in wrong_time.problems)
+    wrong_place = convert(json.dumps(TRANSFERS_RESULT), {"expect": {"pickup": "Milan Linate", "dropoff": "Mia", "day": "2027-03-01", "time": "16:30", "adults": 2, "children": 1}}, "Transfers")
+    assert any("searched from" in p for p in wrong_place.problems)
+    wrong_day = convert(json.dumps(TRANSFERS_RESULT), {"expect": {"pickup": "FCO", "dropoff": "Mia", "day": "2027-03-02", "time": "16:30", "adults": 2, "children": 1}}, "Transfers")
+    assert any("2027-03-02" in p for p in wrong_day.problems)
+    wrong_pax = convert(json.dumps(TRANSFERS_RESULT), {"expect": {"pickup": "FCO", "dropoff": "Mia", "day": "2027-03-01", "time": "16:30", "adults": 3, "children": 0}}, "Transfers")
+    assert any("3 adults" in p for p in wrong_pax.problems)
