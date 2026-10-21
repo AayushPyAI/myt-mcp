@@ -67,6 +67,11 @@ NOT_PROVIDED_RULE = ("Any fee, condition, inclusion, baggage weight, cancellatio
 NOT_PROVIDED = {
     "tap_flight_prices": ["change fee or its amount", "refund penalty amount", "checked-bag weight (only whether a bag is included)", "seat selection", "meals"],
     "tap_fare_calendar": ["change fee or its amount", "refund penalty amount", "checked-bag weight", "seat selection", "meals"],
+    "israir_flight_prices": ["refund or change terms and fees", "seat selection", "operating-airline details beyond the carrier code"],
+    "lounge_prices": ["opening hours", "menu or food and drink beyond the description", "cancellation terms", "child age rules unless `age_rules` is in the answer"],
+    "train_prices": ["platform", "seat or coach numbers", "baggage rules", "refund amounts (only the fare conditions text, if any)"],
+    "kiwitaxi_transfer_prices": ["waiting time", "meeting point", "provider or company name", "flight tracking", "vehicle make and model beyond the description"],
+    "mozio_transfer_prices": ["meeting point instructions", "vehicle make and model (only type and class)", "driver details"],
 }
 
 _SOURCES = {

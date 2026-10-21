@@ -381,3 +381,12 @@ def test_answer_format_tells_claude_to_call_check_answer_and_to_respect_not_prov
 
     text = sections()["answer_format"]
     assert "call `check_answer` with your draft" in text and "`not_provided`" in text and "TAP never returns a change fee" in text
+
+
+def test_every_price_tool_with_a_known_gap_lists_it():
+    from myt_mcp.checks import NOT_PROVIDED
+
+    for tool in ("tap_flight_prices", "tap_fare_calendar", "israir_flight_prices", "lounge_prices", "train_prices",
+                 "kiwitaxi_transfer_prices", "mozio_transfer_prices"):
+        assert NOT_PROVIDED[tool], tool
+    assert "waiting time" in NOT_PROVIDED["kiwitaxi_transfer_prices"] and "platform" in NOT_PROVIDED["train_prices"]
