@@ -48,7 +48,7 @@ PLANS: dict[str, dict[str, Any]] = {
         "fields": ["flight number and operating airline", "times and stops", "the whole fare ladder (code and name)", "cabin bag and checked bag", "change and refund terms (only if the tool or page shows them)",
                    "price per adult and per child", "group total", "link"],
         "filters": "direct flights for a short leg (trip default) unless the operator says otherwise; the same filter on every source; show connecting flights only when no direct exists, marked 'connecting'.",
-        "never": ["write a change fee, refund amount or bag weight a tool did not return (TAP returns none)", "price a BATCH seat from a public fare", "call Israir for Lisbon, Porto, Madeira or the Azores"],
+        "never": ["write a change fee, refund amount or bag weight a tool did not return (TAP returns none)", "retry a tool that timed out more than twice (try the city code once: PAR not CDG, then use the other sources)", "write what an airline 'typically' charges: say 'not shown'", "price a BATCH seat from a public fare", "call Israir for Lisbon, Porto, Madeira or the Azores"],
     },
     "hotels": {
         "ask_once": ["stars, budget per night and area / longest distance from the centre (when the trip has no hotel yet)", "meal plan and free cancellation: required or not", "adults and children's ages"],

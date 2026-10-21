@@ -121,7 +121,7 @@ class BrowserSession:
                 except IntegrationError:
                     raise
                 except asyncio.TimeoutError:
-                    raise BrowserError(f"{origin} did not answer in time. Try again in a minute.") from None
+                    raise BrowserError(f"{origin} did not answer in time. Try ONE more time (with the city code if you used an airport code, for example PAR instead of CDG, LON instead of LHR); if it fails again, stop: use the other sources and write '{origin} did not answer' as the reason. Never retry more than twice.") from None
                 except Exception as e:
                     reason = (str(e).splitlines() or [type(e).__name__])[0][:140]
                     if attempt == 2:

@@ -459,3 +459,12 @@ def test_check_answer_requires_pickup_time_for_cars_and_transfers_and_n_of_m_for
     assert "pick-up" in text and "n of m" in text and "myt supplier" in text
     lounge = check_answer_text("Sources checked: Aspire | Not checked: none\n1 of 1 read. Cheapest Best fit Most flexible Recommended\nhttps://www.aspirelounges.com/a/b", "lounges")
     assert lounge["ok"] is True      # lounges need no supplier check and no filters line
+
+
+def test_check_answer_flags_trip_number_excuse_and_general_knowledge_words():
+    from myt_mcp.tools.answer_check import check_answer_text
+
+    r = check_answer_text(GOOD.replace("In MYT supplier? TAP AIR PORTUGAL: yes.",
+                                       "In MYT supplier? Not checked: no MYT trip attached, give me the trip number. Ryanair typically charges for bags."), "flights")
+    text = " ".join(r["missing"] + r["warnings"]).lower()
+    assert r["ok"] is False and "trip 906" in text and "typically" in text

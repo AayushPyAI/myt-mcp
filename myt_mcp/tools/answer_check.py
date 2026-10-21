@@ -33,6 +33,8 @@ BANNED = {
     "did not ask": "'you did not ask' is not a reason for 'Not checked': read the source",
     "on request": "never offer to read a listed source 'on request': read it now",
     "happy to run": "never offer to read a listed source later: read it now",
+    "no myt trip attached": "'no MYT trip attached' is not a reason: check the supplier in test trip 906's quotation (type its name in Search supplier, read only)",
+    "give me the trip number": "do not ask for a trip number to check suppliers: use test trip 906's quotation (type the name in Search supplier, read only)",
     "would need the quotation": "'In MYT supplier?' is checked by you: open the quotation (or test trip 906) and type the supplier name in Search supplier",
     "fully confirms": "do not claim a missing result 'confirms' something; write what you saw and 'my judgement'",
 }
@@ -74,6 +76,10 @@ def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
         missing.append('"all adults" appears without the operator saying so: ask for adults and children\'s ages')
     if "public price" in low and re.search(r"\bnet\b", low):
         warnings.append('the text says "public price" and also "net": the Picks basis must not say net or agent price for a public price')
+    for word in ("typically", "usually", "normally", "generally", "as a rule"):
+        if re.search(rf"\b{word}\b", low):
+            warnings.append(f'"{word}": a statement about what an airline, hotel or site "{word}" does is general knowledge, not a source; remove it or write "not shown"')
+            break
     if kind == "flights" and "tap" in low and re.search(r"change (fee|€|eur)|€\s?\d+ change", low):
         warnings.append("a TAP change fee: the TAP tool does not return one (only bag included and refundable). Remove it or write 'not shown'")
     if kind == "hotels" and re.search(r"(review|score|rating)[^.\n]{0,12}8\s?\+|8\s?\+[^.\n]{0,12}(review|score|rating)", low):
