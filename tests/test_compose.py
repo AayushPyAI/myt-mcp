@@ -170,3 +170,66 @@ def test_ratehawk_recipe_writes_children_into_the_guests_value_and_refuses_bad_a
     assert "guests=2and6and8" in ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "rating", children_ages=[6, 8])["url"]
     with pytest.raises(ValueError):
         ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "rating", children_ages=[30])
+
+
+CARS_RESULT = {"ok": True, "form": {"pickup": "Faro Airport", "dropoff": "Faro Airport", "times": ["10:00", "10:00"], "dates": ["12 Apr, Mon", "17 Apr, Sat"], "age_residency": ["26 - 69 years", "Israel"]},
+               "filters_ticked": ["Automatic"], "rows_read": 3, "reached_cap": False, "price_order": "ascending", "rows": [
+    {"score": None, "company": "tangerine", "company_from": "logo file name", "seats": "5", "large_bags": "2", "small_bags": "1", "gearbox": "Automatic", "car": "Opel Corsa", "code_class": "EDAR • Economy",
+     "pickup_place": "Meeting with an agent", "deposit": 2100, "excess": 1900, "insurance": "Basic with excess", "mileage_fuel": "Unlimited mileage • Fuel policy: Full to full", "extras": [],
+     "price": 61.83, "currency": "EUR", "cancellation": "Free cancellation up to 48 hours before pick-up"},
+    {"score": "5.8", "company": "Dollar", "company_from": "text", "seats": "4", "large_bags": "1", "small_bags": "1", "gearbox": "Automatic", "car": "Ford Focus", "code_class": "CDAR • Compact",
+     "pickup_place": "Transfer to the rental place", "deposit": 200, "excess": None, "insurance": "Zero excess", "mileage_fuel": "Unlimited mileage • Fuel policy: Full to full", "extras": [],
+     "price": 150.0, "currency": "EUR", "cancellation": "Free cancellation up to 48 hours before pick-up"},
+    {"score": "7.0", "company": "Sixt", "company_from": "text", "seats": "5", "large_bags": "2", "small_bags": "2", "gearbox": "Manual", "car": "VW Golf", "code_class": "CDMR • Compact",
+     "pickup_place": "Meeting with an agent", "deposit": 800, "excess": 1500, "insurance": "Basic with excess", "mileage_fuel": "Unlimited mileage • Fuel policy: Full to full", "extras": [],
+     "price": 170.0, "currency": "EUR", "cancellation": "No free cancellation"}]}
+
+
+def test_ratehawk_cars_recipe_needs_known_ids_and_times_and_builds_the_url():
+    from myt_mcp.sites.ratehawk_cars import ratehawk_cars_recipe
+
+    r = ratehawk_cars_recipe("Faro Airport", None, "2027-04-12", "10:00", "2027-04-17", "10:00", automatic=True, zero_excess=True, max_cars=20)
+    assert r["url"] == "https://www.ratehawk.com/cars/?route=965846144,965846144&date=2027-04-12T10:00,2027-04-17T10:00&age=26,69&residency=il"
+    assert r["filters_to_tick"] == ["Automatic", "Zero excess"] and "const MAX_CARS = 20;" in r["script"] and '["Automatic", "Zero excess"]' in r["script"]
+    unknown = ratehawk_cars_recipe("Lagos", None, "2027-04-12", "10:00", "2027-04-17", "10:00")
+    assert unknown["needs_location_id"] == "Lagos" and "faro airport" in unknown["known_places"] and "route=" in " ".join(unknown["steps"])
+    assert "url" in ratehawk_cars_recipe("Lagos", None, "2027-04-12", "10:00", "2027-04-17", "10:00", pickup_id=1)
+    for bad in ({"pickup_time": "9am"}, {"dropoff_date": "2027-04-10"}, {"max_cars": 1}):
+        args = {"pickup": "Faro Airport", "dropoff": None, "pickup_date": "2027-04-12", "pickup_time": "10:00", "dropoff_date": "2027-04-17", "dropoff_time": "10:00", **bad}
+        with pytest.raises(ValueError):
+            ratehawk_cars_recipe(**args)
+
+
+def test_ratehawk_cars_rows_become_offers_and_the_cheapest_that_misses_a_wish_is_not_recommended():
+    import json
+
+    from myt_mcp.sites.ratehawk_cars import convert
+
+    rows = convert(json.dumps(CARS_RESULT), {"automatic": True, "zero_excess": True}, "Cars")
+    assert not rows.problems and rows.read == 3 and rows.total == 3
+    by = {o.name: o for o in rows.offers}
+    assert by["Opel Corsa (EDAR • Economy)"].fits is False and by["Ford Focus (CDAR • Compact)"].fits is True and by["VW Golf (CDMR • Compact)"].fits is False
+    assert "logo's file name" in by["Opel Corsa (EDAR • Economy)"].details["company"] and by["Ford Focus (CDAR • Compact)"].details["company"] == "Dollar"
+    assert by["Ford Focus (CDAR • Compact)"].details["deposit"] == "200" and by["Ford Focus (CDAR • Compact)"].flexible is True
+    assert not convert(json.dumps({"ok": False, "error": "x"}), {}, "Cars").offers and convert("nope", {}, "Cars").problems
+
+
+async def test_compose_answer_builds_a_car_answer_from_the_recipe_result():
+    import json
+
+    from mcp import Client
+
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+
+    async with Client(create_server(Settings())) as c:
+        assert "ratehawk_cars_recipe" in {t.name for t in (await c.list_tools()).tools}
+        r = await c.call_tool("compose_answer", {
+            "kind": "cars", "filters_used": ["automatic (operator)", "zero excess (operator)"], "sources_read": [], "not_checked": [], "offers": [], "pickup_time": "10:00 on both days",
+            "site_results": [{"site": "ratehawk_cars", "result": json.dumps(CARS_RESULT), "url": "https://www.ratehawk.com/cars/?route=965846144,965846144&date=2027-04-12T10:00,2027-04-17T10:00&age=26,69&residency=il"}],
+            "wishes": {"automatic": True, "zero_excess": True}, "myt_supplier": {"Dollar": "not checked: test"}})
+        d = r.structured_content
+        assert not r.is_error and d["ok"] is True, d
+        assert "RateHawk Car rental (3 of 3 read)" in d["answer"] and "Ford Focus" in d["answer"] and "Pick-up time used on every source: 10:00 on both days" in d["answer"]
+        pick = [l for l in d["answer"].splitlines() if l.startswith("| Recommended")][0]
+        assert "Ford Focus" in pick and "Corsa" not in pick

@@ -1,0 +1,5 @@
+{
+  "_note": "RateHawk's own ids for the cars search (route=<pick-up id>,<drop-off id>). Learned from the cars page: type the place in its form, pick the suggestion, press Search, read route= in the address. Add new places here.",
+  "faro airport": 965846144,
+  "firenze-peretola airport": 965848495
+}
