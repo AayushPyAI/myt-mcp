@@ -59,7 +59,7 @@ PLANS: dict[str, dict[str, Any]] = {
         ],
         "fields": ["stars, score and reviews", "distance from the centre", "room and bed type", "meal plan", "cancellation (free until when)", "price basis (net or list, taxes, 'on the spot')", "availability", "link"],
         "filters": "only the operator's filters or the trip's hotels (stars, meal, budget); NEVER a review-score filter she did not name; the same filters on both sites; check every row against them.",
-        "never": ["add a 'review 8+' filter", "call a hotel the cheapest when you read only part of the list", "open detail pages before the operator picks hotels", "make a Cheapest outside the area the Recommended"],
+        "never": ["add a 'review 8+' filter", "call a hotel the cheapest when you read only part of the list or only the rating-sorted list (read the price-sorted list too)", "show a score without its number of reviews", "open detail pages before the operator picks hotels", "make a Cheapest outside the area the Recommended"],
     },
     "cars": {
         "ask_once": ["pick-up and return place and TIMES (from the trip's flights if it has them, else ask)", "gearbox, seats, excess cover required or not", "driver age"],

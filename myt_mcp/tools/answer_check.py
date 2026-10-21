@@ -82,6 +82,13 @@ def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
             break
     if kind == "flights" and "tap" in low and re.search(r"change (fee|€|eur)|€\s?\d+ change", low):
         warnings.append("a TAP change fee: the TAP tool does not return one (only bag included and refundable). Remove it or write 'not shown'")
+    if kind == "hotels":
+        if "cheapest" in low and not re.search(r"sort(ed)? by price|price \(low|low to high|cheapest first|lowest price first|price ascending", low):
+            missing.append('a hotel is called "Cheapest" but the list sorted by PRICE was not read (a rating-sorted list hides the cheaper hotels): read both sorts, or call it "cheapest of the N read, sorted by rating"')
+        if "review" not in low:
+            warnings.append("hotels: show the number of reviews next to each score (a 10.0 from three reviews is not a 10.0 from a thousand)")
+        if "star" not in low and "★" not in text:
+            warnings.append("hotels: show the stars of each hotel (or 'stars not shown')")
     if kind == "hotels" and re.search(r"(review|score|rating)[^.\n]{0,12}8\s?\+|8\s?\+[^.\n]{0,12}(review|score|rating)", low):
         warnings.append('"review 8+" is not a default filter: keep it only if the operator named it')
 

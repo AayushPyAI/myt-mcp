@@ -468,3 +468,14 @@ def test_check_answer_flags_trip_number_excuse_and_general_knowledge_words():
                                        "In MYT supplier? Not checked: no MYT trip attached, give me the trip number. Ryanair typically charges for bags."), "flights")
     text = " ".join(r["missing"] + r["warnings"]).lower()
     assert r["ok"] is False and "trip 906" in text and "typically" in text
+
+
+def test_check_answer_needs_the_price_sorted_list_before_a_hotel_is_cheapest():
+    from myt_mcp.tools.answer_check import check_answer_text
+
+    base = ("Sources checked: RateHawk, Arbitrip | Not checked: none\\nFilters used: breakfast (operator). RateHawk 20 of 437, Arbitrip 6 of 30. In MYT supplier? no, not checked: x\\n"
+            "Cheapest: Hostel EUR 318. Best fit ... Most flexible ... Recommended ...\\nhttps://www.ratehawk.com/hotel/portugal/lisbon/?q=1 https://app.arbitrip.com/results\\n")
+    r = check_answer_text(base + "Sorted by rating.", "hotels")
+    assert r["ok"] is False and any("sorted by PRICE" in m for m in r["missing"]) and any("number of reviews" in w for w in r["warnings"])
+    fixed = check_answer_text(base + "Read sorted by rating and sorted by price. 4-star, 9.4 (1,200 reviews).", "hotels")
+    assert fixed["ok"] is True
