@@ -91,7 +91,7 @@ def register(mcp: MCPServer) -> None:
         rooms: int = 1,
         meal_plan: Literal["BB", "RO", "HB", "FB", "AI"] = "BB",
     ) -> dict[str, Any]:
-        """Hotel or room question: call task_plan('hotels') FIRST, then use this tool and ratehawk_hotels_recipe_tool: find a hotel, room price, hotel availability, breakfast,
+        """Hotel or room question: call task_plan('hotels') FIRST, then call ratehawk_hotels (RateHawk, one call, finished answer): find a hotel, room price, hotel availability, breakfast,
         cancellation terms, "find hotel X for these dates" (מלון). Hotel prices come from RateHawk and Arbitrip, which
         are websites read in the operator's Chrome with Claude in Chrome (never Booking.com, web search or other
         connectors). This tool returns NO prices: it checks the search and returns the exact search values for both
@@ -119,7 +119,7 @@ def register(mcp: MCPServer) -> None:
         rh_dates = f"{check_in.strftime('%d.%m.%Y')}-{check_out.strftime('%d.%m.%Y')}"
         ab_dates = f"check_in={check_in.strftime('%y%m%d')}&check_out={check_out.strftime('%y%m%d')}"
         plan: dict[str, Any] = {
-            "required_next": "Call task_plan('hotels') if you have not, read RateHawk with ratehawk_hotels_recipe_tool and its script, then your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer.",
+            "required_next": "Call task_plan('hotels') if you have not, then ratehawk_hotels (the server reads RateHawk and returns the finished answer: show its `answer` unchanged). Only if it says RateHawk is not logged in, fall back to ratehawk_hotels_recipe. Arbitrip is read in Claude in Chrome.",
             "no_prices_here": "This tool gives no prices. Search RateHawk and Arbitrip in Claude in Chrome with the values below.",
             "search": {
                 "destination": name, "check_in": check_in.isoformat(), "check_out": check_out.isoformat(), "nights": nights,
