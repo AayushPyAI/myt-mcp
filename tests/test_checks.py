@@ -320,3 +320,12 @@ def test_ofran_page_hotel_filters_picks_names_and_overclaims_rules():
     for rule in ("Picks table always has four rows", "trip 906, read only", "No names of travellers or customers", "No claims you cannot prove",
                  "Basis wording must match the source"):
         assert rule in fmt, rule
+
+
+def test_hotels_read_the_whole_filtered_list_and_details_only_after_approval():
+    from myt_mcp.guide import sections
+
+    text = sections()["hotels"]
+    for rule in ("Reading depth (list level)", "read the WHOLE filtered list", "at most 10 clicks", "once sorted by rating and once by price",
+                 "never call any hotel \"the cheapest\"", "Detail level", "only after the operator approves"):
+        assert rule in text, rule
