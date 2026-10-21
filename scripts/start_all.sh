@@ -38,7 +38,9 @@ echo "2/3 Tunnel: $TUNNEL_URL"
 
 # 3. MCP server, allowing the new tunnel host
 sed -i '' "s|^ALLOWED_HOSTS=.*|ALLOWED_HOSTS=127.0.0.1:*,localhost:*,${TUNNEL_URL#https://}|" .env
-if [ -f "$LOGS/server.pid" ]; then kill "$(cat "$LOGS/server.pid")" 2>/dev/null || true; sleep 1; fi
+if [ -f "$LOGS/server.pid" ]; then kill "$(cat "$LOGS/server.pid")" 2>/dev/null || true; fi
+# whatever still listens on 8000 is an old server with the old tunnel host in its allow-list (it answers 421), so stop it too
+lsof -tiTCP:8000 -sTCP:LISTEN | xargs kill 2>/dev/null || true; sleep 2
 .venv/bin/python server.py >"$LOGS/server.log" 2>&1 &
 echo $! >"$LOGS/server.pid"
 wait_for 20 curl -s -m 2 http://127.0.0.1:8000/health || { echo "Server did not start (see $LOGS/server.log)"; exit 1; }

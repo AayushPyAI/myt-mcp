@@ -7,7 +7,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp.compose import NotChecked, Offer, SourceRead, compose
+from myt_mcp.compose import NotChecked, Offer, SourceRead, apply_wishes, compose
 from myt_mcp.sites import convert_all, register_all
 from myt_mcp.errors import tool_errors
 
@@ -45,6 +45,7 @@ def register(mcp: MCPServer) -> None:
             sorted_by_price = by_price
             if site_notes:
                 notes = (notes + " " + " ".join(site_notes)).strip()
+        apply_wishes(offers, wishes or hotel_wishes)
         return compose(kind, filters_used, sources_read, not_checked, offers, myt_supplier or {}, pickup_time, sorted_by_price, notes)
 
     register_all(mcp)

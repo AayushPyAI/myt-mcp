@@ -32,5 +32,5 @@ await (async () => {
   const prices = rows.map((r) => r.price).filter((x) => x != null);
   const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]); const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
   const sortActive = [...document.querySelectorAll('button')].map((b) => ({ t: (b.innerText || '').trim(), a: /active|selected|checked/i.test(b.className) })).filter((x) => /^(Cheapest|Spacious|Comfortable)$/.test(x.t)).filter((x) => x.a).map((x) => x.t)[0] || null;
-  return JSON.stringify({ ok: true, form, rows_read: rows.length, sort_tab: sortActive, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed', rows });
+  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', form, rows_read: rows.length, sort_tab: sortActive, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
 })()

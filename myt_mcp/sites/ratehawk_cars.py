@@ -12,7 +12,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows
+from myt_mcp.sites import SiteRows, with_emit
 
 NAME = "ratehawk_cars"
 SOURCE = "RateHawk Car rental"
@@ -51,8 +51,8 @@ def ratehawk_cars_recipe(pickup: str, dropoff: str | None, pickup_date: str, pic
             "Read the number in `route=<id>,<id>` in the address (the tab's URL). Call this tool again with pickup_id (and dropoff_id if different). Nothing is booked."],
             "known_places": sorted(ids)}
     url = (f"https://www.ratehawk.com/cars/?route={p_id},{d_id}&date={pickup_date}T{pickup_time},{dropoff_date}T{dropoff_time}&age={driver_age}&residency={residency}")
-    script = (HERE / "ratehawk_cars.js").read_text(encoding="utf-8").replace("__MAX_CARS__", str(max_cars)).replace("__FILTERS__", json.dumps(filters))
-    return {"url": url, "filters_to_tick": filters, "script": script, "expect": {"pickup": pickup, "pickup_time": pickup_time, "dropoff_time": dropoff_time},
+    script = with_emit((HERE / "ratehawk_cars.js").read_text(encoding="utf-8")).replace("__MAX_CARS__", str(max_cars)).replace("__FILTERS__", json.dumps(filters))
+    return {"required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results.", "url": url, "filters_to_tick": filters, "script": script, "expect": {"pickup": pickup, "pickup_time": pickup_time, "dropoff_time": dropoff_time},
             "steps": ["Open `url` in the operator's logged-in RateHawk tab; if it asks to log in, stop and tell the operator. Wait about 12 seconds for the cards.",
                       "Run `script` with the javascript tool (it ticks the filters, scrolls to load the cars, reads each card). ok=false means do what `error` says; never read the cards by eye.",
                       "Pass its answer text UNCHANGED to compose_answer as site_results [{\"site\": \"ratehawk_cars\", \"result\": <answer>, \"url\": <url>}]; give `pickup_time` there too (the same on every source)."]}

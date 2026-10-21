@@ -17,7 +17,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows
+from myt_mcp.sites import SiteRows, with_emit
 
 NAME = "ratehawk_transfers"
 SOURCE = "RateHawk Transfers"
@@ -34,7 +34,8 @@ def ratehawk_transfers_recipe(pickup_place: str, dropoff_place: str, day: str, p
         raise ValueError("adults must be between 1 and 16")
     ages = children_ages or []
     return {
-        "script": (HERE / "ratehawk_transfers.js").read_text(encoding="utf-8"),
+        "required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results.",
+        "script": with_emit((HERE / "ratehawk_transfers.js").read_text(encoding="utf-8")),
         "expect": {"pickup": pickup_place, "dropoff": dropoff_place, "day": day, "time": pickup_time, "adults": adults, "children": len(ages)},
         "steps": [
             "Open https://www.ratehawk.com/ in the operator's logged-in Chrome, click the Transfers tab, keep 'One way'. The form remembers the last search: replace every field.",

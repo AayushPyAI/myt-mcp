@@ -72,5 +72,5 @@ await (async () => {
   };
   const prices = rows.map((r) => r.price).filter((x) => x != null);
   const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]); const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
-  return JSON.stringify({ ok: true, form, filters_ticked: ticked, rows_read: rows.length, reached_cap: rows.length >= MAX_CARS, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed', rows });
+  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', form, filters_ticked: ticked, rows_read: rows.length, reached_cap: rows.length >= MAX_CARS, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
 })()

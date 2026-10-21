@@ -10,7 +10,9 @@ and sits next to its script (myt_mcp/sites/<name>.js). Modules are discovered au
 from __future__ import annotations
 
 import importlib
+import json
 import pkgutil
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -51,13 +53,14 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
     notes: list[str] = []
     by_price = False
     reads: dict[str, set[str]] = {}
+    problems += check_parts(site_results)
     for item in site_results:
         site = item.get("site", "")
         mod = mods.get(site)
         if mod is None:
             problems.append(f"unknown site '{site}': known sites are {sorted(mods)}")
             continue
-        rows = mod.convert(item.get("result", ""), wishes or {}, (group_for or {}).get(site, getattr(mod, "GROUP", "Options")))
+        rows = mod.convert(expand(item.get("result", "")), wishes or {}, (group_for or {}).get(site, getattr(mod, "GROUP", "Options")))
         problems += rows.problems
         notes += rows.extra_notes
         by_price = by_price or rows.sorted_by_price
@@ -71,3 +74,56 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
         cur = sources.get(site)
         sources[site] = SourceRead(name=src_name, read=len(seen) or None, of=rows.total or (cur.of if cur else None), link=item.get("url") or (cur.link if cur else None))
     return offers, list(sources.values()), problems, by_price, notes
+
+
+
+def with_emit(script: str) -> str:
+    """Adds the short-parts output step (emit.js) to a site script: it must start its body with 'await (async () => {' and end with emit(head, rows)."""
+    head = "await (async () => {\n"
+    if head not in script:
+        raise ValueError("site script must start its body with 'await (async () => {'")
+    return script.replace(head, head + Path(__file__).with_name("emit.js").read_text(encoding="utf-8"), 1)
+
+
+def expand(raw: str) -> str:
+    """The compact form the scripts emit (columns, common values, path base) back to the plain `rows` of dicts the converters read. Other text passes unchanged."""
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw
+    if not isinstance(data, dict) or "cols" not in data:
+        return raw
+    cols, common, base = data.pop("cols"), data.pop("common", None) or {}, data.pop("path_base", "") or ""
+    rows = []
+    for values in data.get("rows", []):
+        row = dict(common)
+        row.update(zip(cols, values))
+        if row.get("path") and "path" in cols:
+            row["path"] = base + row["path"]
+        rows.append(row)
+    data["rows"] = rows
+    return json.dumps(data)
+
+
+def check_parts(site_results: list[dict[str, Any]]) -> list[str]:
+    """Every run of a script is sent in parts: all of them must be here, and together they must hold every row the script says it read."""
+    runs: dict[tuple[str, str], dict[int, int]] = {}
+    meta: dict[tuple[str, str], tuple[int, int]] = {}
+    for item in site_results:
+        try:
+            data = json.loads(item.get("result", ""))
+        except (TypeError, ValueError):
+            continue
+        if isinstance(data, dict) and data.get("parts") and data.get("run"):
+            key = (str(item.get("site", "")), str(data["run"]))
+            runs.setdefault(key, {})[int(data.get("part", 0))] = len(data.get("rows") or [])
+            meta[key] = (int(data["parts"]), int(data.get("rows_read") or 0))
+    problems = []
+    for key, got in runs.items():
+        parts, rows_read = meta[key]
+        missing = [i for i in range(1, parts + 1) if i not in got]
+        if missing:
+            problems.append(f"{key[0]}: part(s) {', '.join(map(str, missing))} of {parts} are missing: run window.__mytParts[<number minus 1>] in the same Chrome tab (the answer's `more` line) and pass each part unchanged as its own item of site_results")
+        elif sum(got.values()) != rows_read:
+            problems.append(f"{key[0]}: the parts hold {sum(got.values())} rows but the script read {rows_read}: run the script again and pass every part unchanged")
+    return problems

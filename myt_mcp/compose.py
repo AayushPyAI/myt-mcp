@@ -236,3 +236,25 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
     if notes.strip():
         lines += ["", "Notes (assistant's judgement, not from a source): " + notes.strip()]
     return {"ok": True, "answer": "\n".join(lines), "next": "Show `answer` to the operator exactly as written. Do not change a number, a pick or a reason. You may add questions after it."}
+
+
+def apply_wishes(offers: list[Offer], wishes: dict | None) -> None:
+    """A row typed in by hand has no `fits` yet. With the operator's wishes, a wish the row cannot show it meets counts as NOT met (never assumed)."""
+    if not wishes:
+        return
+    for o in offers:
+        if o.fits is not None:
+            continue
+        d = o.details or {}
+        ok = True
+        if wishes.get("breakfast"):
+            meal = str(d.get("meal") or "")
+            ok &= bool(re.search(r"breakfast|half board|full board|all inclusive", meal, re.I)) and "no meals" not in meal.lower()
+        if wishes.get("free_cancellation"):
+            ok &= bool(o.flexible) or str(d.get("cancellation") or "").lower().startswith("free cancellation")
+        if wishes.get("stars_min"):
+            try:
+                ok &= float(d.get("stars")) >= float(wishes["stars_min"])
+            except (TypeError, ValueError):
+                ok = False
+        o.fits = ok

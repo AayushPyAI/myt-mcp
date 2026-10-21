@@ -266,3 +266,58 @@ def test_ratehawk_transfers_checks_what_the_page_searched_against_the_request():
     assert any("2027-03-02" in p for p in wrong_day.problems)
     wrong_pax = convert(json.dumps(TRANSFERS_RESULT), {"expect": {"pickup": "FCO", "dropoff": "Mia", "day": "2027-03-01", "time": "16:30", "adults": 3, "children": 0}}, "Transfers")
     assert any("3 adults" in p for p in wrong_pax.problems)
+
+
+
+# ---- compact parts: the script's rows reach the server in short, checked parts ----
+
+import json
+
+
+def _part(run, part, parts, rows, read=3, **extra):
+    head = {"ok": True, "header": "Lisbon: 443 accommodation options available", "sort": "Price (low to high)", "start_page": 1, "pages_read": 1,
+            "price_order": "ascending", "stopped": None, "run": run, "rows_read": read, "part": part, "parts": parts}
+    head.update(extra)
+    cols = ["name", "price", "path"]
+    common = {"stars": 4, "meal": "Breakfast incl.", "cancellation": "Free cancellation", "basis": "for 2 nights for 2 guests"}
+    return json.dumps({**head, "cols": cols, "common": common, "path_base": "/hotel/portugal/lisbon/", "rows": rows})
+
+
+def test_parts_are_joined_decoded_and_checked():
+    from myt_mcp.sites import convert_all, expand
+    a = _part("r1", 1, 2, [["Hotel A", "EUR 100", "mid1/a/"], ["Hotel B", "EUR 110", "mid2/b/"]])
+    b = _part("r1", 2, 2, [["Hotel C", "EUR 120", "mid3/c/"]])
+    plain = json.loads(expand(a))
+    assert plain["rows"][0]["path"] == "/hotel/portugal/lisbon/mid1/a/" and plain["rows"][0]["meal"] == "Breakfast incl." and "cols" not in plain
+    offers, sources, problems, by_price, _ = convert_all([{"site": "ratehawk_hotels", "result": a, "url": "u"}, {"site": "ratehawk_hotels", "result": b, "url": "u"}],
+                                                          {"breakfast": True, "free_cancellation": True})
+    assert not problems and [o.name for o in offers] == ["Hotel A", "Hotel B", "Hotel C"] and offers[0].fits is True and by_price
+    assert offers[2].link == "https://www.ratehawk.com/hotel/portugal/lisbon/mid3/c/"
+    # a missing part is refused, with the way to get it
+    _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": a, "url": "u"}], None)
+    assert any("part(s) 2 of 2 are missing" in p and "__mytParts" in p for p in problems)
+    # rows that do not add up to what the script read are refused
+    _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": _part("r2", 1, 1, [["Hotel A", "EUR 100", "mid1/a/"]], read=3), "url": "u"}], None)
+    assert any("hold 1 rows but the script read 3" in p for p in problems)
+    # two runs (price sort and rating sort) never count as parts of each other
+    other = _part("r9", 1, 1, [["Hotel Z", "EUR 500", "mid9/z/"]], read=1)
+    _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": other, "url": "u"}, {"site": "ratehawk_hotels", "result": a, "url": "u"}, {"site": "ratehawk_hotels", "result": b, "url": "u"}], None)
+    assert not problems
+
+
+def test_with_emit_needs_the_script_shape():
+    from myt_mcp.sites import with_emit
+    assert "const emit" in with_emit("await (async () => {\n  return 1;\n})()")
+    with pytest.raises(ValueError):
+        with_emit("1 + 1")
+
+
+def test_hand_typed_rows_without_a_proof_of_a_wish_do_not_fit():
+    from myt_mcp.compose import apply_wishes
+    ok = Offer(group="Hotels", source="Arbitrip", name="A", price_total=100, currency="EUR", price_basis="whole stay", details={"meal": "Breakfast", "cancellation": "Free cancellation", "stars": 4})
+    cheap = Offer(group="Hotels", source="Arbitrip", name="B", price_total=90, currency="EUR", price_basis="whole stay", details={"meal": "Breakfast", "cancellation": None, "stars": 4})
+    apply_wishes([ok, cheap], {"breakfast": True, "free_cancellation": True, "stars_min": 4})
+    assert ok.fits is True and cheap.fits is False
+    plain = Offer(group="Hotels", source="X", name="C", price_total=1, currency="EUR", price_basis="whole stay")
+    apply_wishes([plain], None)
+    assert plain.fits is None

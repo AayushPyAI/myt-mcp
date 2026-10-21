@@ -60,6 +60,6 @@ await (async () => {
   const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]);
   const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
   const residency = (location.search.match(/[?&]residency=([a-z-]+)/) || [])[1] || null;
-  return JSON.stringify({ ok: true, header, sort: label, residency, start_page: startPage, pages_read: rows.length ? Math.max(...rows.map((r) => r.p)) : 0, rows_read: rows.length,
-    stopped, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed', rows });
+  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', header, sort: label, residency, start_page: startPage, pages_read: rows.length ? Math.max(...rows.map((r) => r.p)) : 0, rows_read: rows.length,
+    stopped, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
 })()

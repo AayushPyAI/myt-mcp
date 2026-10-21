@@ -18,7 +18,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer, SourceRead
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows
+from myt_mcp.sites import SiteRows, with_emit
 
 NAME = "ratehawk_hotels"
 SOURCE = "RateHawk"
@@ -53,13 +53,14 @@ def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: d
     value, label = RATEHAWK_SORTS[sort]
     params += [("sort", value), ("page", "1")]
     url = f"https://www.ratehawk.com/hotel/{slug(country)}/{slug(city)}/?{urlencode(params)}"
-    script = (RECIPES / "ratehawk_hotels.js").read_text(encoding="utf-8").replace("__MAX_PAGES__", str(max_pages)).replace("__EXPECT_SORT__", label)
+    script = with_emit((RECIPES / "ratehawk_hotels.js").read_text(encoding="utf-8")).replace("__MAX_PAGES__", str(max_pages)).replace("__EXPECT_SORT__", label)
     return {
+        "required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results.",
         "url": url, "expect_sort": label, "script": script,
         "steps": ["Open `url` in the operator's logged-in RateHawk tab (Claude in Chrome navigate). If the page asks to log in, stop and tell the operator.",
                   "Wait about 10 seconds until the results show, then run `script` with the javascript tool (it only reads the page and presses Forward).",
                   "If its answer has ok=false, do what `error` says (usually: open the url again) and run it once more; never read the list by eye instead.",
-                  "Pass the answer text, unchanged, as `ratehawk_results` (and this `url` as `ratehawk_urls`) to compose_answer. Run the recipe a second time with sort='rating' and pass both.",
+                  "Pass every part of the answer, unchanged, to compose_answer as items of site_results {\"site\": \"ratehawk_hotels\", \"result\": <part>, \"url\": <this url>}. Run the recipe a second time with sort='rating' and pass those parts too.",
                   "Children: the url already has them (guests=2and6 means 2 adults and a child of 6). One child was tested; with two or more, check the page's guest count says the same."],
         "never": "Do not retype, shorten or summarise the rows: compose_answer reads the script's own text.",
     }

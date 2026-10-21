@@ -91,7 +91,7 @@ def register(mcp: MCPServer) -> None:
         rooms: int = 1,
         meal_plan: Literal["BB", "RO", "HB", "FB", "AI"] = "BB",
     ) -> dict[str, Any]:
-        """USE THIS FIRST for any hotel or room question: find a hotel, room price, hotel availability, breakfast,
+        """Hotel or room question: call task_plan('hotels') FIRST, then use this tool and ratehawk_hotels_recipe_tool: find a hotel, room price, hotel availability, breakfast,
         cancellation terms, "find hotel X for these dates" (מלון). Hotel prices come from RateHawk and Arbitrip, which
         are websites read in the operator's Chrome with Claude in Chrome (never Booking.com, web search or other
         connectors). This tool returns NO prices: it checks the search and returns the exact search values for both
@@ -119,6 +119,7 @@ def register(mcp: MCPServer) -> None:
         rh_dates = f"{check_in.strftime('%d.%m.%Y')}-{check_out.strftime('%d.%m.%Y')}"
         ab_dates = f"check_in={check_in.strftime('%y%m%d')}&check_out={check_out.strftime('%y%m%d')}"
         plan: dict[str, Any] = {
+            "required_next": "Call task_plan('hotels') if you have not, read RateHawk with ratehawk_hotels_recipe_tool and its script, then your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer.",
             "no_prices_here": "This tool gives no prices. Search RateHawk and Arbitrip in Claude in Chrome with the values below.",
             "search": {
                 "destination": name, "check_in": check_in.isoformat(), "check_out": check_out.isoformat(), "nights": nights,
@@ -146,7 +147,7 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool(annotations=PLAN_ONLY)
     @tool_errors
     async def transfer_prices(from_place: str, to_place: str, transfer_date: date, passengers: int = 2) -> dict[str, Any]:
-        """USE THIS FIRST for any private transfer, airport transfer, taxi or shuttle price question (for example
+        """Private transfer, airport transfer, taxi or shuttle price question (call task_plan('transfers') first; for example
         "airport to hotel"). It returns NO price: it returns the playbook and points to kiwitaxi_transfer_prices and mozio_transfer_prices, the live
         price tools (Kiwitaxi first, Mozio where Kiwitaxi has no transfer or as a second price). Never estimate a transfer price or use web search."""
         return {
