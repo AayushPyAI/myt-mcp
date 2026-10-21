@@ -343,3 +343,45 @@ async def test_a_minimal_compose_call_works_and_a_missing_hotel_source_is_refuse
                                                  "not_checked": [{"name": "Arbitrip", "reason": "login/captcha/block: test"}], "myt_supplier": {"Hotel Four": "not checked: test"}})
         d = r.structured_content
         assert d["ok"] is True and "Breakfast included (operator)" in d["answer"] and "Free cancellation (operator)" in d["answer"], d
+
+
+@pytest.mark.anyio
+async def test_ratehawk_hotels_reads_in_the_server_browser_and_refuses_when_logged_out():
+    import json
+    from datetime import date
+
+    from myt_mcp.browser import BrowserError
+    from myt_mcp.tools import ratehawk_live
+
+    class Page:
+        def __init__(self, url, data):
+            self.url, self._data = url, data
+
+        async def goto(self, url, **kw):
+            pass
+
+        async def wait_for_timeout(self, ms):
+            pass
+
+        async def evaluate(self, js):
+            return self._data if js.startswith("window.__mytParts") else "{}"
+
+    class Browser:
+        def __init__(self, page):
+            self.page = page
+
+        async def run(self, origin, start, action):
+            return await action(self.page)
+
+    class Svc:
+        def __init__(self, page):
+            self._b = Browser(page)
+
+        def browser(self):
+            return self._b
+
+    recipe = {"url": "https://www.ratehawk.com/hotel/x/", "script": "await (async () => { return 1; })()"}
+    parts = await ratehawk_live.read_page(Svc(Page("https://www.ratehawk.com/hotel/x/", ["p1", "p2"])), recipe)
+    assert parts == ["p1", "p2"]
+    with pytest.raises(BrowserError, match="not logged in"):
+        await ratehawk_live.read_page(Svc(Page("https://www.ratehawk.com/accounts/login/?next=/", [])), recipe)
