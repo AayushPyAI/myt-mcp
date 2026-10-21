@@ -15,6 +15,7 @@ GUIDE_FILE = Path(__file__).resolve().parent.parent / "instructions" / "claude_p
 # topic -> start of the section heading in the playbook
 TOPICS = {
     "workflow": "Workflow",
+    "capabilities": "What this connector can and cannot do",
     "cost_lines": "How to fill a cost line",
     "myt_filling": "Writing the quote into MYT",
     "reservations": "Supplier reservations, vouchers and reconciliation",
@@ -43,8 +44,9 @@ def sections() -> dict[str, str]:
     blocks = {b.split("\n", 1)[0].strip(): "## " + b.strip() for b in text.split("\n## ")[1:]}   # title -> section
     found = {}
     for topic, heading in TOPICS.items():
-        # an exact title wins ("Rules"), otherwise the title that starts with it ("Flights: SATA (...)")
-        title = heading if heading in blocks else next((t for t in blocks if t.startswith(heading)), None)
-        if title:
-            found[topic] = blocks[title]
+        # an exact title wins ("Rules"), otherwise EVERY title that starts with it, in file order: "Flights" serves SATA,
+        # El Al, Skyscanner and the comparison table, not only the first "Flights: ..." section
+        titles = [heading] if heading in blocks else [t for t in blocks if t.startswith(heading)]
+        if titles:
+            found[topic] = "\n\n".join(blocks[t] for t in titles)
     return found

@@ -57,8 +57,12 @@ class TrenitaliaClient:
         if resp.status_code >= 500:
             raise TrenitaliaError(f"Trenitalia is having problems ({resp.status_code}). Try again later.")
         if resp.status_code == 400 and path.startswith("/ticket"):
-            raise TrenitaliaError("Trenitalia rejected this search (400). Usually the date is too far ahead for its timetable "
-                                  "(it showed trains 11 months ahead but not 14 months ahead), or the two stations cannot be connected. Try a nearer date or check trenitalia.com.")
+            raise TrenitaliaError("Trenitalia rejected this search (400). There are two possible causes and this answer does not say which: "
+                                  "(1) the date is beyond its published timetable (trains were shown about 11 months ahead, not 14); "
+                                  "(2) Trenitalia cannot sell these two stations as one ticket (for example Fiumicino Aeroporto to Firenze, "
+                                  "rejected on every date, even in March 2027). Do not tell the operator which one it is: retry the SAME date "
+                                  "with the city station (Roma Termini instead of Fiumicino Aeroporto). If that works, the date is fine and the "
+                                  "airport leg is a separate transfer (not priced by this tool).")
         if resp.status_code >= 400:
             raise TrenitaliaError(f"Trenitalia could not run this search ({resp.status_code}): {resp.text[:160]}")
         try:

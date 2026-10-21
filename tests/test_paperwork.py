@@ -147,3 +147,13 @@ def test_a_rejected_order_expects_no_documents():
     assert r[1]["missing"] == [] and r[1]["documents_expected"] is False and r[1]["complete"] is False
     assert r[2]["documents_expected"] is True and r[2]["missing"] == ["supplier invoice", "supplier payment"]
     assert result["totals"] == {"reservations": 2, "orders": 2, "product_rows": 2, "complete": 0, "not_expected_rejected": 1, "incomplete": 1}
+
+
+def test_documents_not_passed_are_not_checked_and_never_reported_missing():
+    result = paperwork_check(V3, TODAY, None, None, None)
+    assert "NOT_CHECKED" in result and "never report" in result["NOT_CHECKED"].lower()
+    for row in result["rows"]:
+        assert row["missing"] == [] and row["complete"] is False
+        assert row["voucher"]["found"] is None and row["supplier_invoice"]["found"] is None and row["supplier_payment"]["found"] is None
+    empty = paperwork_check(V3, TODAY, [], [], [])             # read and found nothing: still missing
+    assert "NOT_CHECKED" not in empty and all(r["missing"] for r in empty["rows"] if r["documents_expected"])

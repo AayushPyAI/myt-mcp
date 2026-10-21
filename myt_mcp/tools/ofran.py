@@ -33,7 +33,8 @@ def register(mcp: MCPServer, services: Services) -> None:
     @tool_errors
     async def ofran_find_location(query: str) -> list[dict[str, Any]]:
         """Find Ofran pick-up/drop-off points by city, airport name or IATA code (e.g. "Lisbon", "LIS",
-        "Florence"). Airports come first. Pass the exact `name` to ofran_car_prices."""
+        "Florence"). Airports come first. Pass the exact `name` to ofran_car_prices. NOTE: Ofran blocks this server (HTTP 403 from
+        India) and the agency's price is the net price in the operator's logged-in Chrome: search cars there first (quote_guide('cars'))."""
         if not query or not query.strip():
             raise ToolError("query is empty.")
         return [loc.public() for loc in await services.ofran().find_locations(query)]
@@ -52,7 +53,7 @@ def register(mcp: MCPServer, services: Services) -> None:
         transmission: Transmission = "any",
         max_results: int = 15,
     ) -> dict[str, Any]:
-        """Rental car prices: use for any car hire question (cheapest car, car in a city or airport, רכב שכור). Live car rental offers from Ofran for one rental, cheapest first. `location` is an Ofran point
+        """Rental car prices, FALLBACK ONLY: for car hire questions first search Ofran in the operator's logged-in Chrome (Claude in Chrome, quote_guide('cars')) and read RateHawk Car rental there; this server tool is blocked by Ofran from India (HTTP 403) and gives only the public price, so do not rely on it or explain the 403 as a fault of the operator. Live car rental offers from Ofran for one rental, cheapest first. `location` is an Ofran point
         name or code (check with ofran_find_location when unsure). Prices are Ofran's PUBLIC website price (this server's browser is not logged in, so it is not the agency's net price; for the net price use the operator's logged-in Chrome, see quote_guide('cars'))
         for the whole rental in the listed currency, with insurance excess, deposit and optional extras.
         Each call runs one search on Ofran: don't repeat it for the same dates."""

@@ -86,11 +86,40 @@ async def test_playbook_is_served_by_the_server():
     assert len(INSTRUCTIONS) < 3700 and "quote_guide" in INSTRUCTIONS
     async with Client(create_server(Settings())) as c:
         assert c.instructions == INSTRUCTIONS
+        info = c.server_info                                   # the icon and title a client may show for the connector
+        assert info.title and info.website_url and [i.src for i in info.icons or []] and all(i.src.startswith("https://") for i in info.icons)
         for topic in TOPICS:
             r = await c.call_tool("quote_guide", {"topic": topic})
             assert not r.is_error and r.content[0].text.startswith("## ")
         rules = await c.call_tool("quote_guide", {"topic": "rules"})
         assert rules.content[0].text.startswith("## Rules\n")
+
+
+async def test_capabilities_answer_the_can_you_questions_and_normal_queries_still_point_to_the_playbook():
+    from mcp import Client
+
+    from myt_mcp.app import INSTRUCTIONS, create_server
+    from myt_mcp.config import Settings
+
+    async with Client(create_server(Settings())) as c:
+        text = (await c.call_tool("quote_guide", {"topic": "capabilities"})).content[0].text
+    assert text.startswith("## What this connector can and cannot do")
+    for fact in ("Screen only", "ChangeTripStatus", "Not tested. Do not offer it", "Margin Prices", "Never", "ALLOWED_TRIP_IDS"):
+        assert fact in text, fact
+    assert "connector_capabilities" in INSTRUCTIONS                          # the "can you ... in MYT?" route
+    for normal in ('quote_guide("workflow")', "hotel_prices", "find_trip first", "calculate_quote"):
+        assert normal in INSTRUCTIONS, normal                                  # the normal quote route is untouched
+
+
+async def test_no_hallucination_rules_cover_claims_not_only_prices():
+    from myt_mcp.app import INSTRUCTIONS
+    from myt_mcp.guide import sections
+
+    text = sections()["correct_data"]
+    for rule in ("Never say \"done\" before you have read it back", "Statements about MYT screens", "No general knowledge as facts",
+                 "Always name the trip", "\"I don't know\" and \"not available\" are correct answers", "Quote what you read"):
+        assert rule in text, rule
+    assert "never say \"done\" before reading it back" in INSTRUCTIONS
 
 
 async def test_browser_retries_on_a_fresh_tab_and_explains_the_reason():
@@ -156,3 +185,34 @@ def test_comparison_checklist_is_served_and_pointed_to():
     text = sections()["comparison"]
     assert text.startswith("## Comparison checklist") and all(f"{n}. **" in text for n in range(1, 9))
     assert "quote_guide('comparison')" in REMINDER
+
+
+async def test_connector_capabilities_tool_answers_the_can_you_questions():
+    from mcp import Client
+
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+
+    async with Client(create_server(Settings())) as c:
+        tools = {t.name: t for t in (await c.list_tools()).tools}
+        assert "connector_capabilities" in tools and "CALL THIS FIRST" in tools["connector_capabilities"].description
+        assert tools["connector_capabilities"].annotations.read_only_hint
+        text = (await c.call_tool("connector_capabilities", {})).content[0].text
+    assert "Screen only" in text and "Not tested. Do not offer it" in text and "ChangeTripStatus" in text
+
+
+def test_quote_comes_after_itinerary_and_supplier_reservations():
+    from myt_mcp.app import INSTRUCTIONS
+    from myt_mcp.guide import sections
+
+    text = sections()["workflow"]
+    assert "Step 0" in text and "BEFORE the quote" in text and "Our job is step (d) only" in text
+    assert "supplier reservations" in INSTRUCTIONS and "BEFORE the" in INSTRUCTIONS
+
+
+def test_skyscanner_shows_best_and_cheapest_together_and_asks_the_rest_once():
+    from myt_mcp.guide import sections
+
+    text = "\n".join(sections().values())
+    for rule in ("Best** tab and its **Cheapest** tab together", "Skyscanner's Best", "Ask the operator ONCE", "Want to see more"):
+        assert rule in text, rule

@@ -218,9 +218,11 @@ def register(mcp: MCPServer, services: Services) -> None:
         invoices and supplier payments of THIS trip from its MYT screens (quote_guide("reservations")) and pass them in. Returns one row per
         reservation with found / missing, amount differences, partial or double payments, and documents that match no
         reservation. Pass fresh=true right after a reservation change made via Claude in Chrome, to force a live read.
-        Read only: it creates or changes nothing."""
+        Pass an empty list [] when you READ that screen and found nothing; leave it out only when you did not read it: then
+        it is reported as NOT CHECKED, never as missing. Read only: it creates or changes nothing."""
         return paperwork_check(
             await trip_v3(trip_id, fresh), date.today(),
-            [d.model_dump() for d in vouchers or []], [d.model_dump() for d in supplier_invoices or []],
-            [d.model_dump() for d in supplier_payments or []],
+            None if vouchers is None else [d.model_dump() for d in vouchers],
+            None if supplier_invoices is None else [d.model_dump() for d in supplier_invoices],
+            None if supplier_payments is None else [d.model_dump() for d in supplier_payments],
         )
