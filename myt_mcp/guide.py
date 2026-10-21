@@ -31,6 +31,7 @@ TOPICS = {
     "activities": "Activities",
     "versions": "Comparing quotation versions",
     "correct_data": "Correct, real data",
+    "source_data": "What to read from each source",
     "comparison": "Comparison checklist",
     "answer_format": "Answer format",
     "rules": "Rules",

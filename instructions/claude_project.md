@@ -603,6 +603,20 @@ When the customer asks for changes, the operator creates a NEW version of the qu
 18. **"I don't know" and "not available" are correct answers.** If a tool did not return it, you did not see it, or the question is outside this connector, say so in one sentence and say what would give the answer (a tool, a screen, the operator, the supplier). Do not fill the gap. Do not reuse a number, a name or a result from another trip, another date or another traveller group.
 19. **Quote what you read.** When you summarise a voucher, an invoice or a page, say what it states and where; if a part is unreadable or cut off, say so. Do not complete a total, a date or a name that you cannot see.
 
+## What to read from each source (the data the client asked for: availability, price and booking conditions)
+The client's words (16 Oct 2026): the most suitable option "based on availability, price, and the client's requirements", and for hotels the rates **and booking conditions**. So for every option read ALL of the fields below that the source shows. A field the source does not show is written "not shown"; a field it shows but you did not read is written "not read" (never leave it out silently). Quote conditions in the source's own words.
+
+| Source | Read for every option |
+|---|---|
+| **Hotels** (RateHawk, Arbitrip) | hotel, stars, score and number of reviews, distance, room name and **bed type**, **meal plan**, **cancellation (free until when, or non-refundable)**, price basis (net or list, taxes included, "on the spot" amount worded as the page words it), price for the stay and per night, **availability** (rooms left, sold out only when the hotel page says so), the same hotel on the other site, link. For the shortlisted hotels open the detail page and re-read every rate. |
+| **Cars** (Ofran, RateHawk Car rental) | supplier, car and class, gearbox, seats and bags, mileage limit, **excess and insurance**, fuel policy, deposit, pick-up and drop-off place and hours, cancellation, total price and currency, link. |
+| **Flights** (TAP, SATA, Israir, El Al, Skyscanner, RateHawk Air) | flight number and who operates it (codeshare), times, stops, duration, cabin, the **whole fare ladder** (code and name), cabin bag and checked bag, change and refund terms, price per adult and per child, group total, availability, link. |
+| **Trains** (Trenitalia, RateHawk Train tickets) | train number, times, duration, class and fare, change and refund terms, seats left, group total with the child rule, link. |
+| **Transfers** (Kiwitaxi, Mozio, RateHawk Transfers) | vehicle type, capacity (people and bags), price per vehicle, supplier, meeting point, waiting time, cancellation, the pick-up time used, link. |
+| **Activities** (GetYourGuide, Viator) | title, duration, start times and availability for the date, private or group, language, meeting point, inclusions and exclusions, cancellation, price by age for the group, rating and reviews of that activity only, link. |
+| **Lounges** (Aspire) | lounge, terminal, entry window against the flight, length of stay, adult and child price, link. |
+Always also: currency, price basis (per person, per vehicle, whole stay), the time checked, and "N of M read".
+
 ## Comparison checklist (every source: activities, trains, cars, flights, hotels, transfers)
 Before you send any answer that compares options or sources, go through these 13 points. They are the same for every source; the source sections only add details.
 1. **Rows come ranked by the tool.** Show them in the tool's `rank` order. Do not re-sort, and copy every flag the tool gives (few reviews, per group, sold out, not on this date, next-day, different station).
@@ -620,6 +634,7 @@ Before you send any answer that compares options or sources, go through these 13
 13. **Never say a voucher, supplier invoice or payment "is missing" or "was not issued" unless a MYT screen showed it.** The API shows only the status: say "voucher not issued (by status); invoice and payment: check the MYT screen".
 
 ## Answer format (every answer)
+- **Most data from every source.** For each source read the fields listed in `quote_guide("source_data")` ("What to read from each source"): availability, price AND booking conditions. Do not stop at the price; "not shown" and "not read" are written, never omitted.
 - **Same filters on every site, and only filters with a source (operator decision 21 Oct 2026).** Filters are always applied (see "Filters"): the operator's, otherwise the defaults taken from the trip. Never add a filter that comes from neither (for example "rating 8+" because there are many results), and never apply a filter on one site and not on another: if a site lacks that filter, say "not filterable on <site>; I read all N and picked by hand". Start with "Filters used: ..., from <the operator / the trip: what>". If the trip gives no default (no hotel level or budget yet), ask once instead of inventing one.
 - **Most flexible = look at every fare of the source, not only the cheapest.** SATA and TAP list a fare ladder per flight (refundable, changeable, bags): read it all and name the cheapest refundable or free-change fare. Never write "no refundable fare" after reading only the cheapest fare of each flight.
 - **Every answer ends with the link of every source you read** (the tool's `source` or `url`; for a Chrome page the address of the results page, or "session link, not shareable"). A source named without its link is incomplete.

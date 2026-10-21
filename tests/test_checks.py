@@ -263,3 +263,16 @@ def test_filters_are_always_applied_but_only_with_a_source_and_the_same_on_every
                  "Most flexible = look at every fare", "ends with the link of every source", "you check yourself, never \"say the word\""):
         assert rule in text, rule
     assert "Always apply filters, never read an unfiltered list" in sections()["filters"]
+
+
+def test_source_data_lists_the_fields_to_read_from_every_source():
+    from myt_mcp.guide import TOPICS, sections
+
+    assert "source_data" in TOPICS
+    text = sections()["source_data"]
+    assert text.startswith("## What to read from each source")
+    for source in ("Hotels", "Cars", "Flights", "Trains", "Transfers", "Activities", "Lounges"):
+        assert f"**{source}**" in text, source
+    for field in ("cancellation", "bed type", "excess and insurance", "whole fare ladder", "not shown", "not read"):
+        assert field in text, field
+    assert "quote_guide(\"source_data\")" in sections()["answer_format"]
