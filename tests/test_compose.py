@@ -345,46 +345,42 @@ async def test_a_minimal_compose_call_works_and_a_missing_hotel_source_is_refuse
         assert d["ok"] is True and "Breakfast included (operator)" in d["answer"] and "Free cancellation (operator)" in d["answer"], d
 
 
-@pytest.mark.anyio
-async def test_ratehawk_hotels_reads_in_the_server_browser_and_refuses_when_logged_out():
-    import json
-    from datetime import date
+def test_ratehawk_card_text_becomes_the_script_row_and_missing_fields_stay_none():
+    from myt_mcp.tools.ratehawk_live import parse_card
+    full = parse_card({"name": "Hostel Seven Hills", "stars": 2, "href": "/hotel/portugal/lisbon/mid6956517/hostel_seven_hills/?q=2080", "text": "Hostel Seven Hills\nAvenida Almirante Reis, 66\n1.6 km from the Lisbon center\n133 m from Anjos\n6.4\n27 reviews\n1 / 10\nStandard Double room (shared bathroom)\nfull double bed\nBreakfast incl.\nFree cancellation\nPay by wire transfer\nEUR\u00a0118\nfor 2 nights for 2 guests\nShow all rooms"})
+    assert (full["name"], full["stars"], full["score"], full["reviews"], full["meal"], full["cancellation"], full["bed"], full["basis"]) == (
+        "Hostel Seven Hills", 2, "6.4", "27 reviews", "Breakfast incl.", "Free cancellation", "full double bed", "for 2 nights for 2 guests")
+    assert full["price"].replace("\u00a0", " ") == "EUR 118" and full["path"] == "/hotel/portugal/lisbon/mid6956517/hostel_seven_hills/" and full["distance"].startswith("1.6 km")
+    thin = parse_card({"name": "Back To Lisbon Hostel", "stars": None, "href": None, "text": "Back To Lisbon Hostel\nRua De Santo Amaro\n1.5 km from the Lisbon center\nmax 1\n1 / 10\nStandard Quadruple room\nBreakfast incl.\nFree cancellation\nEUR 131\nfor 2 nights for 2 guests"})
+    assert thin["score"] is None and thin["reviews"] is None and thin["stars"] is None and thin["bed"] is None and thin["room"] == "Standard Quadruple room"
 
-    from myt_mcp.browser import BrowserError
-    from myt_mcp.tools import ratehawk_live
 
-    class Page:
-        def __init__(self, url, data):
-            self.url, self._data = url, data
+def test_a_hotel_with_breakfast_in_its_name_does_not_get_its_name_as_meal_plan():
+    from myt_mcp.tools.ratehawk_live import parse_card
+    row = parse_card({"name": "República Bed & Breakfast & Arts", "stars": 3, "href": "/hotel/p/c/mid1/x/", "text": "República Bed & Breakfast & Arts\nRua X\n3.3 km from the Lisbon center\n9.5\n378 reviews\n1 / 5\nStandard Double room (shared bathroom)\nfull double bed\nBreakfast incl.\nFree cancellation\nEUR 211\nfor 2 nights for 2 guests"})
+    assert row["meal"] == "Breakfast incl." and row["cancellation"] == "Free cancellation"
+    none = parse_card({"name": "Bed & Breakfast Y", "stars": 2, "href": None, "text": "Bed & Breakfast Y\nRua Z\n1 / 3\nSingle room\nNo meals included\nEUR 90"})
+    assert none["meal"] == "No meals included"
 
-        async def goto(self, url, **kw):
-            pass
 
-        async def wait_for_timeout(self, ms):
-            pass
+def test_page_runs_become_one_answer_the_converter_accepts():
+    import json as _json
 
-        async def evaluate(self, js):
-            return self._data if js.startswith("window.__mytParts") else "{}"
-
-    class Browser:
-        def __init__(self, page):
-            self.page = page
-
-        async def run(self, origin, start, action):
-            return await action(self.page)
-
-    class Svc:
-        def __init__(self, page):
-            self._b = Browser(page)
-
-        def browser(self):
-            return self._b
-
-    recipe = {"url": "https://www.ratehawk.com/hotel/x/", "script": "// header comment\nawait (async () => { return 1; })()"}
-    parts = await ratehawk_live.read_page(Svc(Page("https://www.ratehawk.com/hotel/x/", ["p1", "p2"])), recipe)
-    assert parts == ["p1", "p2"]
-    with pytest.raises(BrowserError, match="not logged in"):
-        await ratehawk_live.read_page(Svc(Page("https://www.ratehawk.com/accounts/login/?next=/", [])), recipe)
+    from myt_mcp.sites import convert_all
+    from myt_mcp.tools.ratehawk_live import answer_json
+    row = lambda n, price: {"name": f"H{n}", "stars": 3, "distance": "1 km", "score": "8.0", "reviews": "100 reviews", "room": "Double", "bed": None, "meal": "Breakfast incl.",
+                            "cancellation": "Free cancellation", "payment": None, "price": f"EUR {price}", "basis": "for 2 nights for 2 guests", "path": f"/hotel/p/c/mid{n}/h{n}/", "p": 1}
+    runs = [{"info": {"header": "Lisbon: 443 accommodation options available", "sort": "Price (low to high)", "page": "1"}, "rows": [row(1, 100), row(2, 110)]},
+            {"info": {"header": None, "sort": "Price (low to high)", "page": "2"}, "rows": [row(3, 120)]}]
+    text = answer_json(runs, "Price (low to high)")
+    assert _json.loads(text)["price_order"] == "ascending" and _json.loads(text)["rows_read"] == 3
+    offers, sources, problems, by_price, _ = convert_all([{"site": "ratehawk_hotels", "result": text, "url": "u"}], {"breakfast": True, "free_cancellation": True})
+    assert not problems and len(offers) == 3 and by_price and sources[0].of == 443
+    mixed = answer_json([{"info": {"header": None, "sort": "Price (low to high)", "page": "1"}, "rows": [row(1, 100), row(2, 300), row(3, 200)]}], "Price (low to high)")
+    assert _json.loads(mixed)["price_order"] == "mixed"
+    for bad in (mixed, answer_json([{"info": {"header": None, "sort": "Price (low to high)", "page": "1"}, "rows": [row(1, 200), row(2, 100)]}], "Price (low to high)")):
+        _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": bad, "url": "u"}], None)
+        assert any("not ascending" in q for q in problems)
 
 
 def test_table_is_limited_but_the_picks_use_every_row_and_a_thin_recommendation_is_replaced():

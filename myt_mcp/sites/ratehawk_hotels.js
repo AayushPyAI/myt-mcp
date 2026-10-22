@@ -9,7 +9,7 @@ await (async () => {
   const pageNo = () => parseInt((location.search.match(/[?&]page=(\d+)/) || [])[1] || '1', 10);
   const sortLabel = () => (document.querySelector('.zen-sorter')?.innerText || '').replace(/^\s*Sort by\s*/i, '').trim();
   async function waitForCards(prevFirst) {
-    for (let i = 0; i < 40; i++) {                                   // up to ~20 s
+    for (let i = 0; i < 70; i++) {                                   // up to ~35 s (a search RateHawk has not cached takes its time)
       const c = cardsNow();
       if (c.length && c[0].innerText.split('\n')[0] !== prevFirst) { await wait(700); return true; }
       await wait(500);
@@ -30,7 +30,7 @@ await (async () => {
       reviews: g(/^\d[\d,]*\s+reviews?/i),
       room: iRoom >= 0 ? lines[iRoom + 1] || null : null,
       bed: iRoom >= 0 && lines[iRoom + 2] && !/(meals|breakfast|cancellation|^Pay |^EUR|^[A-Z]{3}\s)/i.test(lines[iRoom + 2]) ? lines[iRoom + 2] : null,
-      meal: g(/(meals|breakfast|half board|full board|all inclusive)/i),
+      meal: lines.slice(iRoom >= 0 ? iRoom + 1 : 1).find((x) => /(meals|breakfast|half board|full board|all inclusive)/i.test(x)) || null,
       cancellation: g(/cancellation/i),
       payment: g(/^Pay /i),
       price: lines.find((x) => /^[A-Z]{3}\s?[\d,]+(\.\d+)?$/.test(x)) || null,
