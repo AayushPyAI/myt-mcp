@@ -106,7 +106,7 @@ def test_ratehawk_recipe_url_and_script_are_built_from_the_search():
 
     r = ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "price_asc", True, True, 4, 2)
     assert r["url"] == ("https://www.ratehawk.com/hotel/portugal/lisbon/?dates=03.05.2027-05.05.2027&guests=2&meal_types=breakfast&payment=freecancellation"
-                        "&stars=4&sort=price.asc&page=1")
+                        "&stars=4.5&sort=price.asc&page=1")
     assert r["expect_sort"] == "Price (low to high)" and "__MAX_PAGES__" not in r["script"] and "const MAX_PAGES = 2;" in r["script"]
     assert "zenpagination-button-next" in r["script"] and "page counter says" in r["script"]
     with pytest.raises(ValueError):
@@ -392,3 +392,72 @@ def test_table_is_limited_but_the_picks_use_every_row_and_a_thin_recommendation_
     assert out["ok"] and a.count("| RateHawk | Hotel ") < 30 and "of the 30 options read" in a
     assert "| Cheapest | RateHawk: Hotel 0 " in a                       # the cheapest is still found among all rows
     assert "| Recommended | RateHawk: Hotel 1 " in a and "is thin" in a  # the thin Best fit (6.4 from 20 reviews) is not the recommendation
+
+
+def test_budget_and_distance_limits_decide_fits_and_a_missing_number_does_not_pass():
+    from myt_mcp.compose import distance_km, meets_limits
+    assert distance_km("1.6 km from the Lisbon center") == 1.6 and distance_km("214 m from the Lisbon center") == 0.214 and distance_km("not shown") is None
+    w = {"max_total": 300, "max_distance_km": 2}
+    assert meets_limits(250, "900 m from the centre", w) and not meets_limits(350, "900 m", w) and not meets_limits(250, "3.3 km from the centre", w)
+    assert not meets_limits(250, None, w) and not meets_limits(None, "1 km", w) and meets_limits(999, None, {})
+
+
+@pytest.mark.anyio
+async def test_ratehawk_hotels_asks_the_operator_first_and_searches_nothing():
+    from mcp import Client
+
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+
+    async with Client(create_server(Settings())) as c:
+        r = await c.call_tool("ratehawk_hotels", {"country": "portugal", "city": "lisbon", "check_in": "2027-05-03", "check_out": "2027-05-05", "breakfast": True, "free_cancellation": True})
+        d = r.structured_content
+        assert d["ok"] is False and d["searched"] is False and len(d["ask_operator"]) == 3 and "operator_answered" in d["next"]
+        r = await c.call_tool("ratehawk_hotels", {"country": "portugal", "city": "lisbon", "check_in": "2027-05-03", "check_out": "2027-05-05", "stars": 4, "budget_per_night": 200})
+        assert len(r.structured_content["ask_operator"]) == 1 and "centre" in r.structured_content["ask_operator"][0]
+
+
+def test_the_table_lists_only_options_that_meet_the_wishes_and_says_how_many_were_left_out():
+    ok = Offer(group="H", source="RateHawk", name="Fits", price_total=200, currency="EUR", price_basis="whole stay", fits=True, details={"stars": 4, "score": "8.5", "reviews": 300, "distance_from_centre": "1 km", "meal": "Breakfast", "cancellation": "Free cancellation", "room_bed": "Double"})
+    far = Offer(group="H", source="RateHawk", name="Too far", price_total=100, currency="EUR", price_basis="whole stay", fits=False, details=dict(ok.details, distance_from_centre="5 km"))
+    out = compose("hotels", ["x (operator)"], [SourceRead(name="RateHawk", read=2, of=9, link="https://x.test/l")], [NotChecked(name="Arbitrip", reason="no browser tool: test")], [ok, far], {}, None, True, "")
+    a = out["answer"]
+    assert "| RateHawk | Fits |" in a and "| RateHawk | Too far |" not in a and "1 of the 2 options read do not meet every wish" in a
+
+
+@pytest.mark.anyio
+async def test_a_block_page_stops_the_read_and_the_same_search_is_reused_for_ten_minutes():
+    from myt_mcp.browser import BrowserError
+    from myt_mcp.tools import ratehawk_live
+
+    class Blocked:
+        url = "https://www.ratehawk.com/hotel/x/?page=1"
+
+        async def goto(self, url, **kw):
+            pass
+
+        async def wait_for_selector(self, sel, **kw):
+            raise TimeoutError("no cards")
+
+        async def evaluate(self, js):
+            return "Please verify you are not a robot"
+
+    with pytest.raises(BrowserError, match="block or a captcha"):
+        await ratehawk_live._read_one(Blocked(), "https://www.ratehawk.com/hotel/x/?page=1", 1, "Price (low to high)")
+
+    runs = []
+
+    class Browser:
+        async def run(self, origin, start, action):
+            runs.append(1)
+            return [{"info": {"header": None, "sort": "s", "page": "1"}, "rows": []}]
+
+    class Svc:
+        def browser(self):
+            return Browser()
+
+    jobs = [("https://www.ratehawk.com/hotel/cache-test/?page=1", 1, "s")]
+    ratehawk_live._cache.clear()
+    await ratehawk_live.read_lists(Svc(), jobs)
+    await ratehawk_live.read_lists(Svc(), jobs)
+    assert len(runs) == 1 and ratehawk_live.checked_at(jobs)

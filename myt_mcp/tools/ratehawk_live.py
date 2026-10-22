@@ -12,7 +12,8 @@ import asyncio
 import json
 import logging
 import re
-from datetime import date
+import time
+from datetime import date, datetime
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
@@ -29,7 +30,13 @@ from myt_mcp.sites.ratehawk_hotels import RATEHAWK_SORTS, ratehawk_hotels_recipe
 log = logging.getLogger("myt_mcp")
 ORIGIN = "https://www.ratehawk.com"
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
+ASK = {"stars": "Minimum star rating? (3, 4, 5 or no preference)", "budget": "Budget per night, in EUR? (or no preference)",
+       "distance": "How far from the centre, or which area? (a distance in km, a neighbourhood, or no preference)"}
 CARD = ".zen-hotelcard-wrapper"
+BLOCK = re.compile(r"captcha|verify (that )?you are|not a robot|access denied|too many requests|unusual traffic|temporarily blocked|rate limit", re.I)
+CACHE_SECONDS = 600       # the same search again within 10 minutes is answered from the last read: fewer requests to RateHawk, and faster
+STAGGER_SECONDS = 0.7     # tabs start one after the other, not all in the same instant
+_cache: dict[tuple, tuple[float, list[dict[str, Any]], str]] = {}
 MAX_TABS = 4
 CARDS_JS = """[...document.querySelectorAll('.zen-hotelcard-wrapper')].map(c => ({
     name: c.querySelector('.zen-hotelcard-name')?.innerText?.trim() || null,
@@ -72,7 +79,13 @@ async def _read_one(page: Any, url: str, want_page: int, want_sort: str) -> dict
             raise
     if "/accounts/login" in page.url:
         raise BrowserError("RateHawk is not logged in in the automation Chrome. Ask the operator to sign in once in that window (scripts/start_all.sh opens it); nothing was typed.")
-    await page.wait_for_selector(CARD, timeout=45000)
+    try:
+        await page.wait_for_selector(CARD, timeout=45000)
+    except Exception:
+        text = await page.evaluate("document.body ? document.body.innerText.slice(0, 800) : ''")
+        if BLOCK.search(text or ""):          # a block or captcha is never worked around and never retried
+            raise BrowserError("RateHawk is showing a block or a captcha. Stop: do not retry and do not try another route. Tell the operator to open the automation Chrome window and look at the page.") from None
+        raise
     await page.wait_for_function("p => new URL(location.href).searchParams.get('page') === String(p)", arg=want_page, timeout=20000)
     await page.wait_for_timeout(700)
     info = await page.evaluate(PAGE_JS)
@@ -93,7 +106,8 @@ async def read_lists(services: Services, jobs: list[tuple[str, int, str]]) -> li
                 queue.put_nowait((k, job))
             results: list[Any] = [None] * len(jobs)
 
-            async def worker(tab: Any) -> None:
+            async def worker(tab: Any, delay: float) -> None:
+                await asyncio.sleep(delay)
                 while not queue.empty():
                     k, (url, n, sort) = queue.get_nowait()
                     try:
@@ -104,13 +118,26 @@ async def read_lists(services: Services, jobs: list[tuple[str, int, str]]) -> li
                         log.info("CHECK ratehawk_hotels: page %s failed (%s), trying once more", n, str(e).splitlines()[0][:120])
                         results[k] = await _read_one(tab, url, n, sort)
 
-            await asyncio.gather(*[worker(t) for t in tabs])
+            await asyncio.gather(*[worker(t, k * STAGGER_SECONDS) for k, t in enumerate(tabs)])
             return results
         finally:
             for t in extra:
                 await t.close()
 
-    return await services.browser().run(ORIGIN, ORIGIN + "/", act)
+    key = tuple(jobs)
+    hit = _cache.get(key)
+    if hit and time.time() - hit[0] < CACHE_SECONDS:
+        return hit[1]
+    results = await services.browser().run(ORIGIN, ORIGIN + "/", act)
+    _cache[key] = (time.time(), results, datetime.now().strftime("%d %b %Y %H:%M"))
+    for old_key in [k for k, v in _cache.items() if time.time() - v[0] > CACHE_SECONDS]:
+        del _cache[old_key]
+    return results
+
+
+def checked_at(jobs: list[tuple[str, int, str]]) -> str:
+    hit = _cache.get(tuple(jobs))
+    return hit[2] if hit else datetime.now().strftime("%d %b %Y %H:%M")
 
 
 def answer_json(runs: list[dict[str, Any]], sort_label: str) -> str:
@@ -126,14 +153,22 @@ def register(mcp: MCPServer, services: Services) -> None:
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     async def ratehawk_hotels(country: str, city: str, check_in: date, check_out: date, adults: int = 2, children_ages: list[int] | None = None,
-                              breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, pages: int = 3, show: int = 12,
+                              breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, budget_per_night: float | None = None,
+                              max_distance_km: float | None = None, operator_answered: bool = False, pages: int = 3, show: int = 12,
                               myt_supplier: dict[str, str] | None = None) -> dict[str, Any]:
         """HOTELS ON RATEHAWK IN ONE CALL: the server opens RateHawk in its own logged-in browser, reads the price-sorted list (`pages` x 20 hotels)
         and the rating-sorted list, checks sort, page and count, and returns `answer`: the finished table with Cheapest / Best fit / Most flexible /
         Recommended, cautions and links. Show `answer` unchanged; do not rewrite it. `country` and `city` are the words in RateHawk's address
-        (portugal, lisbon). `stars` = minimum stars; `show` = rows in the table (the picks always use every row read). Arbitrip is not read by this
+        (portugal, lisbon). ASK FIRST: if the operator has not given minimum `stars`, `budget_per_night` (EUR) and `max_distance_km` from the centre, the
+        tool does not search: it returns `ask_operator`; ask those questions in ONE message, wait for the reply, then call again with the answers.
+        Set `operator_answered`=true (for "no preference") ONLY after the operator replied in this chat. `show` = rows in the table (the picks always use every row read). Arbitrip is not read by this
         tool: read it in Claude in Chrome and say so in your reply. If it says RateHawk is not logged in, tell the operator to sign in once in the
         automation Chrome window; never try another route."""
+        missing = [q for q, given in ((ASK["stars"], stars is not None), (ASK["budget"], budget_per_night is not None), (ASK["distance"], max_distance_km is not None)) if not given]
+        if missing and not operator_answered:
+            return {"ok": False, "ask_operator": missing, "searched": False,
+                    "next": "Nothing was searched. Ask the operator these questions in ONE message (add the breakfast / free cancellation / children's ages question only if the request did "
+                            "not say them), wait for the reply, then call ratehawk_hotels again with the answers. For 'no preference' leave that value out and set operator_answered=true."}
         try:
             price_run = ratehawk_hotels_recipe(country, city, check_in, check_out, adults, "price_asc", breakfast, free_cancellation, stars, pages, children_ages)
             rating_run = ratehawk_hotels_recipe(country, city, check_in, check_out, adults, "rating", breakfast, free_cancellation, stars, 1, children_ages)
@@ -145,7 +180,9 @@ def register(mcp: MCPServer, services: Services) -> None:
         price_runs, rating_runs = runs[:pages], runs[pages:]
         items = [{"site": "ratehawk_hotels", "result": answer_json(price_runs, price_label), "url": price_run["url"]},
                  {"site": "ratehawk_hotels", "result": answer_json(rating_runs, rating_label), "url": rating_run["url"]}]
-        wishes = {"breakfast": breakfast, "free_cancellation": free_cancellation, "stars_min": stars}
+        nights = (check_out - check_in).days
+        wishes = {"breakfast": breakfast, "free_cancellation": free_cancellation, "stars_min": stars, "max_distance_km": max_distance_km,
+                  "max_total": budget_per_night * nights if budget_per_night is not None else None}
         offers, sources, problems, by_price, notes = convert_all(items, wishes)
         if problems:
             log.info("CHECK ratehawk_hotels refused: %s", "; ".join(dict.fromkeys(problems))[:800])
@@ -155,9 +192,11 @@ def register(mcp: MCPServer, services: Services) -> None:
             src.link = f"{price_run['url']} (price-sorted) and {rating_run['url']} (rating-sorted)"
         filters = [f"{label} (operator)" for on, label in ((breakfast, "Breakfast included"), (free_cancellation, "Free cancellation")) if on]
         filters += [f"{stars}+ stars (operator)"] if stars else []
+        filters += [f"budget up to {budget_per_night:g} per night, {budget_per_night * nights:g} for {nights} night(s) (operator)"] if budget_per_night is not None else []
+        filters += [f"within {max_distance_km:g} km of the centre (operator)"] if max_distance_km is not None else []
         filters.append("Guests: " + " and ".join([f"{adults} adults"] + [f"child {a}" for a in children_ages or []]) + " (operator)")
         apply_wishes(offers, wishes)
         out = compose("hotels", filters, sources, [NotChecked(name="Arbitrip", reason="no browser tool for Arbitrip in this tool: read it separately")],
-                      offers, myt_supplier or {}, None, by_price, " ".join(notes), max_rows=show)
+                      offers, myt_supplier or {}, None, by_price, " ".join(notes), max_rows=show, checked_at=f"RateHawk read at {checked_at(jobs)} (server time; the same search is reused for {CACHE_SECONDS // 60} minutes)")
         log.info("CHECK ratehawk_hotels ok=%s offers=%s problems=%s", out.get("ok"), len(offers), "; ".join(out.get("problems", []))[:600])
         return out

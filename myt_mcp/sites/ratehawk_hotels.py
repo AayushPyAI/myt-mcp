@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp.compose import Offer, SourceRead
+from myt_mcp.compose import Offer, SourceRead, meets_limits
 from myt_mcp.errors import tool_errors
 from myt_mcp.sites import SiteRows, with_emit
 
@@ -48,8 +48,10 @@ def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: d
         params.append(("meal_types", "breakfast"))
     if free_cancellation:
         params.append(("payment", "freecancellation"))
-    if stars:
-        params.append(("stars", str(stars)))
+    if stars:      # RateHawk writes several levels joined by dots: "4 stars and up" is stars=4.5 (seen on the page, 22 Oct 2026); stars=4 alone is exactly 4
+        if not 1 <= stars <= 5:
+            raise ValueError("stars must be 1-5 (the minimum star rating)")
+        params.append(("stars", ".".join(str(s) for s in range(stars, 6))))
     value, label = RATEHAWK_SORTS[sort]
     params += [("sort", value), ("page", "1")]
     url = f"https://www.ratehawk.com/hotel/{slug(country)}/{slug(city)}/?{urlencode(params)}"
@@ -118,6 +120,7 @@ def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, 
                     ok &= canc.lower().startswith("free cancellation")
                 if wishes.get("stars_min"):
                     ok &= bool(stars) and stars >= int(wishes["stars_min"])
+                ok &= meets_limits(price, r.get("distance"), wishes)
                 fits = ok
             path = r.get("path") or f"{r.get('name')}-{r.get('price')}"
             offer = Offer(group=group, source="RateHawk", name=r.get("name") or "not shown", price_total=price, currency=cur,

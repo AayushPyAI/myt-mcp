@@ -126,6 +126,29 @@ def _primary_currency(rows: list[Offer]) -> str | None:
     return max(counts, key=lambda c: (counts[c], c == pool[0].currency))
 
 
+def distance_km(text: Any) -> float | None:
+    """'1.6 km from the Lisbon center' -> 1.6, '214 m from ...' -> 0.214; None when the text has no distance."""
+    m = re.match(r"\s*([\d.,]+)\s*(km|m)\b", str(text or ""), re.I)
+    if not m:
+        return None
+    try:
+        value = float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+    return value if m.group(2).lower() == "km" else value / 1000
+
+
+def meets_limits(price: float | None, distance_text: Any, wishes: dict[str, Any]) -> bool:
+    """The operator's budget (whole stay) and distance limits; a row that cannot show the number does not meet a limit that was asked."""
+    if wishes.get("max_total") is not None and (price is None or price > float(wishes["max_total"])):
+        return False
+    if wishes.get("max_distance_km") is not None:
+        km = distance_km(distance_text)
+        if km is None or km > float(wishes["max_distance_km"]):
+            return False
+    return True
+
+
 def _solid(o: Offer) -> bool:
     """A hotel whose own numbers are not thin: score 7.5 or more from at least 50 reviews."""
     try:
@@ -210,7 +233,7 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool) -> tuple[list[tup
 
 
 def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
-            myt_supplier: dict[str, str], pickup_time: str | None, sorted_by_price: bool, notes: str, max_rows: int | None = None) -> dict[str, Any]:
+            myt_supplier: dict[str, str], pickup_time: str | None, sorted_by_price: bool, notes: str, max_rows: int | None = None, checked_at: str | None = None) -> dict[str, Any]:
     problems = validate(kind, filters_used, sources_read, not_checked, offers, myt_supplier, pickup_time)
     if problems:
         return {"ok": False, "problems": problems, "next": "Fix every problem (read the source, or write an allowed reason / the missing field) and call compose_answer again. Do not write the answer yourself."}
@@ -220,6 +243,8 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
                  + " | Not checked: " + ("; ".join(f"{n.name} ({n.reason})" for n in not_checked) or "none"))
     if filters_used:
         lines.append("Filters used: " + "; ".join(filters_used))
+    if checked_at:
+        lines.append(f"Checked: {checked_at}")
     if pickup_time:
         lines.append(f"Pick-up time used on every source: {pickup_time}")
     gaps: dict[str, int] = {}
@@ -232,7 +257,9 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
         lines += ["", f"### {g}", "", "| Source | Option | " + " | ".join(k.replace("_", " ") for k in keys) + " | Price | Basis | Quotable | Link |",
                   "|" + "---|" * (len(keys) + 6)]
         pk, pnotes = picks(kind, rows, sorted_by_price)
-        ordered = sorted(rows, key=lambda r: (r.price_total is None, r.price_total or 0))
+        kept = [o for o in rows if o.fits is not False]
+        pool = kept if kept else rows        # an option that clearly misses a wish of the operator is not listed (rows without wishes, such as comparison rows, stay)
+        ordered = sorted(pool, key=lambda r: (r.price_total is None, r.price_total or 0))
         shown = ordered
         if max_rows and len(ordered) > max_rows:       # the picks always use EVERY row read; the table shows the cheapest, the picks and (hotels) the best rated
             keep = {id(o) for o in ordered[:max_rows]}
@@ -243,6 +270,9 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
             show_note = f"Showing {len(shown)} of the {len(ordered)} options read: the cheapest, the picks and the best rated. The picks are chosen from all {len(ordered)}."
         else:
             show_note = None
+        if len(pool) < len(rows):
+            dropped = f"{len(rows) - len(pool)} of the {len(rows)} options read do not meet every wish of the operator and are not in the table."
+            show_note = f"{show_note} {dropped}" if show_note else dropped
         for o in shown:
             cells = []
             for k in keys:
@@ -290,4 +320,5 @@ def apply_wishes(offers: list[Offer], wishes: dict | None) -> None:
                 ok &= float(d.get("stars")) >= float(wishes["stars_min"])
             except (TypeError, ValueError):
                 ok = False
+        ok &= meets_limits(o.price_total, d.get("distance_from_centre"), wishes)
         o.fits = ok
