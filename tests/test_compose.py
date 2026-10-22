@@ -853,3 +853,56 @@ async def test_skyscanner_tool_asks_first():
         assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 2
         r = (await c.call_tool("skyscanner_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06", "direct_only": False, "cabin": "economy", "children_ages": [6]})).structured_content
         assert "childrenv2=6" in r["url"] and r["wishes"]["expect"]["children"] == 1 and any("Best and Cheapest" in f for f in r["filters_used"])
+
+
+def _elal(rows, **head):
+    base = {"ok": True, "route": ["TLV", "LIS"], "trip": "One way", "day": "2027-03-01", "pax": 3, "settled": True, "english": True, "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _el(dep="13:40", arr="17:50", stops="Non-stop", eco=432, biz=1146, left=2, prem=None, flights=("LY375",)):
+    f = lambda p, left=None, lowest=False: {"price": p, "currency": "USD", "lowest": lowest, "left": left} if p else None
+    return {"dep": dep, "arr": arr, "from": "TLV", "to": "LIS", "stops": stops, "duration": "06h 10m", "flights": list(flights), "operated": True, "eco": f(eco, None, True), "prem": f(prem), "biz": f(biz, left)}
+
+
+def test_elal_asks_first_gives_the_steps_and_checks_what_the_page_searched():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.elal import elal_recipe
+    r = elal_recipe("tlv", "lis", date(2027, 3, 1), 2, 1, 0, 0, "any", False)
+    assert r["url"].endswith("lang=en") and r["expect"]["pax"] == 3 and r["expect"]["leg"] == "TLV to LIS, 01 Mar 2027" and any("Modify" in s for s in r["steps"]) and "const" in r["script"]
+    with pytest.raises(ValueError, match="IATA"):
+        elal_recipe("Tel Aviv", "LIS", date(2027, 3, 1))
+    with pytest.raises(ValueError, match="infants"):
+        elal_recipe("TLV", "LIS", date(2027, 3, 1), 1, 0, 0, 2)
+    exp = r["expect"]
+    run = lambda text, e=exp: convert_all([{"site": "elal", "result": text, "url": "u"}], {"expect": e})
+    offers, sources, problems, _, notes = run(_elal([_el()]))
+    assert not problems and len(offers) == 2 and (sources[0].read, sources[0].of) == (1, 1) and all(o.quotable for o in offers)
+    assert offers[0].price_total == 1296 and offers[0].currency == "USD" and "432 USD per passenger x 3" in offers[0].price_basis and offers[0].details["per_person"].startswith("432 USD")
+    assert offers[0].details["fare"].startswith("ECONOMY (lowest") and offers[1].details["seats_left"] == "2 left at this price" and offers[0].group == "TLV to LIS, 01 Mar 2027"
+    assert any("not TLV to LIS" in p for p in run(_elal([_el()], route=["TLV", "FCO"]))[2])
+    assert any("not 2027-03-01" in p for p in run(_elal([_el()], day="2027-03-02"))[2])
+    assert any("1 passengers, not 3" in p for p in run(_elal([_el()], pax=1))[2])
+    assert any("not 'One way'" in p for p in run(_elal([_el()], trip="Round trip"))[2])
+    assert any("not in English" in p for p in run(_elal([_el()], english=False))[2])
+    assert any("still adding" in p for p in run(_elal([_el()], settled=False))[2])
+    biz = dict(exp, cabin="business")
+    only = convert_all([{"site": "elal", "result": _elal([_el(prem=900)]), "url": "u"}], {"expect": biz})[0]
+    assert [o.details["fare"] for o in only] == ["BUSINESS"]
+    stop = dict(exp, direct_only=True)
+    got = convert_all([{"site": "elal", "result": _elal([_el(), _el(dep="06:00", stops="1 stop")]), "url": "u"}], {"expect": stop})[0]
+    assert [o.fits for o in got] == [True, True, False, False]
+
+
+@pytest.mark.anyio
+async def test_elal_tool_asks_first():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        asked = (await c.call_tool("elal_recipe", {"origin": "TLV", "destination": "LIS", "day": "2027-03-01"})).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 2
+        r = (await c.call_tool("elal_recipe", {"origin": "TLV", "destination": "LIS", "day": "2027-03-01", "direct_only": True, "cabin": "economy", "adults": 2, "children": 1})).structured_content
+        assert r["wishes"]["expect"]["pax"] == 3 and r["wishes"]["expect"]["direct_only"] is True and any("Direct flights only" in f for f in r["filters_used"]) and r["steps"]
