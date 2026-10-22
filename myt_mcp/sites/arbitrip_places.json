@@ -1,0 +1,4 @@
+{
+  "_note": "Arbitrip's own place ids (Google place ids) for the results address (place_id=...). Learned from Arbitrip: search the city once, then read place_id from the results address. Add new cities here.",
+  "lisbon": "ChIJO_PkYRozGQ0R0DaQ5L3rAAQ"
+}

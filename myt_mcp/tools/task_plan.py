@@ -54,7 +54,7 @@ PLANS: dict[str, dict[str, Any]] = {
         "ask_once": ["stars, budget per night and area / longest distance from the centre (when the trip has no hotel yet)", "meal plan and free cancellation: required or not", "adults and children's ages"],
         "sources": [
             {"name": "RateHawk", "how": "ratehawk_hotels_recipe (it asks the operator first, then you open its url and run its script in Claude in Chrome: 30 hotels a batch, offset for more), compose_answer with its wishes and filters_used", "use": "always"},
-            {"name": "Arbitrip", "how": "Claude in Chrome", "use": "always"},
+            {"name": "Arbitrip", "how": "arbitrip_hotels_recipe (same questions and wishes as RateHawk; open its url, run its script in Claude in Chrome; its rows are comparison only: the list price can be a non-refundable room, so read the hotel page of the hotels the operator wants)", "use": "always"},
             {"name": "the hotel's own site", "how": "Claude in Chrome, only for a hotel the operator names and with her OK", "use": "optional"},
         ],
         "fields": ["stars, score and reviews", "distance from the centre", "room and bed type", "meal plan", "cancellation (free until when)", "price basis (net or list, taxes, 'on the spot')", "availability", "link"],

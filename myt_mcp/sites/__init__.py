@@ -27,6 +27,7 @@ class SiteRows:
     problems: list[str] = field(default_factory=list)
     sorted_by_price: bool = False
     extra_notes: list[str] = field(default_factory=list)
+    read_rows: bool = False           # True when `read` / `total` count rows (rooms of a hotel), not the offers that are kept
 
 
 def modules() -> dict[str, Any]:
@@ -53,6 +54,7 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
     notes: list[str] = []
     by_price = False
     reads: dict[str, set[str]] = {}
+    counted: dict[str, tuple[int, int]] = {}
     problems += check_parts(site_results)
     for item in site_results:
         site = item.get("site", "")
@@ -72,7 +74,12 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
                 offers.append(o)
         src_name = getattr(mod, "SOURCE", site)
         cur = sources.get(site)
-        sources[site] = SourceRead(name=src_name, read=len(seen) or None, of=rows.total or (cur.of if cur else None), link=item.get("url") or (cur.link if cur else None))
+        if rows.read_rows:       # e.g. the rooms read on hotel pages: every room read counts, one offer is kept per hotel
+            counted[site] = (counted.get(site, (0, 0))[0] + (rows.read or 0), counted.get(site, (0, 0))[1] + (rows.total or 0))
+            read, of = counted[site]
+        else:
+            read, of = len(seen) or None, rows.total or (cur.of if cur else None)
+        sources[site] = SourceRead(name=src_name, read=read, of=of, link=item.get("url") or (cur.link if cur else None))
     return offers, list(sources.values()), problems, by_price, notes
 
 

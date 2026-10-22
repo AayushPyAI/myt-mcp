@@ -109,7 +109,7 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
     if kind == "hotels":      # the agency compares RateHawk and Arbitrip for every hotel request: a source neither read nor excused is a hole in the answer
         covered = names | {n.name.lower() for n in not_checked}
         for src in ("ratehawk", "arbitrip"):
-            if src not in covered:
+            if not any(c.startswith(src) for c in covered):
                 problems.append(f"{src.capitalize()} is neither in sources_read nor in not_checked: read it (see task_plan) or give an allowed reason in not_checked")
     for o in offers:
         if o.source.lower() not in names:
@@ -134,7 +134,7 @@ def _primary_currency(rows: list[Offer]) -> str | None:
 
 def distance_km(text: Any) -> float | None:
     """'1.6 km from the Lisbon center' -> 1.6, '214 m from ...' -> 0.214; None when the text has no distance."""
-    m = re.match(r"\s*([\d.,]+)\s*(km|m)\b", str(text or ""), re.I)
+    m = re.match(r"\s*\(?\s*([\d.,]+)\s*(km|m)\b", str(text or ""), re.I)      # "(0.9 km from center)" (Arbitrip) and "214 m from the Lisbon center" (RateHawk)
     if not m:
         return None
     try:
@@ -312,7 +312,7 @@ def apply_wishes(offers: list[Offer], wishes: dict | None) -> None:
     if not wishes:
         return
     for o in offers:
-        if o.fits is not None:
+        if o.fits is not None or not o.quotable:      # a comparison row (its cancellation is not in the list) is never judged from what the list lacks
             continue
         d = o.details or {}
         ok = True

@@ -508,3 +508,108 @@ def test_hotel_options_of_one_stay_in_separate_source_groups_are_refused():
     assert one["ok"] is True and "RateHawk: RateHawk hotel - 234.00 EUR" in one["answer"]
     two_cities = compose("hotels", ["x (operator)"], sources, [], [mk("Lisbon", "RateHawk", 234), mk("Lisbon", "Arbitrip", 279), mk("Porto", "RateHawk", 150), mk("Porto", "Arbitrip", 160)], {}, None, True, "")
     assert two_cities["ok"] is True
+
+
+# ---- Arbitrip hotels (list rows are comparison only) ----
+
+def _arb(rows, **head):
+    base = {"ok": True, "sort": "Price (Low to High)", "contract": "Selected Places", "filters_in_url": [], "breakfast_filter": True, "approx_total": 105, "offset": 0, "price_order": "ascending",
+            "cols": ["name", "score", "label", "reviews", "area", "distance", "price", "per_night"], "common": {"stars": 4, "tax_included": True}, "path_base": "", "run": "r1", "part": 1, "parts": 1, "rows_read": len(rows), "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def test_arbitrip_url_carries_the_operators_filters_as_changes_from_the_agency_defaults(monkeypatch):
+    import urllib.parse
+    from datetime import date
+
+    from myt_mcp.sites.arbitrip_hotels import arbitrip_hotels_recipe, results_url
+
+    url, keys = results_url("PLACE", "CONTRACT", date(2027, 5, 3), date(2027, 5, 5), 2, 4, True, 250, 2.5)
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    assert q["check_in"] == ["270503"] and q["check_out"] == ["270505"] and q["guests"] == ["2"] and q["contract_id"] == ["CONTRACT"] and q["max_distance"] == ["3"] and q["max_price_per_night"] == ["250"]
+    assert json.loads(q["stars"][0]) == {"2": False, "3": False}                  # 4 stars and up = the default 2-5 minus 2 and 3
+    assert json.loads(q["categories"][0]) == {"Apartment": True, "Other": True} and json.loads(q["review"][0]) == {"Poor": True}      # no filter the operator did not name
+    assert json.loads(q["amenities"][0]) == {"BREAKFAST_INCLUDED": True} and q["sort"] == ["Price (Low to High)"]
+    one, _ = results_url("P", "C", date(2027, 5, 3), date(2027, 5, 5), 2, 1, False, None, None)
+    assert json.loads(urllib.parse.parse_qs(urllib.parse.urlparse(one).query)["stars"][0]) == {"1": True} and "max_price_per_night" not in one and "amenities" not in one
+    none, _ = results_url("P", "C", date(2027, 5, 3), date(2027, 5, 5), 2, None, False, None, None)
+    assert json.loads(urllib.parse.parse_qs(urllib.parse.urlparse(none).query)["stars"][0]) == {"1": True}
+    monkeypatch.delenv("ARBITRIP_CONTRACT_ID", raising=False)
+    assert arbitrip_hotels_recipe("Lisbon", date(2027, 5, 3), date(2027, 5, 5))["needs_contract_id"] is True
+    monkeypatch.setenv("ARBITRIP_CONTRACT_ID", "CONTRACT")
+    assert arbitrip_hotels_recipe("Lisbon", date(2027, 5, 3), date(2027, 5, 5), stars=4, limit=30)["filters_in_url"][-1] == "sort"
+    assert arbitrip_hotels_recipe("Atlantis", date(2027, 5, 3), date(2027, 5, 5))["needs_place_id"] == "Atlantis"
+    with pytest.raises(ValueError, match="children"):
+        arbitrip_hotels_recipe("Lisbon", date(2027, 5, 3), date(2027, 5, 5), children_ages=[6])
+
+
+def test_arbitrip_list_rows_are_comparison_only_and_never_a_pick_when_cancellation_matters():
+    from myt_mcp.sites import convert_all
+
+    arb = _arb([["Hotel Principe Real", "8.6", "Very Good", "824", "Near Liberdade", "(0.9 km from center)", 135, 67], ["Luzeiros Suites", "8.8", "Very Good", "2,396", "Near X", "(2.2 km from center)", 252, 126]])
+    offers, sources, problems, by_price, notes = convert_all([{"site": "arbitrip_hotels", "result": arb, "url": "https://app.arbitrip.com/results"}], {"breakfast": True, "free_cancellation": True, "max_distance_km": 2})
+    assert not problems and by_price and sources[0].name == "Arbitrip" and sources[0].of == 105
+    assert all(o.quotable is False and o.group == "Hotels" for o in offers)
+    assert offers[0].fits is None and offers[1].fits is False                    # unknown cancellation, and the second is beyond 2 km
+    assert "non-refundable" in offers[0].details["cancellation"] and any("comparison only" in n for n in notes)
+    plain, _, _, _, _ = convert_all([{"site": "arbitrip_hotels", "result": arb, "url": "u"}], None)
+    assert plain[0].fits is True
+    bad = _arb([["A", "8", "Good", "10", "x", "(1 km from center)", 200, 100]], price_order="not ascending")
+    assert any("not in ascending order" in p for p in convert_all([{"site": "arbitrip_hotels", "result": bad, "url": "u"}], None)[2])
+    assert any("script reported" in p for p in convert_all([{"site": "arbitrip_hotels", "result": json.dumps({"ok": False, "error": "x"}), "url": "u"}], None)[2])
+
+
+def test_the_picks_use_ratehawk_when_arbitrip_cannot_confirm_cancellation():
+    rh = Offer(group="Hotels", source="RateHawk", name="RH hotel", price_total=234, currency="EUR", price_basis="whole stay", fits=True,
+               details={"stars": 4, "score": "8.5", "reviews": 300, "distance_from_centre": "1 km", "meal": "Breakfast", "cancellation": "Free cancellation", "room_bed": "Double"})
+    ab = Offer(group="Hotels", source="Arbitrip", name="AB hotel", price_total=135, currency="EUR", price_basis="whole stay", fits=None, quotable=False,
+               details={"stars": 4, "score": "8.6", "reviews": 824, "distance_from_centre": "0.9 km", "meal": "Breakfast included (filter on in the list)", "cancellation": "not in the list", "room_bed": None})
+    out = compose("hotels", ["x (operator)"], [SourceRead(name="RateHawk", read=1, of=9, link="https://x.test/a"), SourceRead(name="Arbitrip", read=1, of=100, link="https://x.test/b")], [], [rh, ab], {}, None, True, "")
+    a = out["answer"]
+    assert out["ok"] and "| Best fit | RateHawk: RH hotel" in a and "| Recommended | RateHawk: RH hotel" in a and "| RateHawk | RH hotel |" in a and "| Arbitrip | AB hotel |" in a
+    assert "comparison only" in a
+
+
+def _rooms(rows, **head):
+    base = {"ok": True, "hotel": "Hotel Principe Real", "hotel_path": "/hotel/hotel-principe-real/5ab3", "stars": 4, "score": "8.6", "reviews": "824", "distance": "0.9 km from center", "price_order": "ascending",
+            "cols": ["room", "cancellation", "price", "per_night"], "common": {"meal": "Breakfast Included"}, "path_base": "", "run": "r", "part": 1, "parts": 1, "rows_read": len(rows), "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def test_arbitrip_rooms_confirm_free_cancellation_and_say_what_the_cheapest_room_is():
+    from myt_mcp.sites import convert_all
+
+    rooms = _rooms([["Run Of The House", "Non refundable", 135, 67], ["Run Of The House", "Free cancellation before Apr 24, 2027 11:59 PM (GMT)", 279, 139],
+                    ["Deluxe Room", "Free cancellation before Apr 24, 2027 11:59 PM (GMT)", 294, 147]])
+    wishes = {"breakfast": True, "free_cancellation": True, "stars_min": 4, "max_distance_km": 3, "arbitrip_link_query": "place_id=P&check_in=270503&check_out=270505&guests=2&rooms=1&contract_id=C"}
+    offers, sources, problems, _, notes = convert_all([{"site": "arbitrip_rooms", "result": rooms, "url": "u"}], wishes)
+    assert not problems and len(offers) == 1
+    o = offers[0]
+    assert o.price_total == 279 and o.fits is True and o.flexible is True and o.quotable is True and o.name == "Hotel Principe Real - Run Of The House"
+    assert o.details["cancellation"].startswith("Free cancellation before Apr 24, 2027") and o.link == "https://app.arbitrip.com/hotel/hotel-principe-real/5ab3?" + wishes["arbitrip_link_query"]
+    assert any("cheapest room overall is 135" in n and "Non refundable" in n for n in notes)
+    assert o.source == "Arbitrip hotel page" and sources[0].name == "Arbitrip hotel page" and (sources[0].read, sources[0].of) == (3, 3)
+    none, _, _, _, notes2 = convert_all([{"site": "arbitrip_rooms", "result": _rooms([["Std", "Non refundable", 135, 67]]), "url": "u"}], {"free_cancellation": True})
+    assert none == [] and any("none of its 1 rooms meets every wish" in n for n in notes2)
+    assert any("script reported" in p for p in convert_all([{"site": "arbitrip_rooms", "result": json.dumps({"ok": False, "error": "dates"}), "url": "u"}], None)[2])
+
+
+@pytest.mark.anyio
+async def test_arbitrip_tools_exist_and_the_rooms_script_checks_the_dates(monkeypatch):
+    from mcp import Client
+
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+
+    monkeypatch.setenv("ARBITRIP_CONTRACT_ID", "CONTRACT")
+    async with Client(create_server(Settings())) as c:
+        names = {t.name for t in (await c.list_tools()).tools}
+        assert {"arbitrip_hotels_recipe", "arbitrip_rooms_recipe"} <= names
+        asked = (await c.call_tool("arbitrip_hotels_recipe", {"city": "lisbon", "check_in": "2027-05-03", "check_out": "2027-05-05"})).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3
+        r = (await c.call_tool("arbitrip_hotels_recipe", {"city": "Lisbon", "check_in": "2027-05-03", "check_out": "2027-05-05", "stars": 4, "breakfast": True, "operator_answered": True, "offset": 30})).structured_content
+        assert "contract_id=CONTRACT" in r["url"] and "const SKIP = 30;" in r["script"] and "const LIMIT = 30;" in r["script"] and "offset=60" in r["more"]
+        rooms = (await c.call_tool("arbitrip_rooms_recipe", {"city": "lisbon", "check_in": "2027-05-03", "check_out": "2027-05-05"})).structured_content
+        assert '"check_in": "270503"' in rooms["script"] and rooms["link_query"].endswith("contract_id=CONTRACT") and "place_id=ChIJ" in rooms["link_query"]
