@@ -613,3 +613,22 @@ async def test_arbitrip_tools_exist_and_the_rooms_script_checks_the_dates(monkey
         assert "contract_id=CONTRACT" in r["url"] and "const SKIP = 30;" in r["script"] and "const LIMIT = 30;" in r["script"] and "offset=60" in r["more"]
         rooms = (await c.call_tool("arbitrip_rooms_recipe", {"city": "lisbon", "check_in": "2027-05-03", "check_out": "2027-05-05"})).structured_content
         assert '"check_in": "270503"' in rooms["script"] and rooms["link_query"].endswith("contract_id=CONTRACT") and "place_id=ChIJ" in rooms["link_query"]
+
+
+def test_ratehawk_hotels_refuses_a_list_with_a_filter_nobody_asked_for_or_a_search_still_running():
+    from myt_mcp.sites import convert_all
+    row = {"name": "H1", "stars": 4, "distance": "1 km", "score": "8.0", "reviews": "100 reviews", "room": "Double", "bed": None, "meal": "Breakfast incl.", "cancellation": "Free cancellation",
+           "payment": None, "price": "EUR 300", "basis": "for 2 nights for 2 guests", "path": "/hotel/p/c/mid1/h1/", "p": 1}
+    def result(**extra):
+        d = {"ok": True, "header": "Lisbon: 57 accommodation options available", "sort": "Price (low to high)", "start_page": 1, "expected_start": 1, "offset": 0, "pages_read": 1, "rows_read": 1,
+             "stopped": None, "price_order": "ascending", "header_settled": True, "filters_ticked": ["Breakfast included", "Free cancellation available"], "unlabelled_ticked": 0, "rows": [row]}
+        d.update(extra)
+        return json.dumps(d)
+    wishes = {"breakfast": True, "free_cancellation": True}
+    run = lambda text, w=wishes: convert_all([{"site": "ratehawk_hotels", "result": text, "url": "u"}], w)[2]
+    assert run(result()) == []
+    assert any("filters the operator did not ask for" in p and "Pool" in p for p in run(result(filters_ticked=["Breakfast included", "Free cancellation available", "Pool"])))
+    assert any("did not ask for" in p for p in run(result(unlabelled_ticked=1)))
+    assert run(result(unlabelled_ticked=1), {**wishes, "stars_min": 4}) == []                # star boxes are expected when the operator named stars
+    assert any("still adding results" in p for p in run(result(header_settled=False)))
+    assert any("did not ask for" in p for p in run(result(filters_ticked=["Breakfast included"]), {"free_cancellation": False, "breakfast": False}))

@@ -104,6 +104,14 @@ def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, 
         if not data.get("ok"):
             problems.append(f"the RateHawk script reported: {data.get('error', 'not ok')}")
             continue
+        if data.get("header_settled") is False:
+            problems.append("RateHawk was still adding results when the list was read (the count in its header kept changing): open the url again and run the script once more")
+        if "filters_ticked" in data:        # a filter RateHawk kept from an earlier visit would change the list without the operator asking for it
+            allowed = {"Breakfast included"} if wishes.get("breakfast") else set()
+            allowed |= {"Free cancellation available"} if wishes.get("free_cancellation") else set()
+            extra = [f for f in data["filters_ticked"] if f not in allowed]
+            if extra or (data.get("unlabelled_ticked") and not wishes.get("stars_min")):
+                problems.append(f"RateHawk shows filters the operator did not ask for ({', '.join(extra) or 'a star or other box'}): clear them on the page, open the url again and run the script once more")
         if data.get("start_page") != data.get("expected_start", 1):
             problems.append(f"the RateHawk list was read from page {data.get('start_page')}, not from page {data.get('expected_start', 1)}")
         if data.get("stopped") and "page counter" in str(data["stopped"]):

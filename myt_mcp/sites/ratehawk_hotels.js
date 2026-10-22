@@ -42,6 +42,12 @@ await (async () => {
     };
   }
   if (!(await waitForCards(null))) return JSON.stringify({ ok: false, error: 'no hotel cards: not a RateHawk results page, logged out, or still searching' });
+  // the search is settled when the count in the header stops changing for 3 seconds; the filters RateHawk shows as ticked are reported (a filter kept from an earlier visit changes the list)
+  const headerCount = () => ((document.body.innerText.match(/:\s*([\d,]+)\s+accommodation options available/) || [])[1]) || null;
+  let lastCount = headerCount(); let stable = 0;
+  for (let i = 0; i < 40 && stable < 3; i++) { await wait(1000); const now = headerCount(); if (now === lastCount) stable++; else { stable = 0; lastCount = now; } }
+  const ticked = [...document.querySelectorAll('input[type=checkbox],input[type=radio]')].filter((b) => b.checked).map((b) => ((b.closest('label') || b.parentElement || {}).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 40));
+  const filtersTicked = ticked.filter((x) => x && x !== 'List view'); const unlabelledTicked = ticked.filter((x) => !x).length;
   const startPage = pageNo();
   const label = sortLabel();
   const header = (document.body.innerText.match(/[A-Za-zÀ-ÿ' .-]+:\s*([\d,]+)\s+accommodation options available/) || [])[0] || null;
@@ -64,6 +70,6 @@ await (async () => {
   const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]);
   const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
   const residency = (location.search.match(/[?&]residency=([a-z-]+)/) || [])[1] || null;
-  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', header, sort: label, residency, start_page: startPage, expected_start: START_PAGE, offset: (START_PAGE - 1) * 20 + SKIP, pages_read: rows.length ? Math.max(...rows.map((r) => r.p)) : 0, rows_read: rows.length,
+  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', header, sort: label, residency, start_page: startPage, header_settled: stable >= 3, filters_ticked: filtersTicked, unlabelled_ticked: unlabelledTicked, expected_start: START_PAGE, offset: (START_PAGE - 1) * 20 + SKIP, pages_read: rows.length ? Math.max(...rows.map((r) => r.p)) : 0, rows_read: rows.length,
     stopped, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
 })()
