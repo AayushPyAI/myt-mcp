@@ -25,13 +25,11 @@ from myt_mcp.compose import NotChecked, apply_wishes, compose
 from myt_mcp.errors import tool_errors
 from myt_mcp.services import Services
 from myt_mcp.sites import convert_all
-from myt_mcp.sites.ratehawk_hotels import RATEHAWK_SORTS, ratehawk_hotels_recipe
+from myt_mcp.sites.ratehawk_hotels import RATEHAWK_SORTS, ask_gate, limits, ratehawk_hotels_recipe
 
 log = logging.getLogger("myt_mcp")
 ORIGIN = "https://www.ratehawk.com"
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
-ASK = {"stars": "Minimum star rating? (3, 4, 5 or no preference)", "budget": "Budget per night, in EUR? (or no preference)",
-       "distance": "How far from the centre, or which area? (a distance in km, a neighbourhood, or no preference)"}
 CARD = ".zen-hotelcard-wrapper"
 BLOCK = re.compile(r"captcha|verify (that )?you are|not a robot|access denied|too many requests|unusual traffic|temporarily blocked|rate limit", re.I)
 CACHE_SECONDS = 600       # the same search again within 10 minutes is answered from the last read: fewer requests to RateHawk, and faster
@@ -164,11 +162,9 @@ def register(mcp: MCPServer, services: Services) -> None:
         Set `operator_answered`=true (for "no preference") ONLY after the operator replied in this chat. `show` = rows in the table (the picks always use every row read). Arbitrip is not read by this
         tool: read it in Claude in Chrome and say so in your reply. If it says RateHawk is not logged in, tell the operator to sign in once in the
         automation Chrome window; never try another route."""
-        missing = [q for q, given in ((ASK["stars"], stars is not None), (ASK["budget"], budget_per_night is not None), (ASK["distance"], max_distance_km is not None)) if not given]
-        if missing and not operator_answered:
-            return {"ok": False, "ask_operator": missing, "searched": False,
-                    "next": "Nothing was searched. Ask the operator these questions in ONE message (add the breakfast / free cancellation / children's ages question only if the request did "
-                            "not say them), wait for the reply, then call ratehawk_hotels again with the answers. For 'no preference' leave that value out and set operator_answered=true."}
+        asked = ask_gate(stars, budget_per_night, max_distance_km, operator_answered)
+        if asked:
+            return asked
         try:
             price_run = ratehawk_hotels_recipe(country, city, check_in, check_out, adults, "price_asc", breakfast, free_cancellation, stars, pages, children_ages)
             rating_run = ratehawk_hotels_recipe(country, city, check_in, check_out, adults, "rating", breakfast, free_cancellation, stars, 1, children_ages)
@@ -181,8 +177,7 @@ def register(mcp: MCPServer, services: Services) -> None:
         items = [{"site": "ratehawk_hotels", "result": answer_json(price_runs, price_label), "url": price_run["url"]},
                  {"site": "ratehawk_hotels", "result": answer_json(rating_runs, rating_label), "url": rating_run["url"]}]
         nights = (check_out - check_in).days
-        wishes = {"breakfast": breakfast, "free_cancellation": free_cancellation, "stars_min": stars, "max_distance_km": max_distance_km,
-                  "max_total": budget_per_night * nights if budget_per_night is not None else None}
+        wishes, filters = limits(stars, budget_per_night, max_distance_km, breakfast, free_cancellation, nights)
         offers, sources, problems, by_price, notes = convert_all(items, wishes)
         if problems:
             log.info("CHECK ratehawk_hotels refused: %s", "; ".join(dict.fromkeys(problems))[:800])
@@ -190,10 +185,6 @@ def register(mcp: MCPServer, services: Services) -> None:
                     "next": "Tell the operator what failed; if RateHawk was not read, do not quote from memory. The Chrome recipe (ratehawk_hotels_recipe) is the fallback."}
         for src in sources:
             src.link = f"{price_run['url']} (price-sorted) and {rating_run['url']} (rating-sorted)"
-        filters = [f"{label} (operator)" for on, label in ((breakfast, "Breakfast included"), (free_cancellation, "Free cancellation")) if on]
-        filters += [f"{stars}+ stars (operator)"] if stars else []
-        filters += [f"budget up to {budget_per_night:g} per night, {budget_per_night * nights:g} for {nights} night(s) (operator)"] if budget_per_night is not None else []
-        filters += [f"within {max_distance_km:g} km of the centre (operator)"] if max_distance_km is not None else []
         filters.append("Guests: " + " and ".join([f"{adults} adults"] + [f"child {a}" for a in children_ages or []]) + " (operator)")
         apply_wishes(offers, wishes)
         out = compose("hotels", filters, sources, [NotChecked(name="Arbitrip", reason="no browser tool for Arbitrip in this tool: read it separately")],

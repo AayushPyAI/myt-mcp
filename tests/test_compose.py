@@ -403,8 +403,10 @@ def test_budget_and_distance_limits_decide_fits_and_a_missing_number_does_not_pa
 
 
 @pytest.mark.anyio
-async def test_ratehawk_hotels_asks_the_operator_first_and_searches_nothing():
+async def test_ratehawk_hotels_asks_the_operator_first_and_searches_nothing(monkeypatch):
     from mcp import Client
+
+    monkeypatch.setenv("RATEHAWK_SERVER_BROWSER", "1")
 
     from myt_mcp.app import create_server
     from myt_mcp.config import Settings
@@ -461,3 +463,34 @@ async def test_a_block_page_stops_the_read_and_the_same_search_is_reused_for_ten
     await ratehawk_live.read_lists(Svc(), jobs)
     await ratehawk_live.read_lists(Svc(), jobs)
     assert len(runs) == 1 and ratehawk_live.checked_at(jobs)
+
+
+@pytest.mark.anyio
+async def test_the_server_browser_tool_is_off_by_default_and_the_chrome_recipe_asks_first_and_reads_a_window(monkeypatch):
+    import json as _json
+
+    from mcp import Client
+
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    from myt_mcp.sites import convert_all
+
+    monkeypatch.delenv("RATEHAWK_SERVER_BROWSER", raising=False)
+    async with Client(create_server(Settings())) as c:
+        names = {t.name for t in (await c.list_tools()).tools}
+        assert "ratehawk_hotels" not in names and "ratehawk_hotels_recipe" in names
+        base = {"country": "portugal", "city": "lisbon", "check_in": "2027-05-03", "check_out": "2027-05-05", "breakfast": True, "free_cancellation": True}
+        asked = (await c.call_tool("ratehawk_hotels_recipe", base)).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3 and "script" not in asked
+        r = (await c.call_tool("ratehawk_hotels_recipe", {**base, "stars": 4, "budget_per_night": 250, "operator_answered": True, "offset": 30})).structured_content
+        assert "page=2" in r["url"] and "stars=4.5" in r["url"]
+        assert "const START_PAGE = 2;" in r["script"] and "const SKIP = 10;" in r["script"] and "const LIMIT = 30;" in r["script"] and "const MAX_PAGES = 2;" in r["script"]
+        assert r["wishes"]["max_total"] == 500 and r["wishes"]["stars_min"] == 4 and any("500 for 2 night" in f for f in r["filters_used"]) and "offset=60" in r["more"]
+        first = (await c.call_tool("ratehawk_hotels_recipe", {**base, "stars": 3, "operator_answered": True})).structured_content
+        assert "page=1" in first["url"] and "const SKIP = 0;" in first["script"] and "const MAX_PAGES = 2;" in first["script"] and "const LIMIT = 30;" in first["script"]
+    row = {"name": "H1", "stars": 4, "distance": "1 km", "score": "8.0", "reviews": "100 reviews", "room": "Double", "bed": None, "meal": "Breakfast incl.", "cancellation": "Free cancellation",
+           "payment": None, "price": "EUR 300", "basis": "for 2 nights for 2 guests", "path": "/hotel/p/c/mid1/h1/", "p": 2}
+    later = _json.dumps({"ok": True, "header": "Lisbon: 100 accommodation options available", "sort": "Price (low to high)", "start_page": 2, "expected_start": 2, "offset": 30,
+                         "pages_read": 1, "rows_read": 1, "stopped": None, "price_order": "ascending", "rows": [row]})
+    offers, sources, problems, by_price, notes = convert_all([{"site": "ratehawk_hotels", "result": later, "url": "u"}], None)
+    assert not problems and any("options 31 to 31" in n and "not the cheapest overall" in n for n in notes)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from mcp.server.mcpserver import MCPServer
 from mcp.types import Icon
 from mcp.server.transport_security import TransportSecuritySettings
@@ -85,7 +87,8 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     answer_check.register(mcp)
     compose_answer.register(mcp)
     task_plan.register(mcp, services)
-    ratehawk_live.register(mcp, services)
+    if os.environ.get("RATEHAWK_SERVER_BROWSER") == "1":      # off by default: RateHawk is read with Claude in Chrome (the operator's own browser); this reads it in the server's browser
+        ratehawk_live.register(mcp, services)
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:

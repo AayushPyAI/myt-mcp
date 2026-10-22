@@ -3,6 +3,9 @@
 // The tool replaces __MAX_PAGES__ and __EXPECT_SORT__ before it is run. A field the card does not show is null ("not shown").
 await (async () => {
   const MAX_PAGES = __MAX_PAGES__;
+  const START_PAGE = __START_PAGE__;                          // the page to start on; the tool asks for the item window [offset, offset + limit)
+  const SKIP = __SKIP__;
+  const LIMIT = __LIMIT__;
   const EXPECT_SORT = "__EXPECT_SORT__";
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const cardsNow = () => [...document.querySelectorAll('.zen-hotelcard-wrapper')];
@@ -42,24 +45,25 @@ await (async () => {
   const startPage = pageNo();
   const label = sortLabel();
   const header = (document.body.innerText.match(/[A-Za-zÀ-ÿ' .-]+:\s*([\d,]+)\s+accommodation options available/) || [])[0] || null;
-  if (startPage !== 1) return JSON.stringify({ ok: false, error: `the results are on page ${startPage}, not page 1: open the URL again with &page=1`, header, sort: label });
+  if (startPage !== START_PAGE) return JSON.stringify({ ok: false, error: `the results are on page ${startPage}, not page ${START_PAGE}: open the URL again with &page=${START_PAGE}`, header, sort: label });
   if (EXPECT_SORT && label !== EXPECT_SORT) return JSON.stringify({ ok: false, error: `the list is sorted by "${label}", not "${EXPECT_SORT}": open the URL with the right sort`, header, sort: label });
   const rows = [];
   let stopped = null;
-  for (let page = 1; page <= MAX_PAGES; page++) {
+  for (let page = START_PAGE; page < START_PAGE + MAX_PAGES; page++) {
     if (pageNo() !== page) { stopped = `page counter says ${pageNo()}, expected ${page}: stopped so that no page is skipped`; break; }
     cardsNow().forEach((c) => rows.push(row(c, page)));
-    if (page === MAX_PAGES) break;
+    if (page === START_PAGE + MAX_PAGES - 1) break;
     const next = document.querySelector('.zenpagination-button-next');
     if (!next || next.disabled || /disabled/.test(next.className)) { stopped = 'last page reached'; break; }
     const first = cardsNow()[0].innerText.split('\n')[0];
     next.click();
     if (!(await waitForCards(first))) { stopped = 'the next page did not load'; break; }
   }
+  rows.splice(0, SKIP); rows.splice(LIMIT);                    // keep exactly the window the operator asked for
   const prices = rows.map((r) => parseFloat((r.price || '').replace(/[^\d.]/g, ''))).filter((x) => !isNaN(x));
   const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]);
   const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
   const residency = (location.search.match(/[?&]residency=([a-z-]+)/) || [])[1] || null;
-  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', header, sort: label, residency, start_page: startPage, pages_read: rows.length ? Math.max(...rows.map((r) => r.p)) : 0, rows_read: rows.length,
+  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', header, sort: label, residency, start_page: startPage, expected_start: START_PAGE, offset: (START_PAGE - 1) * 20 + SKIP, pages_read: rows.length ? Math.max(...rows.map((r) => r.p)) : 0, rows_read: rows.length,
     stopped, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
 })()

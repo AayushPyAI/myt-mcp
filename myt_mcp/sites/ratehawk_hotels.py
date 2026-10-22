@@ -30,13 +30,21 @@ RATEHAWK_SORTS = {"price_asc": ("price.asc", "Price (low to high)"), "price_desc
 
 
 def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: date, adults: int, sort: str = "price_asc", breakfast: bool = False,
-                           free_cancellation: bool = False, stars: int | None = None, max_pages: int = 3, children_ages: list[int] | None = None) -> dict[str, Any]:
+                           free_cancellation: bool = False, stars: int | None = None, max_pages: int = 3, children_ages: list[int] | None = None, offset: int = 0,
+                           limit: int | None = None) -> dict[str, Any]:
     if sort not in RATEHAWK_SORTS:
         raise ValueError(f"sort must be one of {sorted(RATEHAWK_SORTS)}")
     if not 1 <= max_pages <= 10:
         raise ValueError("max_pages must be between 1 and 10 (20 hotels a page)")
     if check_out <= check_in:
         raise ValueError("check_out must be after check_in")
+    if offset < 0 or (limit is not None and not 1 <= limit <= 100):
+        raise ValueError("offset must be 0 or more and limit 1-100")
+    if limit is not None:      # the operator's window: items [offset, offset + limit) of the list, 20 a page
+        start_page, skip = offset // 20 + 1, offset % 20
+        max_pages = -(-(skip + limit) // 20)
+    else:
+        start_page, skip, limit = 1, 0, 9999
     slug = lambda t: re.sub(r"[^a-z0-9]+", "-", t.strip().lower()).strip("-")        # noqa: E731
     ages = list(children_ages or [])
     if any(not 0 <= a <= 17 for a in ages):
@@ -53,16 +61,17 @@ def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: d
             raise ValueError("stars must be 1-5 (the minimum star rating)")
         params.append(("stars", ".".join(str(s) for s in range(stars, 6))))
     value, label = RATEHAWK_SORTS[sort]
-    params += [("sort", value), ("page", "1")]
+    params += [("sort", value), ("page", str(start_page))]
     url = f"https://www.ratehawk.com/hotel/{slug(country)}/{slug(city)}/?{urlencode(params)}"
-    script = with_emit((RECIPES / "ratehawk_hotels.js").read_text(encoding="utf-8")).replace("__MAX_PAGES__", str(max_pages)).replace("__EXPECT_SORT__", label)
+    script = with_emit((RECIPES / "ratehawk_hotels.js").read_text(encoding="utf-8")).replace("__MAX_PAGES__", str(max_pages)).replace("__START_PAGE__", str(start_page)).replace("__SKIP__", str(skip)).replace("__LIMIT__", str(limit))
+    script = script.replace("__EXPECT_SORT__", label)
     return {
         "required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results.",
-        "url": url, "expect_sort": label, "script": script,
+        "url": url, "expect_sort": label, "start_page": start_page, "script": script,
         "steps": ["Open `url` in the operator's logged-in RateHawk tab (Claude in Chrome navigate). If the page asks to log in, stop and tell the operator.",
                   "Wait about 10 seconds until the results show, then run `script` with the javascript tool (it only reads the page and presses Forward).",
                   "If its answer has ok=false, do what `error` says (usually: open the url again) and run it once more; never read the list by eye instead.",
-                  "Pass every part of the answer, unchanged, to compose_answer as items of site_results {\"site\": \"ratehawk_hotels\", \"result\": <part>, \"url\": <this url>}. Run the recipe a second time with sort='rating' and pass those parts too.",
+                  "Pass every part of the answer, unchanged, to compose_answer as items of site_results {\"site\": \"ratehawk_hotels\", \"result\": <part>, \"url\": <this url>}. Only if the operator asks for the best rated, run the recipe again with sort='rating' and pass those parts too.",
                   "Children: the url already has them (guests=2and6 means 2 adults and a child of 6). One child was tested; with two or more, check the page's guest count says the same."],
         "never": "Do not retype, shorten or summarise the rows: compose_answer reads the script's own text.",
     }
@@ -95,8 +104,8 @@ def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, 
         if not data.get("ok"):
             problems.append(f"the RateHawk script reported: {data.get('error', 'not ok')}")
             continue
-        if data.get("start_page") != 1:
-            problems.append("the RateHawk list was not read from page 1")
+        if data.get("start_page") != data.get("expected_start", 1):
+            problems.append(f"the RateHawk list was read from page {data.get('start_page')}, not from page {data.get('expected_start', 1)}")
         if data.get("stopped") and "page counter" in str(data["stopped"]):
             problems.append(f"the RateHawk reader stopped early: {data['stopped']}")
         want = {"Price (low to high)": "ascending", "Price (high to low)": "descending"}.get(str(data.get("sort", "")))      # a rating-sorted list has no price order
@@ -139,18 +148,62 @@ def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, 
 
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     offers, sources, problems, by_price = offers_from_ratehawk([result_json], [], wishes, group)
-    return SiteRows(offers=offers, read=sources[0].read, total=sources[0].of, problems=problems, sorted_by_price=by_price)
+    notes: list[str] = []
+    try:
+        offset = int(json.loads(result_json).get("offset") or 0)
+    except (TypeError, ValueError, AttributeError):
+        offset = 0
+    if offset > 0 and offers:
+        notes.append(f"These are options {offset + 1} to {offset + len(offers)} of the list (cheaper ones were shown before): the Cheapest here is not the cheapest overall.")
+    return SiteRows(offers=offers, read=sources[0].read, total=sources[0].of, problems=problems, sorted_by_price=by_price, extra_notes=notes)
+
+
+ASK = {"stars": "Minimum star rating? (3, 4, 5 or no preference)", "budget": "Budget per night, in EUR? (or no preference)",
+       "distance": "How far from the centre, or which area? (a distance in km, a neighbourhood, or no preference)"}
+BATCH = 30          # items shown per batch; the operator can ask for the next batch
+
+
+def ask_gate(stars: int | None, budget_per_night: float | None, max_distance_km: float | None, operator_answered: bool) -> dict[str, Any] | None:
+    """Nothing is read until the operator has said what they want: stars, budget and distance (each may be 'no preference'). Returns the questions, or None."""
+    missing = [q for q, given in ((ASK["stars"], stars is not None), (ASK["budget"], budget_per_night is not None), (ASK["distance"], max_distance_km is not None)) if not given]
+    if not missing or operator_answered:
+        return None
+    return {"ok": False, "ask_operator": missing, "searched": False,
+            "next": "Nothing was opened. Ask the operator these questions in ONE message (add the breakfast / free cancellation / children's ages question only if the request did not say them), "
+                    "wait for the reply, then call this tool again with the answers. For 'no preference' leave that value out and set operator_answered=true "
+                    "(only after the operator replied in this chat)."}
+
+
+def limits(stars: int | None, budget_per_night: float | None, max_distance_km: float | None, breakfast: bool, free_cancellation: bool, nights: int) -> tuple[dict[str, Any], list[str]]:
+    """The operator's wishes for compose_answer, and the same as 'Filters used' lines."""
+    wishes = {"breakfast": breakfast, "free_cancellation": free_cancellation, "stars_min": stars, "max_distance_km": max_distance_km,
+              "max_total": budget_per_night * nights if budget_per_night is not None else None}
+    filters = [f"{label} (operator)" for on, label in ((breakfast, "Breakfast included"), (free_cancellation, "Free cancellation")) if on]
+    filters += [f"{stars}+ stars (operator)"] if stars else []
+    filters += [f"budget up to {budget_per_night:g} per night, {budget_per_night * nights:g} for {nights} night(s) (operator)"] if budget_per_night is not None else []
+    filters += [f"within {max_distance_km:g} km of the centre (operator)"] if max_distance_km is not None else []
+    return wishes, filters
 
 
 def register(mcp: MCPServer) -> None:
     @mcp.tool(name="ratehawk_hotels_recipe", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
     async def ratehawk_hotels_recipe_tool(country: str, city: str, check_in: date, check_out: date, adults: int = 2, sort: str = "price_asc",
-                                          breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, max_pages: int = 3,
+                                          breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, budget_per_night: float | None = None,
+                                          max_distance_km: float | None = None, operator_answered: bool = False, offset: int = 0, limit: int = BATCH,
                                           children_ages: list[int] | None = None) -> dict[str, Any]:
-        """FOR HOTELS ON RATEHAWK: returns the exact results URL and a tested read-only SCRIPT for the operator's logged-in Chrome. Open the url with Claude in
-        Chrome, run the script with the javascript tool (it reads every hotel card on `max_pages` pages, 20 a page, and checks the sort, the page and
-        the count), then give its answer text unchanged to compose_answer in `site_results` as {"site": "ratehawk_hotels", "result": <answer>, "url": <the url>}.
-        Run it once with sort='price_asc' and once with sort='rating' ('price_desc' also exists). Never read the list by eye. `country` and `city` are the words
-        in RateHawk's address (portugal, lisbon). Give `children_ages` for children."""
-        return ratehawk_hotels_recipe(country, city, check_in, check_out, adults, sort, breakfast, free_cancellation, stars, max_pages, children_ages)
+        """FOR HOTELS ON RATEHAWK (read in the operator's own Chrome with Claude in Chrome). ASK FIRST: without minimum `stars`, `budget_per_night` (EUR) and
+        `max_distance_km` this tool opens nothing and returns `ask_operator`: ask those questions in ONE message, wait for the reply, call again with the
+        answers (`operator_answered`=true for "no preference", only after the operator replied). Then it returns the exact results URL (filters already in
+        it) and a tested read-only SCRIPT: open the url, run the script with the javascript tool; it reads the next `limit` (30) hotels from `offset`, checks the
+        sort, the page and the count. Give the script's answer parts unchanged to compose_answer in `site_results` as {"site": "ratehawk_hotels", "result":
+        <part>, "url": <the url>} with the returned `wishes` and `filters_used`. When the operator wants more, call this tool again with offset=offset+limit.
+        Never read the list by eye. `country` and `city` are the words in RateHawk's address (portugal, lisbon). Give `children_ages` for children."""
+        asked = ask_gate(stars, budget_per_night, max_distance_km, operator_answered)
+        if asked:
+            return asked
+        out = ratehawk_hotels_recipe(country, city, check_in, check_out, adults, sort, breakfast, free_cancellation, stars, 3, children_ages, offset, limit)
+        wishes, filters = limits(stars, budget_per_night, max_distance_km, breakfast, free_cancellation, (check_out - check_in).days)
+        out["wishes"], out["filters_used"] = wishes, filters + ["Guests: " + " and ".join([f"{adults} adults"] + [f"child {a}" for a in children_ages or []]) + " (operator)"]
+        out["more"] = f"For the next {limit} hotels call this tool again with the same values and offset={offset + limit}; say so to the operator at the end of the answer."
+        return out

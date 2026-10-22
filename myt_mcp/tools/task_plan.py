@@ -53,7 +53,7 @@ PLANS: dict[str, dict[str, Any]] = {
     "hotels": {
         "ask_once": ["stars, budget per night and area / longest distance from the centre (when the trip has no hotel yet)", "meal plan and free cancellation: required or not", "adults and children's ages"],
         "sources": [
-            {"name": "RateHawk", "how": "ratehawk_hotels (one call: the server reads RateHawk itself and returns the finished answer, show it unchanged); fallback if it says not logged in: ratehawk_hotels_recipe in Chrome", "use": "always"},
+            {"name": "RateHawk", "how": "ratehawk_hotels_recipe (it asks the operator first, then you open its url and run its script in Claude in Chrome: 30 hotels a batch, offset for more), compose_answer with its wishes and filters_used", "use": "always"},
             {"name": "Arbitrip", "how": "Claude in Chrome", "use": "always"},
             {"name": "the hotel's own site", "how": "Claude in Chrome, only for a hotel the operator names and with her OK", "use": "optional"},
         ],
