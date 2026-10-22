@@ -40,11 +40,12 @@ def elal_recipe(origin: str, destination: str, day: date, adults: int = 2, child
     pax = adults + children + seniors
     expect = {"origin": origin, "destination": destination, "day": day.isoformat(), "pax": pax, "adults": adults, "children": children, "seniors": seniors, "infants": infants, "cabin": cabin,
               "direct_only": direct_only, "leg": f"{origin} to {destination}, {day:%d %b %Y}"}
-    steps = [f"Open {RESULTS_URL} in the operator's Chrome. If it says there is no search, or you want a new one, start from https://www.elal.com/eng/israel . On the results page click Modify (a panel opens).",
-             f"Choose 'One way'. Origin and destination: click the field, type the airport code ({origin}, {destination}) and click the suggestion that shows exactly that code. Date: {day:%d %b %Y} (the date field, pick the month then the day).",
+    steps = [f"Open https://booking.elal.com/ (El Al's own booking page, English) in the operator's Chrome; on a results page you can instead click Modify. Click 'One way'.",
+             f"Where to: click the field, type the airport code ({destination}) and click the suggestion that shows exactly that code (the origin is {origin}; change it the same way if it is not). If it says 'No matching city/airport found', El Al does not fly there: say so and stop.",
+             f"Departure: click the field, pick the month tab and the day {day:%d %b %Y} (the calendar shows the lowest price of each day; a day with no price has no seats), press Done.",
              f"Passengers: open the passenger box and set Senior {seniors}, Adults {adults}, Child {children}, Infant {infants}. Press Search. If a cookie banner is in the way, close it with the choice that declines non-essential cookies.",
-             "Wait about 10 seconds until the flights show. The page must be English (lang=en) and show the day you asked for (the day strip above the flights); then run `script` with the javascript tool. ok=false: do what `error` says; never read the rows by eye.",
-             "Pass its answer parts UNCHANGED to compose_answer as site_results [{\"site\": \"elal\", \"result\": <part>, \"url\": <the results page address>}] with the returned `wishes`. For another day, click that day in the strip and run the script again."]
+             f"Wait about 10 seconds until the flights show: the page must be English and its heading must show {day:%d %B %Y} (the day strip above the flights). If the address is booking.elal.com/booking/flights in Hebrew, open {RESULTS_URL}. Then run `script` with the javascript tool; ok=false: do what `error` says; never read the rows by eye.",
+             "Pass its answer parts UNCHANGED to compose_answer as site_results [{\"site\": \"elal\", \"result\": <part>, \"url\": <the results page address>}] with the returned `wishes`. For another day click that day in the strip and run the script again; \"Selling fast\" and \"N left at this price\" are the airline's own seat warnings."]
     return {"script": with_emit((HERE / "elal.js").read_text(encoding="utf-8")), "url": RESULTS_URL, "expect": expect, "steps": steps}
 
 
@@ -93,7 +94,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                 fits=(direct or not exp.get("direct_only")) if exp else None, connecting=not direct, supplier="El Al",
                 details={"stops": stops, "fare": label + (" (lowest price of the day)" if fare.get("lowest") else ""), "checked_bag": "not shown on the list (fare rules on elal.com)",
                          "refund_change": "not shown on the list", "per_person": f"{per:g} {cur} (as the page says: per passenger)",
-                         "seats_left": f"{fare['left']} left at this price" if fare.get("left") else "not shown"}))
+                         "seats_left": (f"{fare['left']} left at this price" if fare.get("left") else "not shown") + ("; the flight is marked 'Selling fast'" if r.get("selling_fast") else "")}))
     n = len(data.get("rows", []))
     notes = ["El Al prices are per passenger; the totals here are multiplied by the number of travellers. The search is not a shareable link: the operator searches again on elal.com to see it."]
     return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=False, extra_notes=notes, read_rows=True)

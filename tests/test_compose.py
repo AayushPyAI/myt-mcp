@@ -871,7 +871,7 @@ def test_elal_asks_first_gives_the_steps_and_checks_what_the_page_searched():
     from myt_mcp.sites import convert_all
     from myt_mcp.sites.elal import elal_recipe
     r = elal_recipe("tlv", "lis", date(2027, 3, 1), 2, 1, 0, 0, "any", False)
-    assert r["url"].endswith("lang=en") and r["expect"]["pax"] == 3 and r["expect"]["leg"] == "TLV to LIS, 01 Mar 2027" and any("Modify" in s for s in r["steps"]) and "const" in r["script"]
+    assert r["url"].endswith("lang=en") and r["expect"]["pax"] == 3 and r["expect"]["leg"] == "TLV to LIS, 01 Mar 2027" and any("Modify" in s for s in r["steps"]) and any("Done" in s for s in r["steps"]) and any("No matching city/airport" in s for s in r["steps"]) and "const" in r["script"]
     with pytest.raises(ValueError, match="IATA"):
         elal_recipe("Tel Aviv", "LIS", date(2027, 3, 1))
     with pytest.raises(ValueError, match="infants"):
@@ -988,3 +988,15 @@ def test_skyscanner_offset_window_and_hidden_filters():
     assert any("did not ask for (Checked bag)" in p for p in bad)
     off = convert_all([{"site": "skyscanner", "result": _sky(rows, filters={"stops": ["Direct", "1 stop", "2+ stops"], "ticked_extras": [], "unticked_defaults": 3}), "url": "u"}], {"expect": exp})[2]
     assert any("3 airline or layover box(es) switched off" in p for p in off)
+
+
+def test_elal_selling_fast_label_is_kept_and_the_real_row_shapes_convert():
+    from myt_mcp.sites import convert_all
+    row = _el(dep="15:15", arr="19:25")
+    row["selling_fast"] = True
+    exp = {"origin": "TLV", "destination": "LIS", "day": "2027-03-01", "pax": 3, "cabin": "any", "direct_only": False, "leg": "TLV to LIS, 01 Mar 2027"}
+    offers = convert_all([{"site": "elal", "result": _elal([row]), "url": "u"}], {"expect": exp})[0]
+    assert "'Selling fast'" in offers[0].details["seats_left"]
+    nostop = dict(_el(), stops=None, duration=None)
+    odd = convert_all([{"site": "elal", "result": _elal([nostop]), "url": "u"}], {"expect": dict(exp, direct_only=True)})[0]
+    assert odd[0].details["stops"] == "stops not shown" and odd[0].connecting is True and odd[0].fits is False          # an unreadable layout is never treated as non-stop

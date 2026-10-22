@@ -34,7 +34,7 @@ await (async () => {
       fares[name] = p ? { price: price(p), currency: cur(p), lowest: seg.includes('Lowest Price'), left: left > 0 && /^\d+$/.test(seg[left - 1]) ? parseInt(seg[left - 1], 10) : null } : null;
     });
     return { dep: times[0] || null, arr: times[times.length - 1] || null, from: l[1] || null, to: l[l.lastIndexOf(times[times.length - 1]) + 1] || null, stops: stopsAt >= 0 ? l[stopsAt] : null, duration: stopsAt >= 0 ? (l[stopsAt + 1] || null) : null,
-      flights: l.filter((x) => /^[A-Z0-9]{2}\d{2,4}$/.test(x)), operated: l.includes('Operated by'), eco: fares.ECONOMY, prem: fares.PREMIUM, biz: fares.BUSINESS };
+      flights: l.filter((x) => /^[A-Z0-9]{2}\d{2,4}$/.test(x)), operated: l.includes('Operated by'), selling_fast: l.includes('Selling fast'), eco: fares.ECONOMY, prem: fares.PREMIUM, biz: fares.BUSINESS };
   };
   const rows = rowsNow().map(row);
   return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.',
