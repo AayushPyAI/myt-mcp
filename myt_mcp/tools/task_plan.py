@@ -86,7 +86,7 @@ PLANS: dict[str, dict[str, Any]] = {
         "ask_once": ["adults and children's ages", "earliest departure time", "class"],
         "sources": [
             {"name": "Trenitalia", "how": "train_prices (use the city station, e.g. Roma Termini)", "use": "Italy"},
-            {"name": "RateHawk Train tickets", "how": "Claude in Chrome", "use": "always"},
+            {"name": "RateHawk Train tickets", "how": "ratehawk_trains_recipe, one call per leg (it asks changes, class and budget first; you open its url and run its script in Claude in Chrome: 30 trains a batch, offset for more), compose_answer with its wishes and filters_used", "use": "always"},
         ],
         "fields": ["train numbers and times", "class and fare", "change and refund terms", "seats left", "group total with the child rule", "link"],
         "filters": "direct first; the leg's day and cities from the itinerary.",

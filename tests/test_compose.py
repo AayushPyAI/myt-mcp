@@ -755,3 +755,51 @@ def test_air_cards_are_counted_once_across_parts():
     a, b = _air([_card()], cards_read=2, run="r", part=1, parts=2, rows_read=2), _air([_card(carrier="KLM")], cards_read=2, run="r", part=2, parts=2, rows_read=2)
     _, sources, problems, _, _ = convert_all([{"site": "ratehawk_air", "result": a, "url": "u"}, {"site": "ratehawk_air", "result": b, "url": "u"}], {})
     assert not problems and (sources[0].read, sources[0].of) == (2, 2)
+
+
+def _trains(rows, **head):
+    base = {"ok": True, "page_ticked": ["One way", "All routes"], "settled": True, "all_loaded": True, "cards_total": len(rows), "offset": 0, "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _train(no="9511", dep="08:14", arr="09:49", changes="Direct", classes=None, route="Firenze S.M. Novella \u2192 Roma Termini", date_text="23 November, Mon", tag=None):
+    return {"train": no, "route": route, "tag": tag, "dep": dep, "travel": "1 hr 35 min", "arr": arr, "date": date_text, "changes": changes,
+            "classes": classes or [{"name": "Standard", "price": 61.38, "currency": "EUR"}, {"name": "Comfort", "price": 52.58, "currency": "EUR"}, {"name": "Premier", "price": 61.38, "currency": "EUR"}]}
+
+
+def test_ratehawk_trains_ask_first_station_ids_filters_and_checks():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.ratehawk_trains import ratehawk_trains_recipe
+    r = ratehawk_trains_recipe("Firenze Santa Maria Novella", "Roma Termini", date(2026, 11, 23), "08:00", 2, "direct", "comfort", limit=30, offset=30)
+    assert r["url"] == "https://www.ratehawk.com/railway/?from=8306421&to=8308409&date=2026-11-23&time=08%3A00&adt=2"
+    assert 'const CHANGES = "Direct route"' in r["script"] and 'const CLASS = "Comfort"' in r["script"] and "const SKIP = 30;" in r["script"] and "const LIMIT = 30;" in r["script"]
+    assert ratehawk_trains_recipe("Atlantis", "Roma Termini", date(2026, 11, 23), "08:00")["needs_station_id"] == "Atlantis"
+    with pytest.raises(ValueError, match="HH:MM"):
+        ratehawk_trains_recipe("Roma Termini", "Napoli", date(2026, 11, 23), "8am")
+    exp = ratehawk_trains_recipe("Firenze Santa Maria Novella", "Roma Termini", date(2026, 11, 23), "08:00", 2)["expect"]
+    run = lambda text, w=None: convert_all([{"site": "ratehawk_trains", "result": text, "url": "u"}], w if w is not None else {"expect": exp})
+    offers, sources, problems, _, notes = run(_trains([_train(), _train("8505", "08:33", "10:15", tag="The cheapest option")]))
+    assert not problems and len(offers) == 6 and offers[0].group == "Firenze Santa Maria Novella to Roma Termini, 23 Nov 2026" and (sources[0].read, sources[0].of) == (2, 2)
+    assert offers[0].price_total == 61.38 and offers[0].details["class_fare"] == "Standard from 61.38 EUR" and "whole group" in offers[0].price_basis and any("2 trains" in n or "lists 2" in n for n in notes)
+    assert any("not Firenze Santa Maria Novella to Roma Termini" in p for p in run(_trains([_train(route="Milano Centrale \u2192 Venezia S. Lucia")]))[2])
+    assert any("not 2026-11-23" in p for p in run(_trains([_train(date_text="24 November, Tue")]))[2])
+    assert any("filters are not as asked" in p and "Direct route" in p for p in run(_trains([_train()], page_ticked=["One way", "Direct route"]))[2])
+    assert any("still adding trains" in p for p in run(_trains([_train()], settled=False))[2])
+    comfort = dict(exp, **{"class": "comfort", "changes": "direct"})
+    got = run(_trains([_train(), _train("8999", changes="1 change")], page_ticked=["One way", "Direct route", "Comfort"]), {"expect": comfort, "max_total": 60})
+    assert not got[2] and [o.fits for o in got[0]] == [True, False] and all(o.details["class_fare"].startswith("Comfort") for o in got[0])
+
+
+@pytest.mark.anyio
+async def test_ratehawk_trains_tool_asks_first():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        base = {"origin": "Firenze Santa Maria Novella", "destination": "Roma Termini", "day": "2026-11-23", "time": "08:00"}
+        asked = (await c.call_tool("ratehawk_trains_recipe", base)).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3
+        r = (await c.call_tool("ratehawk_trains_recipe", {**base, "changes": "direct", "train_class": "comfort", "max_total": 120})).structured_content
+        assert "railway/?from=8306421" in r["url"] and r["wishes"]["max_total"] == 120 and any("Direct route" in f for f in r["filters_used"]) and "offset=30" in r["more"]

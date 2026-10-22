@@ -1,0 +1,7 @@
+{
+  "_note": "RateHawk's own station ids for the train search (from=<id>&to=<id>). Learned from the Train tickets tab: type the station, pick the suggestion, press Search, read from= and to= in the address. Add new stations here.",
+  "firenze santa maria novella": 8306421,
+  "firenze s.m. novella": 8306421,
+  "roma termini": 8308409,
+  "roma termini railway station": 8308409
+}
