@@ -12,6 +12,7 @@ from __future__ import annotations
 import importlib
 import json
 import pkgutil
+import re
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
@@ -134,3 +135,14 @@ def check_parts(site_results: list[dict[str, Any]]) -> list[str]:
         elif sum(got.values()) != rows_read:
             problems.append(f"{key[0]}: the parts hold {sum(got.values())} rows but the script read {rows_read}: run the script again and pass every part unchanged")
     return problems
+
+
+GENERIC_PLACE_WORDS = {"airport", "station", "railway", "terminal", "international", "intl", "city", "center", "centre", "downtown", "the", "of", "de", "da", "di", "and"}
+
+
+def place_matches(expected: str | None, got: str | None) -> bool:
+    """Is the place the page searched the place that was asked? Compared by the DISTINCTIVE words (not 'airport', 'station'...): 'Faro Airport' is 'Portugal, Faro Airport', never 'Spain, Malaga Airport'."""
+    def words(x: str | None) -> set[str]:
+        return {w for w in re.sub(r"[^a-z0-9]+", " ", (x or "").lower()).split() if w not in GENERIC_PLACE_WORDS}
+    want, have = words(expected), words(got)
+    return not want or not have or bool(want & have)

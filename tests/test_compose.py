@@ -906,3 +906,67 @@ async def test_elal_tool_asks_first():
         assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 2
         r = (await c.call_tool("elal_recipe", {"origin": "TLV", "destination": "LIS", "day": "2027-03-01", "direct_only": True, "cabin": "economy", "adults": 2, "children": 1})).structured_content
         assert r["wishes"]["expect"]["pax"] == 3 and r["wishes"]["expect"]["direct_only"] is True and any("Direct flights only" in f for f in r["filters_used"]) and r["steps"]
+
+
+def _ofr(rows, **head):
+    base = {"ok": True, "form": {"pickup_place": "Portugal, Faro Airport", "pickup_when": "23.11.26 | 10:00", "dropoff_place": "Portugal, Faro Airport", "dropoff_when": "28.11.26 | 10:00", "age": "30-69"},
+            "account": "Nimrod Moskovitz / Selected", "logged_in": True, "results_total": 66, "cars_in_page": 66, "offset": 0, "page_ticked": [], "price_ranges": [], "settled": True, "price_order": "ascending", "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _of(car="Fiat 500", price=88.07, before=111.44, seats="3", gearbox="ידני", excess="כולל ביטול השתתפות עצמית", supplier="Tangerine Portugal", acriss="MBMR"):
+    return {"supplier": supplier, "supplier_score": "8.80", "size": "Small", "acriss": acriss, "car": car, "seats": seats, "gearbox": gearbox, "doors": "2/4", "bags": "1", "ac": True, "excess": excess,
+            "station": "תחנת איסוף מחוץ לשדה התעופה", "price_before": before, "price": price, "days": "5"}
+
+
+def test_ofran_asks_first_gives_the_steps_and_checks_what_the_page_searched():
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.ofran import ofran_recipe
+    r = ofran_recipe("Faro Airport", "2026-11-23", "10:00", "2026-11-28", "10:00", True, False, True, False, 30, 30)
+    assert "const SKIP = 30;" in r["script"] and "const LIMIT = 30;" in r["script"] and "אוטומטית" in r["script"] and "ביטול השתתפות עצמית" in r["script"] and r["expect"]["filters"] == ["אוטומטית", "ביטול השתתפות עצמית"]
+    assert any("calendar" in s for s in r["steps"]) and any("search button" in s for s in r["steps"]) and r["url"] == "https://ofran.co.il/"
+    with pytest.raises(ValueError, match="HH:MM"):
+        ofran_recipe("Faro Airport", "2026-11-23", "ten", "2026-11-28", "10:00")
+    with pytest.raises(ValueError, match="not both"):
+        ofran_recipe("Faro Airport", "2026-11-23", "10:00", "2026-11-28", "10:00", True, True)
+    exp = ofran_recipe("Faro Airport", "2026-11-23", "10:00", "2026-11-28", "10:00")["expect"]
+    run = lambda text, w=None: convert_all([{"site": "ofran", "result": text, "url": "u"}], w if w is not None else {"expect": exp})
+    offers, sources, problems, _, notes = run(_ofr([_of(), _of("Opel Corsa", 89.26, 112.78, "4", "ידני", None, acriss="EDMR")]))
+    assert not problems and len(offers) == 2 and (sources[0].read, sources[0].of) == (2, 2) and offers[0].group == "Cars"
+    assert offers[0].price_total == 88.07 and "after the agent discount (list price 111.44)" in offers[0].price_basis and offers[0].supplier == "Tangerine Portugal"
+    assert offers[0].details["gearbox"] == "Manual" and offers[0].details["excess"] == "excess cancelled (included)" and offers[1].details["excess"] == "not shown" and "not shown on the list" in offers[0].details["deposit"]
+    assert any("searched '23.11.26 | 11:00', not '23.11.26 | 10:00'" in p for p in run(_ofr([_of()], form={"pickup_place": "Portugal, Faro Airport", "pickup_when": "23.11.26 | 11:00", "dropoff_place": "x", "dropoff_when": "28.11.26 | 10:00", "age": "30-69"}))[2])
+    assert any("not 'Faro Airport'" in p for p in run(_ofr([_of()], form={"pickup_place": "Spain, Malaga Airport", "pickup_when": "23.11.26 | 10:00", "dropoff_place": "x", "dropoff_when": "28.11.26 | 10:00", "age": "30-69"}))[2])
+    assert any("driver age is '25-29'" in p for p in run(_ofr([_of()], form={"pickup_place": "Portugal, Faro Airport", "pickup_when": "23.11.26 | 10:00", "dropoff_place": "x", "dropoff_when": "28.11.26 | 10:00", "age": "25-29"}))[2])
+    assert any("filters are not as asked" in p and "אוטומטית" in p for p in run(_ofr([_of()], page_ticked=["אוטומטית"]))[2])
+    assert any("no logged-in agent" in p for p in run(_ofr([_of()], logged_in=False))[2])
+    assert any("still adding cars" in p for p in run(_ofr([_of()], settled=False))[2])
+    rows = [_of("Fiat 500", 88.07, seats="3", gearbox="ידני"), _of("Jeep", 150, 190, "5", "אוטומטי"), _of("Kia", 95, 120, "5", "אוטומטי", excess=None)]
+    got = convert_all([{"site": "ofran", "result": _ofr(rows, page_ticked=["אוטומטית"]), "url": "u"}], {"expect": dict(exp, filters=["אוטומטית"]), "automatic": True, "min_seats": 5, "max_total": 120, "zero_excess": True})[0]
+    assert [o.fits for o in got] == [False, False, False]
+    ok = convert_all([{"site": "ofran", "result": _ofr([_of("Jeep", 110, 150, "5", "אוטומטי")], page_ticked=["אוטומטית"]), "url": "u"}], {"expect": dict(exp, filters=["אוטומטית"]), "automatic": True, "min_seats": 5, "max_total": 120, "zero_excess": True})[0]
+    assert [o.fits for o in ok] == [True] and ok[0].details["gearbox"] == "Automatic"
+
+
+@pytest.mark.anyio
+async def test_ofran_tool_asks_first():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        base = {"pickup": "Faro Airport", "pickup_date": "2026-11-23", "pickup_time": "10:00", "dropoff_date": "2026-11-28", "dropoff_time": "10:00"}
+        asked = (await c.call_tool("ofran_recipe", base)).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 4
+        r = (await c.call_tool("ofran_recipe", {**base, "gearbox": "automatic", "min_seats": 5, "zero_excess": True, "max_total": 300})).structured_content
+        assert r["wishes"]["automatic"] is True and r["wishes"]["max_total"] == 300 and r["pickup_time"] == "10:00" and "offset=30" in r["more"] and any("Excess" in f for f in r["filters_used"])
+
+
+def test_place_matching_uses_the_distinctive_words_and_trains_keep_their_direction():
+    from myt_mcp.sites import convert_all, place_matches
+    assert place_matches("Faro Airport", "Portugal, Faro Airport") and not place_matches("Faro Airport", "Spain, Malaga Airport")
+    assert place_matches("Leonardo da Vinci Rome Fiumicino Airport", "Rome Fiumicino Airport (FCO)") and not place_matches("Fiumicino Airport", "Ciampino Airport")
+    assert place_matches("Airport", "anything") and place_matches("Roma Termini", "Roma Termini railway station") and not place_matches("Roma Termini", "Napoli Centrale")
+    exp = {"origin": "Firenze Santa Maria Novella", "destination": "Roma Termini", "day": "2026-11-23", "adults": 2, "changes": "any", "class": None}
+    back = convert_all([{"site": "ratehawk_trains", "result": _trains([_train(route="Roma Termini \u2192 Firenze S.M. Novella")]), "url": "u"}], {"expect": exp})[2]
+    assert any("not Firenze Santa Maria Novella to Roma Termini" in p for p in back)

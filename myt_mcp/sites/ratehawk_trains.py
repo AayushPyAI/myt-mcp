@@ -19,7 +19,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, place_matches, with_emit
 
 NAME = "ratehawk_trains"
 SOURCE = "RateHawk Trains"
@@ -92,9 +92,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     for r in data.get("rows", []):
         route = _norm(r.get("route"))
         if exp.get("origin") and exp.get("destination"):
-            o, d = _norm(exp["origin"]).split(), _norm(exp["destination"]).split()
-            parts = route.split(" ") if route else []
-            if route and not (set(o) & set(parts) and set(d) & set(parts)):
+            sides = (r.get("route") or "").split("\u2192")          # "From -> To": the direction matters
+            if len(sides) == 2 and not (place_matches(exp["origin"], sides[0]) and place_matches(exp["destination"], sides[1])):
                 problems.append(f"a card is for '{r.get('route')}', not {exp['origin']} to {exp['destination']}: open the url again")
                 break
         if exp.get("day"):

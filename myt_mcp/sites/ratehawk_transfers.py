@@ -17,7 +17,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, place_matches, with_emit
 
 NAME = "ratehawk_transfers"
 SOURCE = "RateHawk Transfers"
@@ -61,8 +61,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     exp = wishes.get("expect") or {}
     if exp:
         for key, label in (("pickup", "from"), ("dropoff", "to")):
-            want, got = _norm(exp.get(key)), _norm(form.get(label))
-            if want and got and not (want in got or got in want or set(want.split()) & set(got.split())):
+            if exp.get(key) and form.get(label) and not place_matches(exp[key], form[label]):
                 problems.append(f"the page searched {label} '{form.get(label)}', not '{exp.get(key)}': search again with the right place")
         if exp.get("time") and exp["time"] not in (form.get("when") or ""):
             problems.append(f"the page searched '{form.get('when')}', not at {exp['time']}: search again with the right time")
