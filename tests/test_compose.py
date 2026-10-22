@@ -699,3 +699,59 @@ def test_ratehawk_transfers_ask_first_wishes_tab_and_hidden_filters():
     assert any("did not ask for (With flight tracking)" in p for p in sticky)
     wanted = convert_all([{"site": "ratehawk_transfers", "result": _transfers(rows, page_ticked=["With flight tracking"]), "url": "u"}], {"expect": {}, "flight_tracking": True})[2]
     assert wanted == []
+
+
+def _air(rows, **head):
+    base = {"ok": True, "page_ticked": ["One way", "Economy", "All flights"], "settled": True, "cards_read": len(rows), "lowest_fare_order": "ascending", "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _card(carrier="Air France", fares=None, stops="1 stop", date_text="Mar 6, Sat", route="Firenze-Peretola Airport FLR \u2192 Humberto Delgado Airport LIS"):
+    return {"carrier": carrier, "issuing": "15 hours for issuing", "date": date_text, "route": route,
+            "itineraries": [{"d": "06:50", "a": "11:25", "n": None, "t": "5 h 35 min", "s": stops, "l": "55 min, Paris" if stops != "Direct flight" else None, "f": ["AF-1267", "AF-1024"]},
+                            {"d": "09:55", "a": "15:10", "n": "+1", "t": "9 h", "s": stops, "l": "4 h, Paris", "f": ["AF-1067", "AF-1624"]}],
+            "fares": fares or [{"name": "Basic", "price": 399.88, "currency": "EUR", "bags": []}, {"name": "Standard", "price": 525.88, "currency": "EUR", "bags": [23, 12]}]}
+
+
+def test_ratehawk_air_asks_first_has_filters_in_the_address_and_checks_the_page():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.ratehawk_air import air_url, ratehawk_air_recipe
+    url = air_url("FLR", "LIS", date(2027, 3, 6), 2, 1, 0, "economy", "direct", True, True)
+    assert url == "https://www.ratehawk.com/air/?route=FLRa06032027LISa&adt=2&tns=0&chd=1&inf=0&class=economy&stops=direct&baggageIncluded=on&withoutAirportChange=on"
+    assert "stops=" not in air_url("FLR", "LIS", date(2027, 3, 6), 2, 0, 0, "business", "any", False, False)
+    with pytest.raises(ValueError, match="IATA"):
+        ratehawk_air_recipe("Florence", "LIS", date(2027, 3, 6))
+    exp = ratehawk_air_recipe("flr", "lis", date(2027, 3, 6), 2, 1, 0, "economy", "any", False, False)["expect"]
+    run = lambda text, e=exp: convert_all([{"site": "ratehawk_air", "result": text, "url": "u"}], {"expect": e})
+    offers, sources, problems, _, _ = run(_air([_card()]))
+    assert not problems and len(offers) == 2 and offers[0].group == "FLR to LIS, 06 Mar 2027" and (sources[0].read, sources[0].of) == (1, 1)
+    assert offers[0].details["per_person"].startswith("133.29") and "(+1 other times)" in offers[0].name and offers[0].details["checked_bag"].startswith("not shown")
+    assert offers[1].details["checked_bag"] == "23 kg checked bag included" and offers[0].details["stops"].startswith("1 stop")
+    assert any("not LIS" in p or "not FLR to LIS" in p for p in run(_air([_card(route="Rome Airport FCO \u2192 Lisbon LIS")]))[2])
+    assert any("not 2027-03-06" in p for p in run(_air([_card(date_text="Mar 7, Sun")]))[2])
+    assert any("filters are not as asked" in p and "Direct flight" in p for p in run(_air([_card()], page_ticked=["One way", "Economy", "Direct flight"]))[2])
+    assert any("still adding flights" in p for p in run(_air([_card()], settled=False))[2])
+    bag = ratehawk_air_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1, 0, "economy", "any", True, False)["expect"]
+    got = convert_all([{"site": "ratehawk_air", "result": _air([_card()], page_ticked=["One way", "Economy", "All flights", "Checked baggage"]), "url": "u"}], {"expect": bag})[0]
+    assert [o.fits for o in got] == [None, True]            # a tier whose bag is not shown is unknown, never a pick
+
+
+@pytest.mark.anyio
+async def test_ratehawk_air_tool_asks_first():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        asked = (await c.call_tool("ratehawk_air_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06"})).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3
+        r = (await c.call_tool("ratehawk_air_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06", "stops": "direct", "checked_bag": True, "cabin": "economy"})).structured_content
+        assert "stops=direct" in r["url"] and "baggageIncluded=on" in r["url"] and r["wishes"]["expect"]["stops"] == "direct" and any("Direct flight" in f for f in r["filters_used"])
+
+
+def test_air_cards_are_counted_once_across_parts():
+    from myt_mcp.sites import convert_all
+    a, b = _air([_card()], cards_read=2, run="r", part=1, parts=2, rows_read=2), _air([_card(carrier="KLM")], cards_read=2, run="r", part=2, parts=2, rows_read=2)
+    _, sources, problems, _, _ = convert_all([{"site": "ratehawk_air", "result": a, "url": "u"}, {"site": "ratehawk_air", "result": b, "url": "u"}], {})
+    assert not problems and (sources[0].read, sources[0].of) == (2, 2)

@@ -42,7 +42,7 @@ PLANS: dict[str, dict[str, Any]] = {
             {"name": "Israir", "how": "israir_flight_prices", "use": "ONLY flights from or to Tel Aviv on its network; never Lisbon, Porto, Madeira or the Azores"},
             {"name": "El Al", "how": "Claude in Chrome (elal.com)", "use": "legs touching Israel"},
             {"name": "ITA Airways", "how": "Claude in Chrome (via RateHawk Air or Skyscanner)", "use": "legs touching Italy"},
-            {"name": "RateHawk Air tickets", "how": "Claude in Chrome", "use": "EVERY leg"},
+            {"name": "RateHawk Air tickets", "how": "ratehawk_air_recipe, one call per leg (it asks stops, checked bag and cabin first; you open its url and run its script in Claude in Chrome), compose_answer with its wishes", "use": "EVERY leg"},
             {"name": "Skyscanner", "how": "Claude in Chrome, comparison only", "use": "EVERY leg: Best and Cheapest tabs together; price to quote comes from the airline's page"},
         ],
         "fields": ["flight number and operating airline", "times and stops", "the whole fare ladder (code and name)", "cabin bag and checked bag", "change and refund terms (only if the tool or page shows them)",
