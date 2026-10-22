@@ -136,6 +136,7 @@ class AspireClient:
                                   "temporary: try again in a minute, or check the price on the Aspire website. The reason is not "
                                   "known, so do not guess one and do not estimate a price.") from None
         if resp.status in (403, 429) or any(m in resp.text[:3000] for m in _CHALLENGE):
+            self._limiter.trip()
             raise AspireError("Aspire Lounges showed a human check or refused the request. Stopping; try again later or check on the website.")
         if resp.status >= 400:
             raise AspireError(f"Aspire Lounges could not answer ({resp.status}).")

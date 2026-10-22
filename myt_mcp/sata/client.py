@@ -80,9 +80,11 @@ class SataClient:
             status, text, page_text = await self._session.run(ORIGIN, "about:blank", action)
             if status == 0:
                 if _CHECK.search(page_text):
+                    self._limiter.trip()
                     raise SataError("SATA's site showed a human check. Stopping; check the fare on azoresairlines.pt.")
                 raise SataError("SATA's booking page did not show flights in time. The route may not exist, or the site is slow; try again or check azoresairlines.pt.")
             if status in (401, 403, 429):
+                self._limiter.trip()
                 raise SataError(f"SATA refused the search ({status}). Stopping; wait a while or check azoresairlines.pt.")
             if status in (400, 500):
                 raise SataError(f"SATA could not run this search ({status}). The airport code is probably not one SATA serves "

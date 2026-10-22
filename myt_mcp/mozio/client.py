@@ -89,11 +89,13 @@ class MozioClient:
             await self._limiter.acquire()
             got = await self._session.run(SITE, "about:blank", action)
             if got["statuses"] and got["statuses"][0] in (401, 403, 429):
+                self._limiter.trip()
                 raise MozioError(f"Mozio refused the search ({got['statuses'][0]}). Stopping; wait a while or check mozio.com.")
             if got["statuses"] and got["statuses"][0] >= 400:
                 raise MozioError(f"Mozio's search failed ({got['statuses'][0]}). A place may not be one Mozio knows; try a clearer address or try again later.")
             if not got["polls"]:
                 if _CHECK.search(got["page_text"]):
+                    self._limiter.trip()
                     raise MozioError("Mozio's site showed a human check or refused the page. Stopping; check the price on mozio.com.")
                 raise MozioError("Mozio's search page did not show prices in time. Try again, or check mozio.com.")
             return {"polls": got["polls"], "url": link}

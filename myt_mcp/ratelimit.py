@@ -2,12 +2,15 @@
 
 Each site gets one limiter:
   * at most one request every `min_interval` seconds (calls wait their turn, in order);
-  * at most `max_per_hour` requests in any rolling hour (further calls are refused with a clear message).
+  * at most `max_per_hour` requests in any rolling hour (further calls are refused with a clear message);
+  * a cool-down after a block: when a site shows a human check, a captcha, 403 or 429 the client calls `trip()` and every call for the next
+    30 minutes is refused at once, so we do not keep knocking on a door that has just closed (and never try to get around the check).
 """
 
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from collections import deque
 
@@ -27,10 +30,18 @@ class SiteLimiter:
         self._recent: deque[float] = deque()
         self._last = float("-inf")
         self._lock = asyncio.Lock()
+        self._blocked_until = float("-inf")
+
+    def trip(self, minutes: float = 30.0) -> None:
+        """The site blocked us: refuse calls to it for `minutes`."""
+        self._blocked_until = self._clock() + minutes * 60
 
     async def acquire(self) -> None:
         async with self._lock:
             now = self._clock()
+            if now < self._blocked_until:
+                raise RateLimitError(f"{self.site}: the site showed a block or a human check a moment ago, so searches are paused for about {max(1, math.ceil((self._blocked_until - now) / 60))} more minutes "
+                                     "to protect the account and the connection. Check the price on the site by hand, or try again later; never work around the check.")
             while self._recent and now - self._recent[0] >= 3600:
                 self._recent.popleft()
             if len(self._recent) >= self.max_per_hour:

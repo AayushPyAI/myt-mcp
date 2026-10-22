@@ -61,7 +61,12 @@ class OfranClient:
 
     async def _search(self, body: dict[str, Any]) -> list[Any]:
         await self._limiter.acquire()
-        data = await self._transport.request("POST", "/api/get_full_dynamic_result", body)
+        try:
+            data = await self._transport.request("POST", "/api/get_full_dynamic_result", body)
+        except OfranError as e:
+            if "human check" in str(e) or "403" in str(e):          # a captcha or a refusal: pause Ofran, the agent account must not be flagged
+                self._limiter.trip()
+            raise
         if not isinstance(data, dict):
             raise OfranError("Ofran's search answer had an unexpected format; its site may have changed.")
         if data.get("errors"):

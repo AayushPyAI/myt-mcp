@@ -117,6 +117,7 @@ class GygClient:
 
             read = await self._session.run(ORIGIN, f"{ORIGIN}/", action)
             if HUMAN_CHECK.search(read.get("body") or ""):
+                self._limiter.trip()
                 raise GygError("GetYourGuide showed a human check. Stopping; open the search in the browser yourself.")
             if not read.get("visitor_id"):
                 raise GygError("GetYourGuide's search page had an unexpected format; the site may have changed.")
@@ -160,6 +161,7 @@ class GygClient:
     async def _srp_page(self, post, url: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
         r = await post(url, body, headers)
         if r["status"] in (401, 403, 429):
+            self._limiter.trip()
             raise GygError(f"GetYourGuide refused the search ({r['status']}). Stopping; wait a while or check the site.")
         if r["status"] != 200:
             raise GygError(f"GetYourGuide's search answered {r['status']}; try again later or check the site.")
@@ -192,6 +194,7 @@ class GygClient:
             read = await self._session.run(ORIGIN, f"{ORIGIN}/", action)
             if not read.get("script"):
                 if re.search(r"captcha|verify you are human|access denied|unusual traffic", read.get("body") or ""):
+                    self._limiter.trip()
                     raise GygError("GetYourGuide showed a human check. Stopping; open the activity in the browser yourself.")
                 raise GygError("That GetYourGuide page has no activity data; check the link.")
             try:

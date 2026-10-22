@@ -294,3 +294,13 @@ async def test_calendar_validation(extra, expected, before_the_fixture_date):
     async with Client(tap_server(FakePage(None), httpx.MockTransport(CalendarSite()))) as c:
         r = await c.call_tool("tap_fare_calendar", args)
     assert r.is_error and expected in r.content[0].text
+
+
+async def test_a_block_pauses_tap_for_a_while_instead_of_knocking_again():
+    from myt_mcp.ratelimit import RateLimitError
+    limiter = SiteLimiter("TAP", 0, 1000)
+    client = TapClient(FakeBrowser(FakePage(answer({}, status=403))), limiter=limiter)
+    with pytest.raises(TapError, match="refused the search"):
+        await client.search("FLR", "LIS", DAY, 2, 1, 0)
+    with pytest.raises(RateLimitError, match="paused"):             # the next search never reaches the site
+        await TapClient(FakeBrowser(FakePage(answer())), limiter=limiter).search("FLR", "LIS", DAY, 2, 1, 0)

@@ -69,6 +69,8 @@ class ViatorClient:
 
         result = await self._session.run(ORIGIN, f"{ORIGIN}/", action)
         if result.get("blocked") or not result.get("state"):
+            if result.get("blocked"):
+                self._limiter.trip()
             raise ViatorError("Viator showed a human check (captcha) or an empty page. Stopping; open viator.com in the automation browser, "
                               "complete the check if there is one, and try again later.")
         try:

@@ -80,9 +80,11 @@ class TapClient:
             status, text, page_text = await self._session.run(BOOKING, "about:blank", action)
             if status == 0:
                 if _CHECK.search(page_text):
+                    self._limiter.trip()
                     raise TapError("TAP's site showed a human check or refused the page. Stopping; check the fare on flytap.com.")
                 raise TapError("TAP's booking page did not show flights in time. The route may not exist, or the site is slow; try again or check flytap.com.")
             if status in (401, 403, 429) or _CHECK.search(text[:3000]):
+                self._limiter.trip()
                 raise TapError(f"TAP refused the search ({status}). Stopping; wait a while or check flytap.com.")
             if status >= 400:
                 raise TapError(f"TAP's search failed ({status}). The airport code may not be one TAP flies, or the site is having trouble; try again later.")

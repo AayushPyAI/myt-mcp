@@ -274,3 +274,21 @@ def test_scraping_settings_are_validated():
     with pytest.raises(ConfigError, match="SCRAPE_MIN_INTERVAL"):
         Settings(scrape_min_interval_seconds=0)
     assert Settings.from_env({"OFRAN_ENABLED": "false"}).ofran_enabled is False
+
+
+async def test_trip_pauses_a_site_for_thirty_minutes_and_then_lets_calls_through():
+    now = [1000.0]
+
+    async def fake_sleep(s):
+        now[0] += s
+
+    lim = SiteLimiter("Mozio", min_interval=0, max_per_hour=10, clock=lambda: now[0], sleep=fake_sleep)
+    await lim.acquire()
+    lim.trip()
+    with pytest.raises(RateLimitError, match="paused for about 30 more minutes"):
+        await lim.acquire()
+    now[0] += 29 * 60
+    with pytest.raises(RateLimitError, match="paused"):
+        await lim.acquire()
+    now[0] += 2 * 60
+    await lim.acquire()                                                # the pause is over
