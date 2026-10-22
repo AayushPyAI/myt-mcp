@@ -2,7 +2,8 @@
 // and ticks the filter boxes you ask for). The tool replaces __MAX_CARS__ and __FILTERS__ (a JSON list of filter labels) before it runs.
 // A field the card does not show is null ("not shown"). The card is found from its "Choose" button, not from a class name (class names carry hashes).
 await (async () => {
-  const MAX_CARS = __MAX_CARS__;
+  const MAX_CARS = __MAX_CARS__;                          // SKIP + LIMIT: the tool asks for the window [offset, offset + limit)
+  const SKIP = __SKIP__;
   const FILTERS = __FILTERS__;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const chooseButtons = () => [...document.querySelectorAll('button,a,div,span')].filter((e) => e.children.length === 0 && (e.innerText || '').trim() === 'Choose');
@@ -63,7 +64,8 @@ await (async () => {
       cancellation: lines.find((x) => /cancellation/i.test(x)) || null,
     };
   }
-  const rows = cards().slice(0, MAX_CARS).map(row);
+  const rows = cards().slice(0, MAX_CARS).map(row).slice(SKIP);
+  const pageTicked = [...document.querySelectorAll('input[type=checkbox],input[type=radio]')].filter((b) => b.checked).map((b) => ((b.closest('label') || b.parentElement || {}).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 40)).filter(Boolean);
   const form = {
     pickup: document.querySelectorAll('input')[0]?.value || null, dropoff: document.querySelectorAll('input')[1]?.value || null,
     times: [...document.querySelectorAll('input')].filter((i) => /^\d\d:\d\d$/.test(i.value)).map((i) => i.value),
@@ -72,5 +74,5 @@ await (async () => {
   };
   const prices = rows.map((r) => r.price).filter((x) => x != null);
   const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]); const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
-  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', form, filters_ticked: ticked, rows_read: rows.length, reached_cap: rows.length >= MAX_CARS, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
+  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', form, filters_ticked: ticked, page_ticked: pageTicked, offset: SKIP, rows_read: rows.length, reached_cap: rows.length >= MAX_CARS, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
 })()

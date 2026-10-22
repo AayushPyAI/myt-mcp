@@ -65,7 +65,7 @@ PLANS: dict[str, dict[str, Any]] = {
         "ask_once": ["pick-up and return place and TIMES (from the trip's flights if it has them, else ask)", "gearbox, seats, excess cover required or not", "driver age"],
         "sources": [
             {"name": "Ofran", "how": "Claude in Chrome, the operator's logged-in tab", "use": "always; read the company from the logo's alt text; price is the agent price only if the results header shows the agent's name"},
-            {"name": "RateHawk Car rental", "how": "Claude in Chrome", "use": "always"},
+            {"name": "RateHawk Car rental", "how": "ratehawk_cars_recipe (it asks the operator first: gearbox, seats, excess, budget; then you open its url and run its script in Claude in Chrome: 30 cars a batch, offset for more), compose_answer with its wishes, filters_used and pickup_time", "use": "always"},
         ],
         "fields": ["rental company", "car and class", "gearbox", "seats and bags", "mileage", "excess and insurance", "fuel policy", "deposit", "pick-up place and hours", "cancellation", "total price", "link"],
         "filters": "the operator's (gearbox, excess) or the trip's car line; the same filters and the same times on both sites.",

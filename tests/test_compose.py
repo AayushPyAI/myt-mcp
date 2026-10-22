@@ -632,3 +632,37 @@ def test_ratehawk_hotels_refuses_a_list_with_a_filter_nobody_asked_for_or_a_sear
     assert run(result(unlabelled_ticked=1), {**wishes, "stars_min": 4}) == []                # star boxes are expected when the operator named stars
     assert any("still adding results" in p for p in run(result(header_settled=False)))
     assert any("did not ask for" in p for p in run(result(filters_ticked=["Breakfast included"]), {"free_cancellation": False, "breakfast": False}))
+
+
+def _cars(rows, **head):
+    base = {"ok": True, "form": {"pickup": "Faro Airport", "dropoff": "Faro Airport", "times": ["10:00", "10:00"], "dates": ["12 Apr, Mon", "17 Apr, Sat"], "age_residency": ["26 - 69", "Israel"]},
+            "filters_ticked": [], "page_ticked": ["26 - 69 years"], "offset": 0, "rows_read": len(rows), "reached_cap": False, "price_order": "ascending", "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _car(name, price, seats="5", gearbox="Manual", company="greenmotion"):
+    return {"score": "8.0", "company": company, "company_from": "text", "seats": seats, "large_bags": "1", "small_bags": "2", "gearbox": gearbox, "car": name, "code_class": "MDMR • Mini", "pickup_place": "Faro Airport",
+            "deposit": 1200, "excess": 1100, "insurance": "Basic with excess", "mileage_fuel": "Unlimited mileage • Full to full", "extras": [], "price": price, "currency": "EUR", "cancellation": "Free cancellation"}
+
+
+def test_ratehawk_cars_ask_first_wishes_and_hidden_filters():
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.ratehawk_cars import cars_ask_gate, ratehawk_cars_recipe
+    asked = cars_ask_gate(None, None, None, None, False)
+    assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 4
+    assert len(cars_ask_gate("automatic", None, None, None, False)["ask_operator"]) == 3 and cars_ask_gate(None, None, None, None, True) is None
+    r = ratehawk_cars_recipe("Faro Airport", None, "2027-04-12", "10:00", "2027-04-17", "10:00", None, None, "26,69", "il", True, False, False, 40, False, 30, 30)
+    assert "const SKIP = 30;" in r["script"] and "const MAX_CARS = 60;" in r["script"] and r["filters_to_tick"] == ["Automatic"]
+    rows = [_car("Fiat Panda", 60, "4", "Manual"), _car("Opel Corsa", 62, "5", "Automatic"), _car("Jeep", 90, "5", "Automatic")]
+    wishes = {"automatic": True, "min_seats": 5, "max_total": 80}
+    offers, _, problems, _, notes = convert_all([{"site": "ratehawk_cars", "result": _cars(rows), "url": "u"}], wishes)
+    assert not problems and [o.fits for o in offers] == [False, True, False]            # manual, too few seats, over budget
+    manual, _, _, _, _ = convert_all([{"site": "ratehawk_cars", "result": _cars(rows), "url": "u"}], {"manual": True})
+    assert [o.fits for o in manual] == [True, False, False]
+    sticky = _cars(rows, page_ticked=["26 - 69 years", "Zero excess"])
+    assert any("did not ask for (Zero excess)" in p for p in convert_all([{"site": "ratehawk_cars", "result": sticky, "url": "u"}], wishes)[2])
+    asked_for = _cars(rows, filters_ticked=["Zero excess"], page_ticked=["26 - 69 years", "Zero excess"])
+    assert convert_all([{"site": "ratehawk_cars", "result": asked_for, "url": "u"}], {"zero_excess": True})[2] == []
+    later = _cars(rows, offset=30)
+    assert any("cars 31 to 33" in n and "not the cheapest overall" in n for n in convert_all([{"site": "ratehawk_cars", "result": later, "url": "u"}], None)[4])
