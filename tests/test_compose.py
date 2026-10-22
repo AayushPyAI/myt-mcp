@@ -496,3 +496,15 @@ async def test_the_server_browser_tool_is_off_by_default_and_the_chrome_recipe_a
                          "pages_read": 1, "rows_read": 1, "stopped": None, "price_order": "ascending", "rows": [row]})
     offers, sources, problems, by_price, notes = convert_all([{"site": "ratehawk_hotels", "result": later, "url": "u"}], None)
     assert not problems and any("options 31 to 31" in n and "not the cheapest overall" in n for n in notes)
+
+
+def test_hotel_options_of_one_stay_in_separate_source_groups_are_refused():
+    mk = lambda g, src, price: Offer(group=g, source=src, name=f"{src} hotel", price_total=price, currency="EUR", price_basis="whole stay", fits=True,
+                                     details={"stars": 4, "score": "8.5", "reviews": 300, "distance_from_centre": "1 km", "meal": "Breakfast", "cancellation": "Free cancellation", "room_bed": "Double"})
+    sources = [SourceRead(name="RateHawk", read=1, of=10, link="https://x.test/a"), SourceRead(name="Arbitrip", read=1, of=5, link="https://x.test/b")]
+    split = compose("hotels", ["x (operator)"], sources, [], [mk("Lisbon", "Arbitrip", 279), mk("Hotels", "RateHawk", 234)], {}, None, True, "")
+    assert split["ok"] is False and any("ONE `group`" in p for p in split["problems"])
+    one = compose("hotels", ["x (operator)"], sources, [], [mk("Lisbon", "Arbitrip", 279), mk("Lisbon", "RateHawk", 234)], {}, None, True, "")
+    assert one["ok"] is True and "RateHawk: RateHawk hotel - 234.00 EUR" in one["answer"]
+    two_cities = compose("hotels", ["x (operator)"], sources, [], [mk("Lisbon", "RateHawk", 234), mk("Lisbon", "Arbitrip", 279), mk("Porto", "RateHawk", 150), mk("Porto", "Arbitrip", 160)], {}, None, True, "")
+    assert two_cities["ok"] is True

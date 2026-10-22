@@ -100,6 +100,12 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
     if not offers:
         problems.append("offers is empty: pass the site script's answer parts in site_results (or the rows you read in offers)")
     names = {s.name.lower() for s in sources_read}
+    if kind == "hotels":      # one stay is ONE group, so Cheapest / Best fit / Recommended compare every source; a group of one source each hides the better site
+        by_group: dict[str, set[str]] = {}
+        for o in offers:
+            by_group.setdefault(o.group, set()).add(o.source.lower())
+        if len(by_group) > 1 and all(len(v) == 1 for v in by_group.values()) and len({next(iter(v)) for v in by_group.values()}) == len(by_group):
+            problems.append(f"each source is in its own group ({', '.join(sorted(by_group))}): put the options of one stay in ONE `group` (same text on every source) so the picks compare all sources; use separate groups only for different cities")
     if kind == "hotels":      # the agency compares RateHawk and Arbitrip for every hotel request: a source neither read nor excused is a hole in the answer
         covered = names | {n.name.lower() for n in not_checked}
         for src in ("ratehawk", "arbitrip"):
