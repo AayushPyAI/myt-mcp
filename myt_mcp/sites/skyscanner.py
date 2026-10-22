@@ -33,16 +33,16 @@ BATCH = 20
 
 
 def skyscanner_recipe(origin: str, destination: str, day: date, adults: int = 2, children_ages: list[int] | None = None, cabin: str = "economy", direct_only: bool = False,
-                      limit: int = BATCH) -> dict[str, Any]:
+                      limit: int = BATCH, offset: int = 0) -> dict[str, Any]:
     origin, destination = origin.strip().lower(), destination.strip().lower()
     if not (re.fullmatch(r"[a-z]{3}", origin) and re.fullmatch(r"[a-z]{3}", destination)):
         raise ValueError("origin and destination must be 3-letter IATA codes (flr, lis)")
     ages = list(children_ages or [])
-    if cabin not in CABINS or not 1 <= adults <= 8 or len(ages) > 8 or any(not 0 <= a <= 17 for a in ages) or not 1 <= limit <= 50:
+    if cabin not in CABINS or not 1 <= adults <= 8 or len(ages) > 8 or any(not 0 <= a <= 17 for a in ages) or not 1 <= limit <= 50 or offset < 0:
         raise ValueError(f"cabin must be one of {sorted(CABINS)}, adults 1-8, children's ages 0-17, limit 1-50")
     q = f"adultsv2={adults}" + (f"&childrenv2={'%7C'.join(str(a) for a in ages)}" if ages else "") + f"&cabinclass={CABINS[cabin][0]}&rtn=0&preferdirects={'true' if direct_only else 'false'}&currency=EUR"
     url = f"https://www.skyscanner.net/transport/flights/{origin}/{destination}/{day:%y%m%d}/?{q}"
-    script = with_emit((HERE / "skyscanner.js").read_text(encoding="utf-8")).replace("__SORTS__", json.dumps(["Best", "Cheapest"])).replace("__LIMIT__", str(limit))
+    script = with_emit((HERE / "skyscanner.js").read_text(encoding="utf-8")).replace("__SORTS__", json.dumps(["Best", "Cheapest"])).replace("__LIMIT__", str(limit)).replace("__SKIP__", str(offset))
     expect = {"origin": origin.upper(), "destination": destination.upper(), "day": day.isoformat(), "adults": adults, "children": len(ages), "cabin": CABINS[cabin][1], "direct_only": direct_only,
               "leg": f"{origin.upper()} to {destination.upper()}, {day:%d %b %Y}"}
     return {"url": url, "script": script, "expect": expect}
@@ -74,6 +74,11 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             problems.append(f"the page shows the cabin '{data['cabin']}', not '{exp['cabin']}': open the url again")
         if bool(data.get("direct_only")) != bool(exp.get("direct_only")):
             problems.append("Skyscanner's stop filters are not as asked (direct only vs connections): open the url again")
+        f = data.get("filters")
+        if f is not None:        # a filter the operator did not ask for (bags, emissions, nearby airports, an airline or layover box switched off) changes the list
+            extra = f.get("ticked_extras") or []
+            if extra or f.get("unticked_defaults"):
+                problems.append(f"Skyscanner shows filters the operator did not ask for ({', '.join(extra) or str(f.get('unticked_defaults')) + ' airline or layover box(es) switched off'}): clear them, open the url again and run the script once more")
     sorts = {s["sort"] for s in data.get("sorts") or []}
     if exp and not {"Best", "Cheapest"} <= sorts:
         problems.append("both the Best and the Cheapest tabs must be read: run the script again")
@@ -89,7 +94,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             details={"stops": stops, "fare": "not shown (Skyscanner lists the cheapest fare; the airline's page has the fares)", "checked_bag": "not shown on the list", "refund_change": "not shown on the list",
                      "per_person": f"{r['per']:g} EUR (as the page says: per passenger)" if r.get("per") is not None else "not shown"}))
     n = len(offers)
-    notes = ["Skyscanner only compares: the price to quote comes from the airline's own page. Best and Cheapest tabs were read together."]
+    notes = [f"These are tickets {int(data['offset']) + 1} to {int(data['offset']) + n // 2 if n else 0} of each tab (the cheaper or better ones were shown before)."] if data.get("offset") else []
+    notes += ["Skyscanner only compares: the price to quote comes from the airline's own page. Best and Cheapest tabs were read together."]
     if data.get("ads_skipped"):
         notes.append(f"{data['ads_skipped']} sponsored ticket(s) were left out.")
     if data.get("results_total"):
@@ -101,11 +107,11 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool(name="skyscanner_recipe", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
     async def skyscanner_recipe_tool(origin: str, destination: str, day: date, adults: int = 2, children_ages: list[int] | None = None, direct_only: bool | None = None,
-                                     cabin: str | None = None, operator_answered: bool = False, limit: int = BATCH) -> dict[str, Any]:
+                                     cabin: str | None = None, operator_answered: bool = False, limit: int = BATCH, offset: int = 0) -> dict[str, Any]:
         """FOR SKYSCANNER (COMPARISON ONLY; one leg, one way; read in the operator's own Chrome with Claude in Chrome), next to the airlines and RateHawk. ASK FIRST: without `direct_only`
         (true/false) and `cabin` ('economy' / 'premium' / 'business' / 'first') it opens nothing and returns `ask_operator`: ask them in ONE message, wait, call again with the answers
         (`operator_answered`=true for "no preference", only after the operator replied). Then it returns the results url (filters in it) and a read-only SCRIPT: open the url, run the script
-        with the javascript tool; it reads the Best and the Cheapest tabs (`limit` tickets each, sponsored ones left out). Give its answer parts unchanged to compose_answer in `site_results`
+        with the javascript tool; it reads the Best and the Cheapest tabs (`limit` tickets each from `offset`, sponsored ones left out; for more call again with offset=offset+limit). Give its answer parts unchanged to compose_answer in `site_results`
         as {"site": "skyscanner", "result": <part>, "url": <the url>} with the returned `wishes`. `origin` / `destination` are 3-letter airport or city codes; give `children_ages`. Skyscanner
         rows are comparison only: the price to quote comes from the airline's page. A human check (captcha) is never worked around: stop and tell the operator. One call per leg."""
         missing = [q for q, given in ((ASK["stops"], direct_only is not None), (ASK["cabin"], cabin is not None)) if not given]
@@ -113,8 +119,9 @@ def register(mcp: MCPServer) -> None:
             return {"ok": False, "ask_operator": missing, "searched": False,
                     "next": "Nothing was opened. Ask the operator these questions in ONE message (add the date, the airports and the travellers with the children's ages only if the request did not say them), "
                             "wait for the reply, then call this tool again with the answers. For 'no preference' leave that value out and set operator_answered=true (only after the operator replied in this chat)."}
-        out = skyscanner_recipe(origin, destination, day, adults, children_ages, cabin or "economy", bool(direct_only), limit)
+        out = skyscanner_recipe(origin, destination, day, adults, children_ages, cabin or "economy", bool(direct_only), limit, offset)
         out["wishes"] = {"expect": out["expect"]}
         out["filters_used"] = [("Direct flights only (operator)" if direct_only else "Connections allowed (" + ("operator" if direct_only is not None else "default: no preference") + ")"),
                                f"{CABINS[cabin or 'economy'][1]} cabin (" + ("operator" if cabin else "default") + ")", "Best and Cheapest tabs read together (agency rule)"]
+        out["more"] = f"For the next {limit} tickets of each tab call this tool again with the same values and offset={offset + limit}."
         return out

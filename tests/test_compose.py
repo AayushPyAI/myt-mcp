@@ -970,3 +970,21 @@ def test_place_matching_uses_the_distinctive_words_and_trains_keep_their_directi
     exp = {"origin": "Firenze Santa Maria Novella", "destination": "Roma Termini", "day": "2026-11-23", "adults": 2, "changes": "any", "class": None}
     back = convert_all([{"site": "ratehawk_trains", "result": _trains([_train(route="Roma Termini \u2192 Firenze S.M. Novella")]), "url": "u"}], {"expect": exp})[2]
     assert any("not Firenze Santa Maria Novella to Roma Termini" in p for p in back)
+
+
+def test_skyscanner_offset_window_and_hidden_filters():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.skyscanner import skyscanner_recipe
+    r = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6], "economy", False, 20, 20)
+    assert "const SKIP = 20;" in r["script"] and "const LIMIT = 20;" in r["script"]
+    exp = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6])["expect"]
+    rows = [_sk("Best", "Vueling Airlines", "13:10", "16:55", 340, 113), _sk("Cheapest", "Vueling Airlines", "21:00", "08:30", 218, 73, later="one day")]
+    ok_filters = {"stops": ["Direct", "1 stop", "2+ stops"], "ticked_extras": [], "unticked_defaults": 0}
+    run = lambda **kw: convert_all([{"site": "skyscanner", "result": _sky(rows, filters=ok_filters, **kw), "url": "u"}], {"expect": exp})
+    offers, _, problems, _, notes = run(offset=20)
+    assert not problems and any("tickets 21 to" in n for n in notes)
+    bad = convert_all([{"site": "skyscanner", "result": _sky(rows, filters={"stops": ["Direct", "1 stop", "2+ stops"], "ticked_extras": ["Checked bag"], "unticked_defaults": 0}), "url": "u"}], {"expect": exp})[2]
+    assert any("did not ask for (Checked bag)" in p for p in bad)
+    off = convert_all([{"site": "skyscanner", "result": _sky(rows, filters={"stops": ["Direct", "1 stop", "2+ stops"], "ticked_extras": [], "unticked_defaults": 3}), "url": "u"}], {"expect": exp})[2]
+    assert any("3 airline or layover box(es) switched off" in p for p in off)
