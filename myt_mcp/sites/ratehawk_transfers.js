@@ -29,8 +29,10 @@ await (async () => {
   const head = document.body.innerText.split('\n').map((x) => x.trim()).filter(Boolean);
   const iDate = head.findIndex((x) => /^\d{1,2} [A-Z][a-z]{2}, [A-Z][a-z]{2}, \d\d:\d\d$/.test(x));
   const form = { from: iDate >= 2 ? head[iDate - 2] : null, to: iDate >= 1 ? head[iDate - 1] : null, when: iDate >= 0 ? head[iDate] : null, passengers: iDate >= 0 ? head[iDate + 1] : null };
+  const pageTicked = [...document.querySelectorAll('input[type=checkbox],input[type=radio]')].filter((b) => b.checked).map((b) => ((b.closest('label') || b.parentElement || {}).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 40)).filter(Boolean);
+  const rng = (name) => { const i = head.indexOf(name); if (i < 0) return null; const n = (x) => parseInt(String(x || '').replace(/\D/g, ''), 10); return { from: n(head[i + 1]), to: n(head[i + 2]) }; };
   const prices = rows.map((r) => r.price).filter((x) => x != null);
   const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]); const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
   const sortActive = [...document.querySelectorAll('button')].map((b) => ({ t: (b.innerText || '').trim(), a: /active|selected|checked/i.test(b.className) })).filter((x) => /^(Cheapest|Spacious|Comfortable)$/.test(x.t)).filter((x) => x.a).map((x) => x.t)[0] || null;
-  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', form, rows_read: rows.length, sort_tab: sortActive, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
+  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', form, page_ticked: pageTicked, bags_range: rng('Baggage count'), seats_range: rng('Number of seats'), rows_read: rows.length, sort_tab: sortActive, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
 })()

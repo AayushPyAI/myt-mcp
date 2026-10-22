@@ -74,7 +74,7 @@ PLANS: dict[str, dict[str, Any]] = {
     "transfers": {
         "ask_once": ["pick-up time (from the trip's flight, else ask)", "passengers: adults and children's ages (child seats)", "luggage"],
         "sources": [
-            {"name": "RateHawk Transfers", "how": "Claude in Chrome", "use": "always"},
+            {"name": "RateHawk Transfers", "how": "ratehawk_transfers_recipe (it asks the operator first: bags, flight tracking, vehicle, budget; you fill RateHawk's form once, then run its script in Claude in Chrome), compose_answer with its wishes, filters_used and pickup_time", "use": "always"},
             {"name": "Kiwitaxi", "how": "kiwitaxi_transfer_prices", "use": "always; check matched_from and matched_to"},
             {"name": "Mozio", "how": "mozio_transfer_prices (pass pickup_time)", "use": "always"},
         ],

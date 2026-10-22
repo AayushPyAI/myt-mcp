@@ -666,3 +666,36 @@ def test_ratehawk_cars_ask_first_wishes_and_hidden_filters():
     assert convert_all([{"site": "ratehawk_cars", "result": asked_for, "url": "u"}], {"zero_excess": True})[2] == []
     later = _cars(rows, offset=30)
     assert any("cars 31 to 33" in n and "not the cheapest overall" in n for n in convert_all([{"site": "ratehawk_cars", "result": later, "url": "u"}], None)[4])
+
+
+def _transfers(rows, **head):
+    base = {"ok": True, "form": {"from": "Leonardo da Vinci Rome Fiumicino Airport (FCO)", "to": "Room Mate Collection Mia, Rome Colosseum", "when": "1 Mar, Mon, 16:30", "passengers": "2 adults, 1 child"},
+            "page_ticked": [], "bags_range": {"from": 2, "to": 16}, "seats_range": {"from": 3, "to": 16}, "rows_read": len(rows), "sort_tab": "Cheapest", "price_order": "ascending", "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _tr(vehicle, price, passengers="3", bags="2", tracking=True):
+    return {"vehicle": vehicle, "vehicle_class": "Standard", "passengers": passengers, "bags": bags, "waiting": "60 min waiting time", "meeting": "Meeting inside", "flight_tracking": tracking,
+            "cancellation": "Free cancellation", "price": price, "currency": "EUR", "child_seat": None}
+
+
+def test_ratehawk_transfers_ask_first_wishes_tab_and_hidden_filters():
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.ratehawk_transfers import ratehawk_transfers_recipe, transfers_ask_gate
+    asked = transfers_ask_gate(None, None, None, None, False)
+    assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 4 and transfers_ask_gate(None, None, None, None, True) is None
+    assert len(transfers_ask_gate(2, True, "cheapest", None, False)["ask_operator"]) == 1
+    exp = ratehawk_transfers_recipe("Fiumicino", "Room Mate", "2027-03-01", "16:30", 2, [6], "Comfortable")["expect"]
+    assert exp["sort_tab"] == "Comfortable" and exp["children"] == 1
+    rows = [_tr("Sedan", 40, "3", "2", True), _tr("Minivan", 60, "6", "4", True), _tr("Sedan B", 38, "3", "1", False)]
+    wishes = {"expect": {k: v for k, v in exp.items() if k != "sort_tab"}, "min_bags": 2, "flight_tracking": True, "max_total": 50}
+    wishes["expect"].update({"pickup": "Leonardo da Vinci Rome Fiumicino Airport", "dropoff": "Room Mate Collection Mia", "adults": 2, "children": 1})
+    offers, _, problems, _, _ = convert_all([{"site": "ratehawk_transfers", "result": _transfers(rows), "url": "u"}], wishes)
+    assert not problems and [o.fits for o in offers] == [True, False, False]            # fits; over budget; too few bags and no flight tracking
+    tab = convert_all([{"site": "ratehawk_transfers", "result": _transfers(rows), "url": "u"}], {"expect": {"sort_tab": "Comfortable"}})[2]
+    assert any("'Cheapest' tab, not 'Comfortable'" in p for p in tab)
+    sticky = convert_all([{"site": "ratehawk_transfers", "result": _transfers(rows, page_ticked=["With flight tracking"]), "url": "u"}], {"expect": {}})[2]
+    assert any("did not ask for (With flight tracking)" in p for p in sticky)
+    wanted = convert_all([{"site": "ratehawk_transfers", "result": _transfers(rows, page_ticked=["With flight tracking"]), "url": "u"}], {"expect": {}, "flight_tracking": True})[2]
+    assert wanted == []
