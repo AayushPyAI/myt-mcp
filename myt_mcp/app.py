@@ -89,6 +89,8 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     task_plan.register(mcp, services)
     if os.environ.get("RATEHAWK_SERVER_BROWSER") == "1":      # off by default: RateHawk is read with Claude in Chrome (the operator's own browser); this reads it in the server's browser
         ratehawk_live.register(mcp, services)
+    else:
+        ratehawk_live.register_redirect(mcp)      # claude.ai remembers the old tool list: keep the old name answering with the way to the right tool
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:

@@ -191,3 +191,17 @@ def register(mcp: MCPServer, services: Services) -> None:
                       offers, myt_supplier or {}, None, by_price, " ".join(notes), max_rows=show, checked_at=f"RateHawk read at {checked_at(jobs)} (server time; the same search is reused for {CACHE_SECONDS // 60} minutes)")
         log.info("CHECK ratehawk_hotels ok=%s offers=%s problems=%s", out.get("ok"), len(offers), "; ".join(out.get("problems", []))[:600])
         return out
+
+
+def register_redirect(mcp: MCPServer) -> None:
+    """The name `ratehawk_hotels` stays known when the server-browser tool is off: claude.ai keeps the tool list it saw when the connector was added, so a
+    removed name would only answer 'Unknown tool'. This one points to the Chrome recipe, which asks the operator first."""
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    @tool_errors
+    async def ratehawk_hotels(country: str = "", city: str = "", check_in: date | None = None, check_out: date | None = None, adults: int = 2,
+                              children_ages: list[int] | None = None, breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None,
+                              budget_per_night: float | None = None, max_distance_km: float | None = None, operator_answered: bool = False,
+                              pages: int = 3, show: int = 12, myt_supplier: dict[str, str] | None = None) -> dict[str, Any]:
+        """NOT USED in this setup (RateHawk is read with Claude in Chrome): call ratehawk_hotels_recipe with the same values. It asks the operator first."""
+        return {"ok": False, "searched": False, "next": "This tool is off. Call ratehawk_hotels_recipe with the same values (it asks the operator for stars, budget and distance first, "
+                                                         "then gives the url and the script for Claude in Chrome)."}

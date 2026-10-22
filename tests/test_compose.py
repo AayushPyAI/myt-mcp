@@ -478,7 +478,9 @@ async def test_the_server_browser_tool_is_off_by_default_and_the_chrome_recipe_a
     monkeypatch.delenv("RATEHAWK_SERVER_BROWSER", raising=False)
     async with Client(create_server(Settings())) as c:
         names = {t.name for t in (await c.list_tools()).tools}
-        assert "ratehawk_hotels" not in names and "ratehawk_hotels_recipe" in names
+        assert "ratehawk_hotels" in names and "ratehawk_hotels_recipe" in names      # the old name stays, as a pointer to the recipe
+        pointer = (await c.call_tool("ratehawk_hotels", {"country": "portugal", "city": "lisbon", "stars": 4, "operator_answered": True})).structured_content
+        assert pointer["ok"] is False and "ratehawk_hotels_recipe" in pointer["next"]
         base = {"country": "portugal", "city": "lisbon", "check_in": "2027-05-03", "check_out": "2027-05-05", "breakfast": True, "free_cancellation": True}
         asked = (await c.call_tool("ratehawk_hotels_recipe", base)).structured_content
         assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3 and "script" not in asked
