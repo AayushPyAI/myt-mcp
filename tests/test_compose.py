@@ -803,3 +803,53 @@ async def test_ratehawk_trains_tool_asks_first():
         assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3
         r = (await c.call_tool("ratehawk_trains_recipe", {**base, "changes": "direct", "train_class": "comfort", "max_total": 120})).structured_content
         assert "railway/?from=8306421" in r["url"] and r["wishes"]["max_total"] == 120 and any("Direct route" in f for f in r["filters_used"]) and "offset=30" in r["more"]
+
+
+def _sky(rows, **head):
+    base = {"ok": True, "route": ["FLR", "LIS"], "date": "Sat, 6 Mar", "travellers": 3, "cabin": "Economy", "results_total": 97, "direct_only": False, "tabs": {}, "ads_skipped": 2, "unparsed": [],
+            "sorts": [{"sort": "Best", "shown_as": "Best", "read": 2}, {"sort": "Cheapest", "shown_as": "Cheapest", "read": 2}], "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _sk(sort, airlines, dep, arr, total, per, direct=False, later=None, via="one stop in Barcelona", duration="8 hours 5 minutes"):
+    return {"sort": sort, "per": per, "total": total, "airlines": airlines, "from": "Florence", "dep": dep, "to": "Lisbon", "arr": arr, "later": later, "direct": direct, "duration": duration, "via": None if direct else via}
+
+
+def test_skyscanner_asks_first_has_the_url_and_its_rows_are_comparison_only():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.skyscanner import skyscanner_recipe
+    r = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6, 8], "economy", True, 20)
+    assert r["url"] == "https://www.skyscanner.net/transport/flights/flr/lis/270306/?adultsv2=2&childrenv2=6%7C8&cabinclass=economy&rtn=0&preferdirects=true&currency=EUR"
+    assert 'const SORTS = ["Best", "Cheapest"];' in r["script"] and "const LIMIT = 20;" in r["script"] and r["expect"]["leg"] == "FLR to LIS, 06 Mar 2027"
+    with pytest.raises(ValueError, match="IATA"):
+        skyscanner_recipe("Florence", "LIS", date(2027, 3, 6))
+    exp = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6])["expect"]
+    run = lambda text, e=exp: convert_all([{"site": "skyscanner", "result": text, "url": "u"}], {"expect": e})
+    rows = [_sk("Best", "Portugalia Airlines", "12:20", "14:30", 414, 138, direct=True, duration="3 hours 10 minutes"), _sk("Best", "Vueling Airlines", "13:10", "16:55", 340, 113),
+            _sk("Cheapest", "Vueling Airlines", "21:00", "08:30", 218, 73, later="one day"), _sk("Cheapest", "Vueling Airlines", "13:10", "16:55", 340, 113)]
+    offers, sources, problems, _, notes = run(_sky(rows))
+    assert not problems and len(offers) == 3 and all(o.quotable is False and o.group == "FLR to LIS, 06 Mar 2027" for o in offers)         # the same ticket in both tabs is one offer
+    assert offers[0].details["per_person"].startswith("138 EUR") and offers[0].details["stops"] == "Direct flight" and "one day later" in offers[2].name
+    assert any("sponsored" in n for n in notes) and any("only compares" in n for n in notes)
+    assert any("not FLR to LIS" in p for p in run(_sky(rows, route=["FCO", "LIS"]))[2])
+    assert any("not Sat, 6 Mar" in p for p in run(_sky(rows, date="Sun, 7 Mar"))[2])
+    assert any("counts 2 travellers, not 3" in p for p in run(_sky(rows, travellers=2))[2])
+    assert any("cabin 'Business'" in p for p in run(_sky(rows, cabin="Business"))[2])
+    assert any("stop filters" in p for p in run(_sky(rows, direct_only=True))[2])
+    assert any("does not know" in p for p in run(_sky(rows, unparsed=["Flight option 3: something new"]))[2])
+    assert any("both the Best and the Cheapest" in p for p in run(_sky(rows, sorts=[{"sort": "Best", "shown_as": "Best", "read": 2}]))[2])
+    assert any("human check" in p for p in run(json.dumps({"ok": False, "error": "Skyscanner shows a human check (captcha). Stop"}))[2])
+
+
+@pytest.mark.anyio
+async def test_skyscanner_tool_asks_first():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        asked = (await c.call_tool("skyscanner_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06"})).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 2
+        r = (await c.call_tool("skyscanner_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06", "direct_only": False, "cabin": "economy", "children_ages": [6]})).structured_content
+        assert "childrenv2=6" in r["url"] and r["wishes"]["expect"]["children"] == 1 and any("Best and Cheapest" in f for f in r["filters_used"])
