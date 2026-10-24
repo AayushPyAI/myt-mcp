@@ -88,3 +88,17 @@ async def test_the_tool_gives_ready_rows_for_lisbon_and_a_link_when_no_airline_l
     assert lis["lounges"][0]["offer"]["price_total"] == 38.0 and lis["lounges"][1]["offer"]["price_total"] == 28.0 and "not_provided" in lis
     assert fco["lounges"] == [] and "Neither" in fco["note"] and fco["source"].startswith("https://azoresairlines.pt")
     assert bad.is_error and "3-letter IATA" in bad.content[0].text
+
+
+async def test_every_lounge_source_gives_its_rows_the_same_group_so_one_table_and_one_set_of_picks_come_out():
+    from tests.test_loungepair import LIS_PAGE, TLV_PAGE  # noqa: F401  (the fake LoungePair pages)
+    from myt_mcp.lounges.loungepair import offer_row, parse_lounge
+    from myt_mcp.lounges.airlines import offer_azores, offer_tap
+    lis = parse_lounge(LIS_PAGE, "/at/LIS/x/")
+    rows = [offer_row(lis, "LIS", None), offer_azores(parse_azores(_text(AZORES))[0], "LIS"), offer_tap(parse_tap(_text(TAP))["own_lounges"][0], "LIS", 28.0)]
+    assert len({r["group"] for r in rows}) == 1
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        out = (await c.call_tool("compose_answer", {"kind": "lounges", "offers": rows, "filters_used": ["Airport LIS (operator)"],
+                                                     "sources_read": [{"name": r["source"], "read": 1, "of": 1, "link": r["link"]} for r in rows]})).structured_content
+    assert out["ok"] and out["answer"].count("| Cheapest |") == 1 and out["answer"].count("### ") == 1

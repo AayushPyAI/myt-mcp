@@ -92,7 +92,7 @@ def offer_row(lounge: dict[str, Any], iata: str, flight_at: datetime | None) -> 
     """A ready row for compose_answer(offers=...): pass it as it is, never multiply or reword the price (it is a per-person 'from' price)."""
     price, currency = lounge.get("from_price_per_person"), lounge.get("currency")
     hours = lounge.get("opening_hours")
-    return {"group": f"{iata} lounges" + (f", flight {flight_at:%d %b %Y %H:%M}" if flight_at else ""), "source": "LoungePair",
+    return {"group": f"{iata} lounges", "source": "LoungePair",      # the same group name as the airline rows, so every lounge source lands in one table with one set of picks
             "name": ", ".join(x for x in (lounge.get("name"), lounge.get("terminal")) if x), "price_total": price, "currency": currency,
             "price_basis": "'from' price PER PERSON, the lowest at any date (not for this flight, not multiplied for the group)", "quotable": False,
             "supplier": "LoungePair", "link": lounge.get("url"),
