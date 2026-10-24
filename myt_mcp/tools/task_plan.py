@@ -39,7 +39,6 @@ PLANS: dict[str, dict[str, Any]] = {
         "sources": [
             {"name": "TAP Air Portugal", "how": "tap_recipe, one call per leg (it asks direct only, checked bag and refundable first; you open its url and run its script in Claude in Chrome; the airline's own prices), compose_answer with its wishes; tap_fare_calendar shows the cheapest days", "use": "legs touching Portugal and many European routes"},
             {"name": "SATA / Azores Airlines", "how": "sata_recipe, one call per leg (it asks direct only, checked bag and refundable first; THE SERVER then reads SATA's page itself in its own browser, no Chrome action from you, and returns an `ingest` id; the airline's own prices), compose_answer with runs=[that id]", "use": "Azores, Madeira and mainland Portugal"},
-            {"name": "Israir", "how": "israir_flight_prices", "use": "ONLY flights from or to Tel Aviv on its network; never Lisbon, Porto, Madeira or the Azores"},
             {"name": "El Al", "how": "elal_recipe, one call per leg (it asks direct only and cabin first; you fill El Al's search once on its booking page, then run its script in Claude in Chrome; the airline's own prices)", "use": "legs touching Israel"},
             {"name": "ITA Airways", "how": "Claude in Chrome (via RateHawk Air or Skyscanner)", "use": "legs touching Italy"},
             {"name": "RateHawk Air tickets", "how": "ratehawk_air_recipe, one call per leg (it asks stops, checked bag and cabin first; you open its url and run its script in Claude in Chrome), compose_answer with its wishes", "use": "EVERY leg"},
@@ -48,7 +47,7 @@ PLANS: dict[str, dict[str, Any]] = {
         "fields": ["flight number and operating airline", "times and stops", "the whole fare ladder (code and name)", "cabin bag and checked bag", "change and refund terms (only if the tool or page shows them)",
                    "price per adult and per child", "group total", "link"],
         "filters": "direct flights for a short leg (trip default) unless the operator says otherwise; the same filter on every source; show connecting flights only when no direct exists, marked 'connecting'.",
-        "never": ["write a change fee, refund amount or bag weight a tool did not return (TAP returns none)", "retry a tool that timed out more than twice (try the city code once: PAR not CDG, then use the other sources)", "write what an airline 'typically' charges: say 'not shown'", "price a BATCH seat from a public fare", "call Israir for Lisbon, Porto, Madeira or the Azores"],
+        "never": ["write a change fee, refund amount or bag weight a tool did not return (TAP returns none)", "retry a tool that timed out more than twice (try the city code once: PAR not CDG, then use the other sources)", "write what an airline 'typically' charges: say 'not shown'", "price a BATCH seat from a public fare", "say an airline does not fly a route unless a tool or page you read said so: otherwise put it in Not checked"],
     },
     "hotels": {
         "ask_once": ["stars, budget per night and area / longest distance from the centre (when the trip has no hotel yet)", "meal plan and free cancellation: required or not", "adults and children's ages"],
@@ -80,7 +79,7 @@ PLANS: dict[str, dict[str, Any]] = {
         ],
         "fields": ["vehicle and capacity (people, bags)", "price per vehicle", "waiting time", "cancellation", "provider", "meeting point", "pick-up time used"],
         "filters": "vehicles that fit the whole group and its bags; the same pick-up time on every source.",
-        "never": ["let Mozio's default 12:00 decide the time", "type '3 adults' for '3 passengers'", "say 'roomier' when the capacities are equal"],
+        "never": ["let Mozio's default 12:00 decide the time", "type '3 adults' for '3 passengers'", "say 'roomier' when the capacities are equal", "keep a time the operator guessed once the flights show the real one: when the flight you found lands or leaves at another time, search again with the real time and say so"],
     },
     "trains": {
         "ask_once": ["adults and children's ages", "earliest departure time", "class"],
@@ -110,7 +109,7 @@ PLANS: dict[str, dict[str, Any]] = {
                     {"name": "Azores Airlines and TAP lounge pages", "how": "airline_lounges (3-letter airport code; the airlines' own prices: Azores at LIS/OPO/FAO and more, TAP's own lounges at Lisbon; comparison only, sold with their own flight bookings)", "use": "always, next to LoungePair"}],
         "fields": ["lounge and terminal", "entry window against the flight", "length of stay", "adult and child price", "link"],
         "filters": "the entry window must fit the flight time.",
-        "never": ["write opening hours or a menu the tool did not return"],
+        "never": ["write opening hours or a menu the tool did not return", "price the lounge for a flight time the operator guessed once the flights show the real one: pass the real departure time (flight_departure) and say so"],
     },
 }
 
@@ -122,20 +121,18 @@ def _has(text: str, words: tuple[str, ...]) -> bool:
     return any(w in low for w in words)
 
 
-def leg_sources(leg: dict[str, Any], israir_cities: list[str] | None = None) -> dict[str, Any]:
+def leg_sources(leg: dict[str, Any]) -> dict[str, Any]:
     """The sources to read for one flight leg of the trip. No list of countries or airports is kept here: every tool answers for itself
-    (an honest "route not sold" is the reason for 'Not checked'), and Israir's live list of cities is passed in."""
+    (an honest "route not sold" is the reason for 'Not checked')."""
     a, b = str(leg.get("from") or ""), str(leg.get("to") or "")
     both = f"{a} / {b}"
     read = ["RateHawk Air tickets (Chrome)", "Skyscanner (Chrome, comparison)",
             "TAP Air Portugal (Chrome: tap_recipe; if TAP does not sell the route the page shows no flights: that is the reason)",
             "SATA / Azores Airlines (Chrome: sata_recipe; same reason if it does not sell the route)"]
     if _has(both, ISRAEL):
-        read += ["El Al (Chrome)", "israir_flight_prices ONLY if the other end's city code is in `israir_sells`; if it is not, write 'Israir does not sell it'"]
+        read += ["El Al (Chrome)"]
     out: dict[str, Any] = {"leg": f"{a} -> {b}", "flight_in_mytrip": leg.get("flight"), "departure": leg.get("departure"), "read": read,
                            "also": "If either end is in Italy also read ITA Airways (through RateHawk Air or Skyscanner); read every source that can serve this route, not only these."}
-    if israir_cities is not None and _has(both, ISRAEL):
-        out["israir_sells"] = israir_cities
     if "batch" in str(leg.get("note") or "").lower():
         out["batch_seat"] = "agency block seat: public fares are comparison only; the price comes from the operator"
     return out
@@ -148,7 +145,7 @@ def trip_block(trip: dict[str, Any]) -> dict[str, Any]:
             "first_check": "get_supplier_reservations: if there are none, say so at the top (Planning and reservations are the operator's step before the quote)"}
 
 
-def build_plan(kind: str, trip: dict[str, Any] | None = None, israir_cities: list[str] | None = None) -> dict[str, Any]:
+def build_plan(kind: str, trip: dict[str, Any] | None = None) -> dict[str, Any]:
     plan = PLANS[kind]
     out: dict[str, Any] = {
         "kind": kind, "follow_this": "This plan is part of the rules: do every step. Details of each rule: quote_guide(...) topics named below.",
@@ -161,7 +158,7 @@ def build_plan(kind: str, trip: dict[str, Any] | None = None, israir_cities: lis
     if trip:
         out["trip"] = trip_block(trip)
         if kind == "flights":
-            out["legs_of_the_trip"] = [leg_sources(f, israir_cities) for f in trip.get("flights", [])]
+            out["legs_of_the_trip"] = [leg_sources(f) for f in trip.get("flights", [])]
             out["legs_note"] = "Price every leg; for a leg with no direct flight on any source, show connecting options marked 'connecting'."
     else:
         out["trip"] = "No trip given: ask the operator for the dates, travellers and places, or pass trip_id (from find_trip) to fill them in."
@@ -184,10 +181,4 @@ def register(mcp: MCPServer, services: Services) -> None:
             if (v3.get("trip") or {}).get("trip_id") != trip_id:
                 raise ToolError(f"MYT returned another trip than {trip_id}; nothing was planned.")
             trip = trip_summary(v3)
-        cities: list[str] | None = None
-        if kind == "flights" and trip:
-            try:
-                cities = sorted((await services.israir().cities()).keys())
-            except Exception:    # Israir down or switched off: the plan still works, the tool will say what it sells
-                cities = None
-        return build_plan(kind, trip, cities)
+        return build_plan(kind, trip)

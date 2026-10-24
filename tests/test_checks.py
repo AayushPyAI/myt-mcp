@@ -218,12 +218,12 @@ def test_skyscanner_shows_best_and_cheapest_together_and_asks_the_rest_once():
         assert rule in text, rule
 
 
-def test_flights_say_sources_checked_never_assume_adults_and_skip_israir_for_portugal():
+def test_flights_say_sources_checked_never_assume_adults():
     from myt_mcp.guide import sections
 
     flights, other, correct = sections()["flights"], sections()["other_sources"], sections()["correct_data"]
     assert flights.startswith("## Flights: which sources to use")
-    for rule in ("Sources checked: ... | Not checked", "do not call it for those legs", "Never write \"all adults\"", "always read Skyscanner too"):
+    for rule in ("Sources checked: ... | Not checked", "Never write \"all adults\"", "always read Skyscanner too"):
         assert rule in flights, rule
     assert "Skyscanner, El Al, ITA Airways" not in other and "NOT in this list" in other
     assert "Travellers' ages are not in MYT" in correct
@@ -352,7 +352,7 @@ def test_check_answer_accepts_a_complete_draft_and_lists_what_is_missing():
 
     assert check_answer_text(GOOD, "flights")["ok"] is True
     bad = ("Cheapest TAP 462.90. Recommended CLANEW. Not checked: RateHawk, El Al (skipped for time). All adults. TAP CLANEW change fee €100.\n"
-           "Sources: TAP (flytap.com), https://www.israir.co.il")
+           "Sources: TAP (flytap.com), https://www.flytap.com")
     r = check_answer_text(bad, "flights")
     text = " ".join(r["missing"] + r["warnings"]).lower()
     assert r["ok"] is False
@@ -386,7 +386,7 @@ def test_answer_format_tells_claude_to_call_check_answer_and_to_respect_not_prov
 def test_every_price_tool_with_a_known_gap_lists_it():
     from myt_mcp.checks import NOT_PROVIDED
 
-    for tool in ("tap_flight_prices", "tap_fare_calendar", "israir_flight_prices", "lounge_prices", "train_prices",
+    for tool in ("tap_flight_prices", "tap_fare_calendar", "lounge_prices", "train_prices",
                  "kiwitaxi_transfer_prices", "mozio_transfer_prices", "loungepair_lounges", "airline_lounges"):
         assert NOT_PROVIDED[tool], tool
     assert "waiting time" in NOT_PROVIDED["kiwitaxi_transfer_prices"] and "platform" in NOT_PROVIDED["train_prices"]
@@ -415,14 +415,14 @@ def test_task_plan_gives_every_kind_a_plan_and_picks_sources_per_leg():
             "flights": [{"flight": "6H581", "from": "Ben Gurion Airport", "to": "Rome FCO Fiumicino Airport", "note": "BATCH 02"},
                         {"from": "Lisbon International Airport", "to": "Aeroporto de Ponta Delgada Joao Paulo II"},
                         {"from": "Aeroporto de Ponta Delgada Joao Paulo II", "to": "Ben Gurion Airport", "flight": "6H582", "note": "BATCH 02"}]}
-    legs = build_plan("flights", trip, ["ATH", "ROM", "TLV"])["legs_of_the_trip"]
-    assert "El Al (Chrome)" in " ".join(legs[0]["read"]) and "batch_seat" in legs[0] and legs[0]["israir_sells"] == ["ATH", "ROM", "TLV"]
-    assert "israir_sells" not in legs[1] and not any("El Al" in x for x in legs[1]["read"])          # Lisbon -> Ponta Delgada: no Israel
+    legs = build_plan("flights", trip)["legs_of_the_trip"]
+    assert "El Al (Chrome)" in " ".join(legs[0]["read"]) and "batch_seat" in legs[0]
+    assert not any("El Al" in x for x in legs[1]["read"])          # Lisbon -> Ponta Delgada: no Israel
     assert any("El Al" in x for x in legs[2]["read"]) and "batch_seat" in legs[2]                       # Ponta Delgada -> Tel Aviv
     for leg in legs:                                                                                  # every leg: the two Chrome sources and both Portugal tools
         assert {"RateHawk Air tickets (Chrome)", "Skyscanner (Chrome, comparison)"} <= set(leg["read"])
-    athens = build_plan("flights", {"flights": [{"from": "Ben Gurion Airport", "to": "Athens International Airport"}]}, ["ATH", "TLV"])["legs_of_the_trip"][0]
-    assert "israir_sells" in athens and "no list of countries" not in athens["also"]                    # a route nobody coded still gets the full plan
+    athens = build_plan("flights", {"flights": [{"from": "Ben Gurion Airport", "to": "Athens International Airport"}]})["legs_of_the_trip"][0]
+    assert "El Al (Chrome)" in athens["read"] and "no list of countries" not in athens["also"]                    # a route nobody coded still gets the full plan
     assert build_plan("flights", trip)["trip"]["ages_known"] is False
 
 

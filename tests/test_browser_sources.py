@@ -55,14 +55,14 @@ async def test_transfer_has_no_price_and_points_to_the_playbook():
 
 @pytest.mark.parametrize("asked, expected", [
     ("Tripadvisor", "Viator"), ("Check Booking.com for me", "hotel_prices"), ("Ryanair flights", "sata_flight_prices"),
-    ("Sixt", "ofran_car_prices"), ("Priority Pass", "lounge_prices"), ("El Al", "tap_flight_prices"), ("Skyscanner", "israir_flight_prices"),
+    ("Sixt", "ofran_car_prices"), ("Priority Pass", "lounge_prices"), ("El Al", "tap_flight_prices"), ("Skyscanner", "sata_flight_prices"),
 ])
 async def test_other_sources_offer_the_connected_alternative(asked, expected):
     out = (await call("other_source_prices", {"site_or_topic": asked})).structured_content
     assert expected in out["offer_instead"] and "web search" in out["no_prices_here"]
 
 
-@pytest.mark.parametrize("asked, tool", [("TAP", "tap_flight_prices"), ("Mozio", "mozio_transfer_prices"), ("kiwitaxi.com", "kiwitaxi_transfer_prices"), ("Israir", "israir_flight_prices")])
+@pytest.mark.parametrize("asked, tool", [("TAP", "tap_flight_prices"), ("Mozio", "mozio_transfer_prices"), ("kiwitaxi.com", "kiwitaxi_transfer_prices")])
 async def test_a_connected_source_is_not_called_unconnected(asked, tool):
     out = (await call("other_source_prices", {"site_or_topic": asked})).structured_content
     assert tool in out["offer_instead"] and "IS connected" in out["no_prices_here"] and "not connected" not in out["no_prices_here"].replace("IS connected", "")

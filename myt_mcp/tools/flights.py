@@ -1,4 +1,4 @@
-"""Flight tools: SATA (Azores Airlines S4 and SATA Air Açores SP) from SATA's own site, and Israir (Tel Aviv flights) from its public search."""
+"""Flight tools: SATA (Azores Airlines S4 and SATA Air Açores SP) from SATA's own site."""
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
-from myt_mcp.israir.parse import CITY_OF_AIRPORT, check_packages, parse_packages
 from myt_mcp.labels import flights_glance
 from myt_mcp.sata.client import search_link
 from myt_mcp.tap.parse import check_availability as check_tap, parse_availability as parse_tap, split_by_origin
@@ -101,56 +100,6 @@ def register(mcp: MCPServer, services: Services) -> None:
             reply["sata_messages"] = messages
         return reply
 
-
-    @mcp.tool(annotations=READ_ONLY)
-    @tool_errors
-    @with_checked_at
-    async def israir_flight_prices(from_airport: str, to_airport: str, departure_date: date, adults: int = 2,
-                                   child_ages: list[int] | None = None) -> dict[str, Any]:
-        """Israir (Israeli airline) one-way flight prices between Tel Aviv (TLV) and the ~60 cities Israir sells (Rome, Milan,
-        Verona, Porto, London, Athens, Budapest...), from israir.co.il's own public search: flight number, local departure and
-        arrival times, the fare per passenger type and the TOTAL for the whole group, and what baggage is in the price. Prices
-        are in USD (Israir's currency here; `flight_codes` is the flight as Israir's page writes it, e.g. 6H349): do not convert them yourself; say "USD" and let the operator decide. One of the two
-        airports must be TLV. `child_ages` = each child's age on the flight (under 2 = infant). Give two searches for a
-        return. Seats an agency holds as "batch" or block flights are NOT in this public search: if a trip's flight (for
-        example 6H581) is not found, say so. Nothing is booked."""
-        origin, destination = _airport(from_airport, "from_airport"), _airport(to_airport, "to_airport")
-        from_city, to_city = CITY_OF_AIRPORT.get(origin, origin), CITY_OF_AIRPORT.get(destination, destination)
-        child_ages = child_ages or []
-        if "TLV" not in (from_city, to_city) or from_city == to_city:
-            raise ToolError("Israir sells flights between Tel Aviv (TLV) and other cities: one of from_airport and to_airport must be TLV.")
-        if departure_date < _today():
-            raise ToolError("departure_date is in the past.")
-        if (departure_date - _today()).days > 365:
-            raise ToolError("Israir shows flights up to one year ahead; departure_date is later.")
-        if not 1 <= adults <= 9 or len(child_ages) > 8 or adults + len(child_ages) > 9:
-            raise ToolError("adults must be 1-9 and adults + children at most 9.")
-        if any(not 0 <= a <= 17 for a in child_ages):
-            raise ToolError("child_ages must be ages 0-17; put travellers aged 18+ in adults.")
-        israir = services.israir()
-        cities = await israir.cities()
-        for name, city in ((origin, from_city), (destination, to_city)):
-            if city not in cities:
-                raise ToolError(f"Israir does not sell flights to or from {name} (city code {city}). Cities it sells: {', '.join(sorted(cities))}.")
-        found = await israir.search(from_city, to_city, departure_date, adults, tuple(sorted(child_ages)))
-        options = parse_packages(found)
-        children = sum(1 for a in child_ages if a >= 2)
-        ensure("Israir", check_packages(options, departure_date, adults, children, from_city, to_city))
-        options.sort(key=lambda o: (o["price_total"] or 0, o["departure"] or ""))
-        answer: dict[str, Any] = {
-            "search": {"from": origin, "to": destination, "date": departure_date.isoformat(), "adults": adults, "child_ages": child_ages},
-            "prices_are_for": "all passengers together, one way, in USD (Israir's own price; not converted)", "options": options,
-            "source": options[0]["source"] if options else f"https://www.israir.co.il/he-IL/reservation/search/flights-abroad",
-        }
-        if options:
-            cheapest = options[0]
-            answer["at_a_glance"] = {"cheapest": {"flight_numbers": cheapest["flight_numbers"], "departure": cheapest["departure"], "price_total": cheapest["price_total"], "currency": cheapest["currency"]}}
-            if not cheapest["baggage"]["checked_bag_included"]:
-                answer["baggage_note"] = "A checked bag is not in the price; ask the operator whether the group needs one (its price is shown at booking)."
-        else:
-            answer["note"] = ("Israir's public search has no flight for this route and date. Block or batch seats held by the agency do not appear here: "
-                              "ask the operator where that price comes from. Try nearby dates only if the operator agrees.")
-        return answer
 
     @live(tap_live)
     @tool_errors

@@ -843,6 +843,7 @@ def test_skyscanner_asks_first_has_the_url_and_its_rows_are_comparison_only():
     assert not problems and len(offers) == 3 and all(o.quotable is False and o.group == "FLR to LIS, 06 Mar 2027" for o in offers)         # the same ticket in both tabs is one offer
     assert offers[0].details["per_person"].startswith("138 EUR") and offers[0].details["stops"] == "Direct flight" and "one day later" in offers[2].name
     assert any("sponsored" in n for n in notes) and any("only compares" in n for n in notes)
+    assert any(n.startswith("FLR to LIS, 06 Mar 2027: 2 sponsored") for n in notes) and any(n.startswith("FLR to LIS, 06 Mar 2027: Skyscanner lists 97 results") for n in notes)     # counts name their leg
     assert any("not FLR to LIS" in p for p in run(_sky(rows, route=["FCO", "LIS"]))[2])
     assert any("not Sat, 6 Mar" in p for p in run(_sky(rows, date="Sun, 7 Mar"))[2])
     assert any("counts 2 travellers, not 3" in p for p in run(_sky(rows, travellers=2))[2])
@@ -1578,6 +1579,17 @@ def test_the_drivers_age_is_stated_and_a_driver_outside_the_ratehawk_band_gets_a
     assert driver_filter("26,69", None) == "driver age 26,69 (default: the agency's)"
     assert driver_filter("26,69", 40) == "driver age 40 (operator)"
     assert "young- or senior-driver fee may be missing" in driver_filter("26,69", 25) and "26-69 band" in driver_filter("26,69", 72)
+
+
+def test_ratehawk_cars_are_not_a_pick_for_a_driver_outside_its_age_band():
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.ratehawk_cars import outside_band
+    assert outside_band("26,69", 25) and outside_band("26,69", 72) and not outside_band("26,69", 26) and not outside_band("26,69", None)
+    rows = [_car("Opel Corsa", 62, "5", "Automatic")]
+    inside, _, _, _, _ = convert_all([{"site": "ratehawk_cars", "result": _cars(rows), "url": "u"}], {"automatic": True})
+    young, _, problems, _, notes = convert_all([{"site": "ratehawk_cars", "result": _cars(rows), "url": "u"}], {"automatic": True, "driver_outside_band": "25 years old"})
+    assert [o.fits for o in inside] == [True] and [o.fits for o in young] == [False] and not problems
+    assert any("25 years old" in n and "none is a pick for this driver" in n for n in notes)
 
 
 def test_ofran_takes_the_drivers_age_under_30_from_the_page_and_refuses_a_box_left_at_30_69():

@@ -67,7 +67,6 @@ NOT_PROVIDED_RULE = ("Any fee, condition, inclusion, baggage weight, cancellatio
 NOT_PROVIDED = {
     "tap_flight_prices": ["change fee or its amount", "refund penalty amount", "checked-bag weight (only whether a bag is included)", "seat selection", "meals"],
     "tap_fare_calendar": ["change fee or its amount", "refund penalty amount", "checked-bag weight", "seat selection", "meals"],
-    "israir_flight_prices": ["refund or change terms and fees", "seat selection", "operating-airline details beyond the carrier code"],
     "lounge_prices": ["opening hours", "menu or food and drink beyond the description", "cancellation terms", "child age rules unless `age_rules` is in the answer"],
     "train_prices": ["platform", "seat or coach numbers", "baggage rules", "refund amounts (only the fare conditions text, if any)"],
     "airline_lounges": ["the price for a TAP ticket at Azores Airlines' lounges (theirs is sold with an Azores flight)", "the exact TAP lounge price for this trip (only the lowest 'from' price)", "who gets free access with a fare, status or card (TAP's page lists it, this tool does not read it)"],
@@ -81,7 +80,7 @@ _SOURCES = {
     "get_trip_participants": "MYT (ManageYourTrip)", "get_supplier_reservations": "MYT (ManageYourTrip)", "reconcile_trip": "MYT (ManageYourTrip)", "check_reservation_paperwork": "MYT (ManageYourTrip)", "train_prices": "Trenitalia (lefrecce.it)",
     "sata_flight_prices": "SATA (azoresairlines.pt)", "lounge_prices": "Aspire Lounges", "loungepair_lounges": "LoungePair (loungepair.com)", "airline_lounges": "Azores Airlines and TAP Air Portugal (their lounge pages)", "viator_search_activities": "Viator",
     "viator_activity_details": "Viator", "getyourguide_activity_details": "GetYourGuide", "getyourguide_find_activities": "GetYourGuide",
-    "ofran_car_prices": "Ofran", "kiwitaxi_transfer_prices": "Kiwitaxi (kiwitaxi.com)", "mozio_transfer_prices": "Mozio (mozio.com)", "israir_flight_prices": "Israir (israir.co.il)", "tap_flight_prices": "TAP Air Portugal (flytap.com)", "tap_fare_calendar": "TAP Air Portugal fare calendar (flytap.com)",
+    "ofran_car_prices": "Ofran", "kiwitaxi_transfer_prices": "Kiwitaxi (kiwitaxi.com)", "mozio_transfer_prices": "Mozio (mozio.com)", "tap_flight_prices": "TAP Air Portugal (flytap.com)", "tap_fare_calendar": "TAP Air Portugal fare calendar (flytap.com)",
 }
 
 

@@ -97,10 +97,11 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     n = len(offers)
     notes = [f"These are tickets {int(data['offset']) + 1} to {int(data['offset']) + n // 2 if n else 0} of each tab (the cheaper or better ones were shown before)."] if data.get("offset") else []
     notes += ["Skyscanner only compares: the price to quote comes from the airline's own page. Best and Cheapest tabs were read together."]
+    where = f"{exp['leg']}: " if exp.get("leg") else ""        # one run per leg: each leg's own counts, not one leg's number for both
     if data.get("ads_skipped"):
-        notes.append(f"{data['ads_skipped']} sponsored ticket(s) were left out.")
+        notes.append(f"{where}{data['ads_skipped']} sponsored ticket(s) were left out.")
     if data.get("results_total"):
-        notes.append(f"Skyscanner lists {data['results_total']} results for this search.")
+        notes.append(f"{where}Skyscanner lists {data['results_total']} results for this search.")
     return SiteRows(offers=offers, read=n, total=data.get("results_total") or n, problems=problems, sorted_by_price=False, extra_notes=notes, read_rows=True)
 
 

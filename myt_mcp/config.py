@@ -36,7 +36,6 @@ class Settings:
     aspire_enabled: bool = True
     gyg_enabled: bool = True
     kiwitaxi_enabled: bool = True
-    israir_enabled: bool = True
     tap_enabled: bool = True
     mozio_enabled: bool = True
     sata_enabled: bool = True
@@ -77,7 +76,6 @@ class Settings:
             aspire_enabled=env.get("ASPIRE_ENABLED", "true").lower() not in ("0", "false", "no"),
             gyg_enabled=env.get("GYG_ENABLED", "true").lower() not in ("0", "false", "no"),
             kiwitaxi_enabled=env.get("KIWITAXI_ENABLED", "true").lower() not in ("0", "false", "no"),
-            israir_enabled=env.get("ISRAIR_ENABLED", "true").lower() not in ("0", "false", "no"),
             tap_enabled=env.get("TAP_ENABLED", "true").lower() not in ("0", "false", "no"),
             mozio_enabled=env.get("MOZIO_ENABLED", "true").lower() not in ("0", "false", "no"),
             sata_enabled=env.get("SATA_ENABLED", "true").lower() not in ("0", "false", "no"),

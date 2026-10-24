@@ -93,7 +93,8 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
     if not sources_read:
         problems.append("sources_read is empty: list every source you read")
     for s in sources_read:
-        if not s.link or not re.match(r"https?://\S+", s.link) or re.fullmatch(r"https?://[^/]+/?", s.link):
+        urls = re.findall(r"https?://[^\s;|]+", s.link or "")      # one link, or one per leg ("TLV to LIS, 10 Dec 2026: https://...; LIS to TLV, ...: https://...")
+        if not urls or any(re.fullmatch(r"https?://[^/]+/?", u) for u in urls):
             problems.append(f"{s.name}: give the exact search or results page as `link`, not a home page")
         if s.read is None or s.of is None:
             problems.append(f"{s.name}: give `read` and `of` (N of M)")
@@ -364,6 +365,19 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
     if notes.strip():
         lines += ["", "Notes (assistant's judgement, not from a source): " + notes.strip()]
     return {"ok": True, "answer": "\n".join(lines), "next": "Call check_answer with this `answer` (and this kind) BEFORE you send it, then show `answer` to the operator exactly as written. Do not retype, reword or reorder a row, and do not change a number, a pick or a reason. You may add questions after it."}
+
+
+def bag_unconfirmed(offers: list[Offer]) -> str | None:
+    """The operator asked for a checked bag: a quotable row whose list does not say whether one is included does not meet that wish (never assumed). Marks them and returns the note
+    (24 Oct 2026: El Al's list shows no bag and was still picked as 'meets every wish')."""
+    unsure = [o for o in offers if o.quotable and o.fits is not False and str((o.details or {}).get("checked_bag") or "").lower().startswith("not shown")]
+    for o in unsure:
+        o.fits = False
+    if not unsure:
+        return None
+    best = min((o for o in unsure if o.price_total is not None), key=lambda o: o.price_total, default=None)
+    return (f"A checked bag was asked, but {', '.join(sorted({o.source for o in unsure}))} do not show whether one is included, so their rows are not picks"
+            + (f" (the cheapest, {best.source} {best.price_total:,.2f} {best.currency}, needs its fare rules checked on the airline's page before quoting)." if best else "."))
 
 
 def apply_wishes(offers: list[Offer], wishes: dict | None) -> None:

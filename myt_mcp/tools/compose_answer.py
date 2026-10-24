@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.composed import COMPOSED
 from myt_mcp.ingest import STORE
-from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, compose
+from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, bag_unconfirmed, compose
 from myt_mcp.sites import carried_wishes, convert_all, register_all
 from myt_mcp.errors import tool_errors
 
@@ -96,6 +96,9 @@ def register(mcp: MCPServer) -> None:
                 notes = (notes + " " + " ".join(site_notes)).strip()
         merge_default_group(offers, items)
         apply_wishes(offers, wishes or hotel_wishes)
+        if any((c["wishes"].get("expect") or {}).get("checked_bag") for c in carried.values()):
+            bag_note = bag_unconfirmed(offers)
+            notes = (notes + " " + bag_note).strip() if bag_note else notes
         tracking_unknown = sorted({o.source for o in offers if (o.details or {}).get("flight_tracking") not in ("yes", "no")}) if kind == "transfers" and (wishes or any(c["wishes"].get("flight_tracking") for c in carried.values())) else []
         if tracking_unknown and any(c["wishes"].get("flight_tracking") for c in carried.values()):
             notes = (notes + f" Flight tracking was asked: only RateHawk shows it per row. {', '.join(tracking_unknown)} do not, so their rows are in the table with their flight tracking unknown.").strip()

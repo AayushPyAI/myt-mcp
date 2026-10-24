@@ -61,3 +61,43 @@ async def test_compose_answer_remembers_its_answer_and_check_answer_catches_a_ch
         retyped = composed["answer"].replace("19.00 EUR", "38.00 EUR")
         bad = (await c.call_tool("check_answer", {"draft": retyped, "kind": "lounges"})).structured_content
     assert bad["ok"] is False and any("typed or changed by hand" in m and "38.00 eur" in m for m in bad["missing"])
+
+
+def test_a_sources_line_with_links_that_hold_dates_is_not_a_table_row():
+    line = ("Sources: TAP (TLV-LIS): https://booking.flytap.com/booking/flights?depDate=10.12.2026&x=1 | TAP (LIS-TLV): https://booking.flytap.com/booking/flights?depDate=17.12.2026 | "
+            "RateHawk Air (TLV-LIS): https://www.ratehawk.com/air/?route=LISa17122026TLVa | RateHawk Air (LIS-TLV): https://www.ratehawk.com/air/?route=x")
+    assert row_problems(line, "flights", ComposedStore()) == []
+    row = "| TAP | TP8920 13:40-17:50 | direct | 794.50 EUR | whole group |"
+    assert "no compose_answer result" in row_problems(row, "flights", ComposedStore())[0]
+
+
+def test_a_checked_bag_the_row_cannot_show_is_not_a_pick_and_the_note_names_the_cheapest_of_them():
+    from myt_mcp.compose import Offer, bag_unconfirmed
+    mk = lambda src, price, bag: Offer(group="g", source=src, name="x", price_total=price, currency="EUR", price_basis="b", fits=True, details={"checked_bag": bag})
+    rows = [mk("TAP Air Portugal", 980.42, "yes"), mk("El Al", 846.0, "not shown on the list (fare rules on elal.com)"), mk("El Al", 900.0, "not shown on the list")]
+    note = bag_unconfirmed(rows)
+    assert [o.fits for o in rows] == [True, False, False] and "El Al 846.00 EUR" in note and "not picks" in note
+    assert bag_unconfirmed([mk("TAP Air Portugal", 1.0, "yes"), mk("RateHawk", 2.0, "no")]) is None
+
+
+def test_both_legs_of_a_source_keep_their_own_link_in_the_sources_line():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.tap import tap_recipe
+    from tests.test_compose import TAP_REAL, _tap
+    out = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1)["expect"]
+    back = dict(out, leg="LIS to FLR, 13 Mar 2027")
+    item = lambda e, url: {"site": "tap", "result": _tap(TAP_REAL), "url": url, "wishes": {"expect": e}}
+    one = convert_all([item(out, "https://t/out")], {})[1][0]
+    two = convert_all([item(out, "https://t/out"), item(back, "https://t/back")], {})[1][0]
+    assert one.link == "https://t/out" and two.link == f"{out['leg']}: https://t/out; LIS to FLR, 13 Mar 2027: https://t/back"
+
+
+def test_a_source_with_one_link_per_leg_passes_compose_and_a_home_page_link_does_not():
+    from myt_mcp.compose import Offer, SourceRead, compose
+    offer = Offer(group="TLV to LIS", source="TAP", name="TP8920", price_total=794.5, currency="EUR", price_basis="whole group", fits=True, details={"checked_bag": "yes"})
+    legs = "TLV to LIS, 10 Dec 2026: https://booking.flytap.com/booking/flights?depDate=10.12.2026; LIS to TLV, 17 Dec 2026: https://booking.flytap.com/booking/flights?depDate=17.12.2026"
+    run = lambda link: compose("flights", ["Direct (operator)"], [SourceRead(name="TAP", read=1, of=1, link=link)], [], [offer], {}, None, True, "")
+    assert run(legs)["ok"] is True and run("https://booking.flytap.com/booking/flights?depDate=10.12.2026")["ok"] is True
+    for bad in ("https://www.flytap.com/", "TLV to LIS: https://www.flytap.com/; LIS to TLV: https://booking.flytap.com/x?a=1", "no link at all", None):
+        assert any("not a home page" in p for p in run(bad)["problems"]), bad

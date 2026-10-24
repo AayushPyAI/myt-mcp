@@ -107,6 +107,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                 ok &= seats is not None and seats >= int(wishes["min_seats"])
             if wishes.get("max_total") is not None:
                 ok &= price is not None and price <= float(wishes["max_total"])
+            if wishes.get("driver_outside_band"):    # RateHawk was searched with its 26-69 band: a young- or senior-driver fee is not in the price, so no row can show it fits this driver
+                ok = False
             if wishes.get("zero_excess"):
                 ok &= insurance.lower() in ("zero excess", "full insurance")
             fits = ok
@@ -125,6 +127,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         notes.append(f"The list was cut at {int(data.get('offset') or 0) + n} cars; more cars exist on the page.")
     if data.get("offset"):
         notes.append(f"These are cars {int(data['offset']) + 1} to {int(data['offset']) + n} of the list (cheaper ones were shown before): the Cheapest here is not the cheapest overall.")
+    if wishes.get("driver_outside_band"):
+        notes.append(f"The driver is {wishes['driver_outside_band']}, outside RateHawk's searchable 26-69 band: these prices may leave out a young- or senior-driver fee, so none is a pick for this driver. Compare them only; use a source searched with the driver's real age.")
     form = data.get("form") or {}
     notes.append(f"RateHawk's form showed: pick-up '{form.get('pickup')}', drop-off '{form.get('dropoff')}', times {form.get('times')}, {form.get('dates')}, driver {form.get('age_residency')}.")
     return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=False, extra_notes=notes)
@@ -146,6 +150,13 @@ def cars_ask_gate(gearbox: str | None, min_seats: int | None, zero_excess: bool 
 
 
 RATEHAWK_MIN_AGE = 26
+
+
+def outside_band(band: str, years: int | None) -> bool:
+    if years is None:
+        return False
+    low, high = (int(x) for x in band.split(","))
+    return not low <= years <= high
 
 
 def driver_filter(band: str, years: int | None) -> str:
@@ -181,6 +192,8 @@ def register(mcp: MCPServer) -> None:
                                    airport_in_terminal, 40, gearbox == "manual", offset, limit)
         if "url" in out:
             out["wishes"] = {"automatic": gearbox == "automatic", "manual": gearbox == "manual", "zero_excess": bool(zero_excess), "min_seats": min_seats, "min_large_bags": min_large_bags, "max_total": max_total}
+            if outside_band(driver_age, driver_years):
+                out["wishes"]["driver_outside_band"] = f"{driver_years} years old"
             out["filters_used"] = ([f"{gearbox.capitalize()} gearbox (operator)"] if gearbox else []) + (["Zero excess (operator)"] if zero_excess else []) + \
                 ([f"at least {min_seats} seats (operator)"] if min_seats else []) + ([f"room for at least {min_large_bags} large bags (operator)"] if min_large_bags else []) + ([f"budget up to {max_total:g} EUR for the whole rental (operator)"] if max_total is not None else []) + \
                 (["Airport (in the terminal) (operator)"] if airport_in_terminal else []) + [driver_filter(driver_age, driver_years)]

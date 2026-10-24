@@ -276,6 +276,7 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
     by_price = False
     reads: dict[str, set[str]] = {}
     counted: dict[str, dict[str | None, tuple[int, int]]] = {}
+    links: dict[str, dict[str | None, str]] = {}      # one link per leg: a trip's outbound and return pages are both sources
     problems += check_parts(site_results)
     carried = carried_wishes(site_results)
     for item in site_results:
@@ -309,7 +310,11 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
             read, of = sum(v[0] for v in legs.values()), sum(v[1] for v in legs.values())
         else:
             read, of = len(seen) or None, rows.total or (cur.of if cur else None)
-        sources[site] = SourceRead(name=src_name, read=read, of=of, link=item.get("url") or (cur.link if cur else None))
+        if item.get("url"):
+            links.setdefault(site, {})[(item_wishes.get("expect") or {}).get("leg")] = item["url"]
+        mine = links.get(site) or {}
+        link = (next(iter(mine.values())) if len(mine) == 1 else "; ".join(f"{leg}: {url}" if leg else url for leg, url in mine.items())) if mine else (cur.link if cur else None)
+        sources[site] = SourceRead(name=src_name, read=read, of=of, link=link)
     return offers, list(sources.values()), problems, by_price, notes
 
 

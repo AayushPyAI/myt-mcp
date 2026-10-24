@@ -130,7 +130,7 @@ def register(mcp: MCPServer) -> None:
     @tool_errors
     async def ratehawk_air_recipe_tool(origin: str, destination: str, day: date, adults: int = 2, children: int = 0, infants: int = 0, stops: str | None = None,
                                        checked_bag: bool | None = None, cabin: str | None = None, no_airport_change: bool = False, operator_answered: bool = False) -> dict[str, Any]:
-        """FOR FLIGHTS ON RATEHAWK (one leg, one way; read in the operator's own Chrome with Claude in Chrome), next to TAP, Israir and the other flight sources. ASK FIRST: without `stops`
+        """FOR FLIGHTS ON RATEHAWK (one leg, one way; read in the operator's own Chrome with Claude in Chrome), next to TAP and the other flight sources. ASK FIRST: without `stops`
         ('direct' / 'one_stop' / 'any'), `checked_bag` (true/false) and `cabin` ('economy' / 'premium' / 'business' / 'first') it opens nothing and returns `ask_operator`: ask those
         questions in ONE message, wait, call again with the answers (`operator_answered`=true for "no preference", only after the operator replied). Then it returns the results url (filters
         already in it) and a read-only SCRIPT: open the url, run the script with the javascript tool, The script sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. `origin` / `destination` are 3-letter airport codes. Children's ages are not in the address:

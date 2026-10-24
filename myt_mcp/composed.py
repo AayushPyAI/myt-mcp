@@ -11,7 +11,7 @@ import time
 
 TTL_SECONDS = 3 * 3600
 MAX_KEPT = 12
-_PRICE = re.compile(r"\d[\d,]*\.\d\d\b")
+_AMOUNT = re.compile(r"^(?:[€$£₪]\s?)?\d[\d,]*\.\d\d(?:\s?[A-Z]{3})?(?:\s\(.*\))?$")       # a price cell: "794.50 EUR", "€19.00", "13.00 EUR (per vehicle)"; never a link with a date in it
 MIN_CELL = 6          # shorter cells ("yes", "no", "4/3") are too common to prove anything
 
 
@@ -40,8 +40,10 @@ def _rows(draft: str) -> list[list[str]]:
     """The cells of every table row that carries a price (header and divider rows have none)."""
     rows = []
     for line in draft.splitlines():
+        if "\t" not in line and not line.lstrip().startswith("|"):
+            continue
         cells = [c.strip() for c in (line.split("\t") if "\t" in line else line.strip().strip("|").split("|"))]
-        if len(cells) >= 4 and any(_PRICE.search(c) for c in cells):
+        if len(cells) >= 4 and any(_AMOUNT.match(c.replace("**", "").strip()) for c in cells):
             rows.append(cells)
     return rows
 

@@ -59,7 +59,7 @@ def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
     if not urls:
         missing.append("a link for every source you read (the tool's source/url, or the address of the Chrome page)")
     elif all(re.sub(r"^https?://[^/]+/?$", "", u) == "" for u in urls):
-        missing.append("exact links: only home pages were given (israir.co.il is not a link; give the search or results page)")
+        missing.append("exact links: only home pages were given (flytap.com is not a link; give the search or results page)")
     if kind in COMPARING:
         absent = [p for p in PICKS if p.lower() not in low]
         if absent:

@@ -8,7 +8,6 @@ from myt_mcp.browser import BrowserSession
 from myt_mcp.config import Settings
 from myt_mcp.errors import IntegrationError
 from myt_mcp.gyg.client import GygClient
-from myt_mcp.israir.client import IsrairClient
 from myt_mcp.kiwitaxi.client import KiwitaxiClient
 from myt_mcp.lounges import aspire as aspire_api
 from myt_mcp.lounges import airlines as airline_lounges_api
@@ -29,7 +28,7 @@ class Services:
     def __init__(self, settings: Settings, *, myt: MYTClient | None = None, ofran: OfranClient | None = None,
                  trenitalia: TrenitaliaClient | None = None, viator: ViatorClient | None = None,
                  sata: SataClient | None = None, aspire: aspire_api.AspireClient | None = None, loungepair: loungepair_api.LoungePairClient | None = None, airline_lounges: airline_lounges_api.AirlineLoungesClient | None = None,
-                 gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, israir: IsrairClient | None = None, tap: TapClient | None = None,
+                 gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, tap: TapClient | None = None,
                  mozio: MozioClient | None = None, boi: BoiClient | None = None, minisite: MinisiteClient | None = None):
         self.settings = settings
         self._myt = myt
@@ -42,7 +41,6 @@ class Services:
         self._airline_lounges = airline_lounges
         self._gyg = gyg
         self._kiwitaxi = kiwitaxi
-        self._israir = israir
         self._tap = tap
         self._boi = boi
         self._mozio = mozio
@@ -142,15 +140,6 @@ class Services:
             self._kiwitaxi = KiwitaxiClient(limiter=limiter, cache_minutes=s.scrape_cache_minutes, browser=self.browser() if s.browser_cdp_url else None)
         return self._kiwitaxi
 
-    def israir(self) -> IsrairClient:
-        s = self.settings
-        if not s.israir_enabled:
-            raise IntegrationError("Israir fare checks are switched off on the server (ISRAIR_ENABLED=false). Ask the operator for the flight price.")
-        if self._israir is None:
-            limiter = SiteLimiter("Israir", max(s.scrape_min_interval_seconds, 5.0), min(s.scrape_max_per_hour, 30))
-            self._israir = IsrairClient(limiter=limiter, cache_minutes=s.scrape_cache_minutes)
-        return self._israir
-
     def tap(self) -> TapClient:
         s = self.settings
         if not s.tap_enabled:
@@ -184,6 +173,6 @@ class Services:
                                    "call find_trip with that number first and use the trip_id it returns.".replace("{trip_id}", str(trip_id)))
 
     async def aclose(self) -> None:
-        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._loungepair, self._airline_lounges, self._gyg, self._kiwitaxi, self._israir, self._tap, self._mozio, self._boi, self._minisite, self._browser):
+        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._loungepair, self._airline_lounges, self._gyg, self._kiwitaxi, self._tap, self._mozio, self._boi, self._minisite, self._browser):
             if client is not None:
                 await client.aclose()
