@@ -37,8 +37,8 @@ PLANS: dict[str, dict[str, Any]] = {
     "flights": {
         "ask_once": ["adults and children with their ages (MYT has only the number of travellers)", "direct only or connections allowed", "checked bag needed"],
         "sources": [
-            {"name": "TAP Air Portugal", "how": "tap_flight_prices (and tap_fare_calendar)", "use": "legs touching Portugal and many European routes"},
-            {"name": "SATA / Azores Airlines", "how": "sata_flight_prices", "use": "Azores, Madeira and mainland Portugal"},
+            {"name": "TAP Air Portugal", "how": "tap_recipe, one call per leg (it asks direct only, checked bag and refundable first; you open its url and run its script in Claude in Chrome; the airline's own prices), compose_answer with its wishes; tap_fare_calendar shows the cheapest days", "use": "legs touching Portugal and many European routes"},
+            {"name": "SATA / Azores Airlines", "how": "sata_recipe, one call per leg (it asks direct only, checked bag and refundable first; THE SERVER then reads SATA's page itself in its own browser, no Chrome action from you, and returns an `ingest` id; the airline's own prices), compose_answer with runs=[that id]", "use": "Azores, Madeira and mainland Portugal"},
             {"name": "Israir", "how": "israir_flight_prices", "use": "ONLY flights from or to Tel Aviv on its network; never Lisbon, Porto, Madeira or the Azores"},
             {"name": "El Al", "how": "elal_recipe, one call per leg (it asks direct only and cabin first; you fill El Al's search once on its booking page, then run its script in Claude in Chrome; the airline's own prices)", "use": "legs touching Israel"},
             {"name": "ITA Airways", "how": "Claude in Chrome (via RateHawk Air or Skyscanner)", "use": "legs touching Italy"},
@@ -86,6 +86,7 @@ PLANS: dict[str, dict[str, Any]] = {
         "ask_once": ["adults and children's ages", "earliest departure time", "class"],
         "sources": [
             {"name": "Trenitalia", "how": "train_prices (use the city station, e.g. Roma Termini)", "use": "Italy"},
+            {"name": "CP Comboios de Portugal", "how": "cp_trains_recipe, one call per leg (it asks class, earliest time and refundable first; you open its url and run its script in Claude in Chrome; CP's own prices for all passengers; a far date shows no trains: CP sells only some weeks ahead, then put CP in not_checked with the reason 'not available'), compose_answer with runs=[its ingest id]", "use": "Portugal (Lisbon, Porto, Coimbra...)"},
             {"name": "RateHawk Train tickets", "how": "ratehawk_trains_recipe, one call per leg (it asks changes, class and budget first; you open its url and run its script in Claude in Chrome: 30 trains a batch, offset for more), compose_answer with its wishes and filters_used", "use": "always"},
         ],
         "fields": ["train numbers and times", "class and fare", "change and refund terms", "seats left", "group total with the child rule", "link"],
@@ -95,8 +96,8 @@ PLANS: dict[str, dict[str, Any]] = {
     "activities": {
         "ask_once": ["adults and children's ages", "time of day or duration wish"],
         "sources": [
-            {"name": "GetYourGuide", "how": "getyourguide_find_activities and getyourguide_activity_details", "use": "always"},
-            {"name": "Viator", "how": "viator_search_activities and viator_activity_details", "use": "always"},
+            {"name": "GetYourGuide", "how": "getyourguide_find_recipe (it asks free cancellation, budget and duration first; you open its url and run its script in Claude in Chrome: the list with 'from' prices), then getyourguide_activity_recipe for the best two or three (exact price of the group on the date)", "use": "always"},
+            {"name": "Viator", "how": "viator_find_recipe (it asks free cancellation, budget and duration first; you open its url and run its script in Claude in Chrome: the list with 'from' prices), then viator_activity_recipe for the best two or three (exact price of the group on the date)", "use": "always"},
         ],
         "fields": ["title", "duration", "start times for the date", "private or group", "language", "meeting point", "inclusions", "cancellation", "price by age for the group", "link"],
         "filters": "the activity named in the itinerary; free cancellation and rating only if the operator or the trip says so.",
@@ -125,8 +126,8 @@ def leg_sources(leg: dict[str, Any], israir_cities: list[str] | None = None) -> 
     a, b = str(leg.get("from") or ""), str(leg.get("to") or "")
     both = f"{a} / {b}"
     read = ["RateHawk Air tickets (Chrome)", "Skyscanner (Chrome, comparison)",
-            "tap_flight_prices (if it does not sell the route its answer says so: that is the reason)",
-            "sata_flight_prices (same)"]
+            "TAP Air Portugal (Chrome: tap_recipe; if TAP does not sell the route the page shows no flights: that is the reason)",
+            "SATA / Azores Airlines (Chrome: sata_recipe; same reason if it does not sell the route)"]
     if _has(both, ISRAEL):
         read += ["El Al (Chrome)", "israir_flight_prices ONLY if the other end's city code is in `israir_sells`; if it is not, write 'Israir does not sell it'"]
     out: dict[str, Any] = {"leg": f"{a} -> {b}", "flight_in_mytrip": leg.get("flight"), "departure": leg.get("departure"), "read": read,

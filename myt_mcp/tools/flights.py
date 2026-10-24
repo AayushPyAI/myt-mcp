@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date
 from typing import Any
@@ -40,7 +41,16 @@ def _airport(value: str, what: str) -> str:
 
 
 def register(mcp: MCPServer, services: Services) -> None:
-    @mcp.tool(annotations=READ_ONLY)
+    # TAP and SATA are read with Claude in Chrome (tap_recipe, sata_recipe: the operator's own browser, ask-first). The server-browser tools below stay in the code
+    # but are OFF unless TAP_SERVER_BROWSER=1 / SATA_SERVER_BROWSER=1; the old names stay known as pointers (claude.ai keeps the tool list it saw when the connector was added).
+    tap_live, sata_live = os.environ.get("TAP_SERVER_BROWSER") == "1", os.environ.get("SATA_SERVER_BROWSER") == "1"
+
+    def live(enabled: bool):
+        def decorate(fn):
+            return mcp.tool(annotations=READ_ONLY)(fn) if enabled else fn
+        return decorate
+
+    @live(sata_live)
     @tool_errors
     @with_checked_at
     async def sata_flight_prices(
@@ -142,7 +152,7 @@ def register(mcp: MCPServer, services: Services) -> None:
                               "ask the operator where that price comes from. Try nearby dates only if the operator agrees.")
         return answer
 
-    @mcp.tool(annotations=READ_ONLY)
+    @live(tap_live)
     @tool_errors
     @with_checked_at
     async def tap_flight_prices(from_airport: str, to_airport: str, departure_date: date, adults: int = 2, child_ages: list[int] | None = None,
@@ -245,3 +255,22 @@ def register(mcp: MCPServer, services: Services) -> None:
         else:
             answer["note"] = "TAP's calendar shows no price for this route and month; the route may not be flown, or TAP has no fares loaded yet."
         return answer
+
+    if not tap_live:
+        @mcp.tool(annotations=READ_ONLY)
+        @tool_errors
+        async def tap_flight_prices(from_airport: str, to_airport: str, departure_date: date, adults: int = 2, child_ages: list[int] | None = None, max_results: int = 8,
+                                    sort_by: str = "price", direct_only: bool = False, max_price: float | None = None, checked_bag_only: bool = False,
+                                    refundable_only: bool = False) -> dict[str, Any]:
+            """NOT USED in this setup (TAP is read with Claude in Chrome): call tap_recipe with the same values. It asks the operator first."""
+            return {"ok": False, "searched": False, "next": "This tool is off. Call tap_recipe with the same airports, date and travellers (it asks direct only, checked bag and refundable first, "
+                                                             "then gives the url and the script for Claude in Chrome). tap_fare_calendar still works for the cheapest days."}
+
+    if not sata_live:
+        @mcp.tool(annotations=READ_ONLY)
+        @tool_errors
+        async def sata_flight_prices(from_airport: str, to_airport: str, departure_date: date, return_date: date | None = None, adults: int = 2, children: int = 0,
+                                     infants: int = 0, max_results: int = 10) -> dict[str, Any]:
+            """NOT USED in this setup (SATA / Azores Airlines is read with Claude in Chrome): call sata_recipe with the same values, one call per leg. It asks the operator first."""
+            return {"ok": False, "searched": False, "next": "This tool is off. Call sata_recipe once per leg with the same airports, date and travellers (it asks direct only, checked bag and refundable "
+                                                             "first, then gives the url and the script for Claude in Chrome). For a round trip call it for each leg."}

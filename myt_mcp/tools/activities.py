@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import date
 from typing import Any
 
@@ -35,7 +36,17 @@ def _page_currency(currency: str | None) -> list[str]:
 
 
 def register(mcp: MCPServer, services: Services) -> None:
-    @mcp.tool(annotations=READ_ONLY)
+    # Viator and GetYourGuide are read with Claude in Chrome (viator_find_recipe / viator_activity_recipe, getyourguide_find_recipe / getyourguide_activity_recipe: the operator's own browser,
+    # ask-first). The server-browser tools below stay in the code but are OFF unless VIATOR_SERVER_BROWSER=1 / GYG_SERVER_BROWSER=1; the old names stay known as pointers (claude.ai keeps the tool
+    # list it saw when the connector was added).
+    viator_live, gyg_live = os.environ.get("VIATOR_SERVER_BROWSER") == "1", os.environ.get("GYG_SERVER_BROWSER") == "1"
+
+    def live(enabled: bool):
+        def decorate(fn):
+            return mcp.tool(annotations=READ_ONLY)(fn) if enabled else fn
+        return decorate
+
+    @live(viator_live)
     @tool_errors
     @with_checked_at
     async def viator_search_activities(
@@ -159,7 +170,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             answer["warning"] = " ".join(warnings)
         return answer
 
-    @mcp.tool(annotations=READ_ONLY)
+    @live(viator_live)
     @tool_errors
     @with_checked_at
     async def viator_activity_details(url: str, activity_date: date | None = None, adults: int = 2,
@@ -210,7 +221,7 @@ def register(mcp: MCPServer, services: Services) -> None:
         return answer
 
 
-    @mcp.tool(annotations=READ_ONLY)
+    @live(gyg_live)
     @tool_errors
     @with_checked_at
     async def getyourguide_activity_details(url: str, activity_date: date, adults: int = 2,
@@ -262,7 +273,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             for o in options for s in o.get("start_times") or []])
         return answer
 
-    @mcp.tool(annotations=READ_ONLY)
+    @live(gyg_live)
     @tool_errors
     @with_checked_at
     async def getyourguide_find_activities(
@@ -394,3 +405,34 @@ def register(mcp: MCPServer, services: Services) -> None:
         if warnings:
             answer["warning"] = " ".join(warnings)
         return answer
+
+    if not viator_live:
+        @mcp.tool(annotations=READ_ONLY)
+        @tool_errors
+        async def viator_search_activities(query: str, max_results: int = 12, pages: int = 2, sort_by: str = "featured", max_price: float | None = None, free_cancellation_only: bool = False,
+                                           min_rating: float | None = None, max_hours: float | None = None, title_contains: list[str] | None = None) -> dict[str, Any]:
+            """NOT USED in this setup (Viator is read with Claude in Chrome): call viator_find_recipe with the same query. It asks the operator first."""
+            return {"ok": False, "searched": False, "next": "This tool is off. Call viator_find_recipe (it asks free cancellation, budget and duration first, then gives the url and the script for Claude in Chrome); "
+                                                             "for the exact price of one activity for a date and group call viator_activity_recipe with its link."}
+
+        @mcp.tool(annotations=READ_ONLY)
+        @tool_errors
+        async def viator_activity_details(url: str, activity_date: date | None = None, adults: int = 2, child_ages: list[int] | None = None) -> dict[str, Any]:
+            """NOT USED in this setup (Viator is read with Claude in Chrome): call viator_activity_recipe with the same link, date and group."""
+            return {"ok": False, "searched": False, "next": "This tool is off. Call viator_activity_recipe with the activity link, the date, the adults and the children's ages (it gives the steps and the script for Claude in Chrome)."}
+
+    if not gyg_live:
+        @mcp.tool(annotations=READ_ONLY)
+        @tool_errors
+        async def getyourguide_find_activities(query: str, activity_date: date | None = None, max_results: int = 12, pages: int = 2, sort_by: str = "popularity", min_price: float | None = None,
+                                               max_price: float | None = None, free_cancellation_only: bool = False, min_rating: float | None = None, max_hours: float | None = None,
+                                               title_contains: list[str] | None = None, read_all_relevant: bool = False) -> dict[str, Any]:
+            """NOT USED in this setup (GetYourGuide is read with Claude in Chrome): call getyourguide_find_recipe with the same query. It asks the operator first."""
+            return {"ok": False, "searched": False, "next": "This tool is off. Call getyourguide_find_recipe (it asks free cancellation, budget and duration first, then gives the url and the script for Claude in Chrome); "
+                                                             "for the exact price of one activity for a date and group call getyourguide_activity_recipe with its link."}
+
+        @mcp.tool(annotations=READ_ONLY)
+        @tool_errors
+        async def getyourguide_activity_details(url: str, activity_date: date, adults: int = 2, child_ages: list[int] | None = None) -> dict[str, Any]:
+            """NOT USED in this setup (GetYourGuide is read with Claude in Chrome): call getyourguide_activity_recipe with the same link, date and group."""
+            return {"ok": False, "searched": False, "next": "This tool is off. Call getyourguide_activity_recipe with the activity link, the date, the adults and the children's ages (it gives the steps and the script for Claude in Chrome)."}

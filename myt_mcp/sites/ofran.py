@@ -31,8 +31,16 @@ BATCH = 30
 HOME = "https://ofran.co.il/"
 
 
+STATIONS_EN = {"תחנת איסוף בתוך שדה התעופה": "Pick-up station inside the airport", "תחנת איסוף מחוץ לשדה התעופה": "Pick-up station outside the airport (not at the terminal)"}
+
+
+def station_text(text: str | None) -> str | None:
+    """Ofran writes the pick-up station in Hebrew: the two wordings it uses are given in English, any other stays as the page wrote it."""
+    return STATIONS_EN.get((text or "").strip(), text)
+
+
 def ofran_recipe(pickup: str, pickup_date: str, pickup_time: str, dropoff_date: str, dropoff_time: str, automatic: bool = False, manual: bool = False, zero_excess: bool = False,
-                 inside_airport: bool = False, offset: int = 0, limit: int = BATCH) -> dict[str, Any]:
+                 inside_airport: bool = False, offset: int = 0, limit: int = BATCH, driver_years: int | None = None) -> dict[str, Any]:
     for t in (pickup_time, dropoff_time):
         if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t):
             raise ValueError("times must be HH:MM, e.g. 10:00 (ask the operator or take it from the trip's flight: never pick one yourself)")
@@ -45,14 +53,16 @@ def ofran_recipe(pickup: str, pickup_date: str, pickup_time: str, dropoff_date: 
         raise ValueError("offset must be 0 or more and limit 1-100")
     if automatic and manual:
         raise ValueError("choose automatic or manual, not both")
+    default_age = driver_years is None or 30 <= driver_years <= 69      # the form's age box starts at 30-69; another age is picked in the box and the page's own text is then shown, not judged
     filters = [LABELS[k] for k, on in (("automatic", automatic), ("manual", manual), ("zero_excess", zero_excess), ("inside_airport", inside_airport)) if on]
     script = with_emit((HERE / "ofran.js").read_text(encoding="utf-8")).replace("__SKIP__", str(offset)).replace("__LIMIT__", str(limit)).replace("__FILTERS__", json.dumps(filters, ensure_ascii=False))
-    expect = {"pickup": pickup, "pickup_date": pickup_date, "pickup_time": pickup_time, "dropoff_date": dropoff_date, "dropoff_time": dropoff_time, "filters": filters, "age": "30-69"}
-    steps = [f"Open {HOME} in the operator's logged-in Chrome (the top bar must show the agent's name; if it shows a login, stop and tell the operator). Keep 'return the car to the same station' and 'not leaving the country'; the driver age box stays 30-69.",
+    expect = {"pickup": pickup, "pickup_date": pickup_date, "pickup_time": pickup_time, "dropoff_date": dropoff_date, "dropoff_time": dropoff_time, "filters": filters, "age": "30-69" if default_age else None, "driver_years": driver_years}
+    age_step = "the driver age box stays 30-69." if default_age else f"set the driver age box to the operator's age ({driver_years}): pick {driver_years} or the band that holds it, and leave it there."
+    steps = [f"Open {HOME} in the operator's logged-in Chrome (the top bar must show the agent's name; if it shows a login, stop and tell the operator). Keep 'return the car to the same station' and 'not leaving the country'; {age_step}",
              f"Pick-up and return place: click the field, type a distinctive part of '{pickup}' (for example the city) and click the suggestion with the airport or station name, then read the field back.",
              f"Dates: click 'when are you picking up' and pick {pickup_date} in the calendar, then click 'when are you returning' and pick {dropoff_date}. Times: pick-up {pickup_time}, return {dropoff_time} (the time boxes; the default is 10:00).",
              "Press the search button ('חפשו לי רכב'). Wait about 15 seconds until the cars show (the page says how many results). The results address does not carry the dates: the script reads what the page itself says it searched.",
-             "Run `script` with the javascript tool on the results page. ok=false: do what `error` says. Never read the cards by eye. Give its answer parts UNCHANGED to compose_answer as site_results [{\"site\": \"ofran\", \"result\": <part>, \"url\": <the results page address>}] with the returned `wishes`, `filters_used` and `pickup_time`."]
+             "Run `script` with the javascript tool on the results page. ok=false: do what `error` says. Never read the cards by eye. The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row with the returned `wishes`, `filters_used` and `pickup_time`."]
     return {"script": script, "url": HOME, "expect": expect, "steps": steps}
 
 
@@ -91,6 +101,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                 problems.append(f"the page searched '{form[which]}', not '{want}': make the search again with the right dates and times")
         if exp.get("age") and form.get("age") and form["age"] != exp["age"]:
             problems.append(f"the page says the driver age is '{form['age']}', not '{exp['age']}': make the search again")
+        if exp.get("driver_years") and form.get("age") == "30-69" and exp["driver_years"] < 30:
+            problems.append(f"the page still says the driver age is 30-69, the operator's driver is {exp['driver_years']}: set the age box to it and make the search again")
         allowed = set(exp.get("filters") or [])
         extra = [f for f in data.get("page_ticked") or [] if f not in allowed]
         missing = [f for f in allowed if f not in (data.get("page_ticked") or [])]
@@ -127,8 +139,12 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             supplier=r.get("supplier"),
             details={"company": (r.get("supplier") or "not shown") + (f" (score {r['supplier_score']})" if r.get("supplier_score") else ""), "gearbox": gear, "seats_bags": seats_bags,
                      "excess": "excess cancelled (included)" if zero else (excess or "not shown"), "fuel": "not shown on the list", "mileage": "not shown on the list", "deposit": "not shown on the list",
-                     "cancellation": "not shown on the list", "pickup_place": r.get("station"), "score": r.get("supplier_score")}))
+                     "cancellation": "not shown on the list", "pickup_place": station_text(r.get("station")), "score": r.get("supplier_score")}))
     n = len(data.get("rows", []))
+    if wishes.get("min_large_bags"):
+        notes.append(f"The operator needs room for {wishes['min_large_bags']} large bags: Ofran's list shows only 'x/y' bags without saying which are large, so no Ofran car was checked for it: open the car's page before quoting an Ofran car.")
+    if exp.get("driver_years") and form.get("age"):
+        notes.append(f"Ofran's page says the driver age is '{form['age']}' (the operator's driver is {exp['driver_years']}).")
     notes.append("Ofran's list does not show fuel policy, mileage, deposit or cancellation: they are on the car's own page after choosing it (do not press the choose button).")
     if data.get("offset"):
         notes.append(f"These are cars {int(data['offset']) + 1} to {int(data['offset']) + n} of the price-sorted list (cheaper ones were shown before): the Cheapest here is not the cheapest overall.")
@@ -140,24 +156,25 @@ def register(mcp: MCPServer) -> None:
     @tool_errors
     async def ofran_recipe_tool(pickup: str, pickup_date: str, pickup_time: str, dropoff_date: str, dropoff_time: str, gearbox: str | None = None, min_seats: int | None = None,
                                 zero_excess: bool | None = None, max_total: float | None = None, inside_airport: bool = False, operator_answered: bool = False,
-                                offset: int = 0, limit: int = BATCH) -> dict[str, Any]:
+                                offset: int = 0, limit: int = BATCH, driver_years: int | None = None, min_large_bags: int | None = None) -> dict[str, Any]:
         """FOR CAR RENTAL ON OFRAN (the agency's logged-in Ofran, read in the operator's own Chrome with Claude in Chrome; the agency's own price). ASK FIRST like ratehawk_cars_recipe: without `gearbox`
         ('automatic' / 'manual'), `min_seats`, `zero_excess` (true/false) and `max_total` (EUR, whole rental) it opens nothing and returns `ask_operator`: ask them in ONE message, wait, call again with
         the answers (`operator_answered`=true for "no preference", only after the operator replied). Times are required (from the trip's flight or the operator; never your own choice) and the same on
         RateHawk. Then it returns the steps to make the search once with Ofran's form (its results address does not carry the dates) and a read-only SCRIPT for the results page; it ticks the filters,
-        reads the next `limit` (30) cars from `offset` and returns what the page searched. Give its answer parts unchanged to compose_answer in `site_results` as {"site": "ofran", "result": <part>,
-        "url": <the results page address>} with the returned `wishes`, `filters_used` and `pickup_time`. The price is the one AFTER the agent discount (the top bar must show the agent's name). A human
+        reads the next `limit` (30) cars from `offset` and returns what the page searched. The script sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row, `filters_used` and `pickup_time`. `min_large_bags` = the number of LARGE suitcases the operator said (pass it as for RateHawk; Ofran's list cannot confirm it, the answer says so). `driver_years` = the driver's age as the operator said it (under 30: the steps tell you to set Ofran's age box to it; the answer then shows the page's own age text). The price is the one AFTER the agent discount (the top bar must show the agent's name). A human
         check or a block is never worked around: stop and tell the operator. `pickup` is the place as typed in the form ('Faro Airport'); dates YYYY-MM-DD."""
         asked = cars_ask_gate(gearbox, min_seats, zero_excess, max_total, operator_answered)
         if asked:
             return asked
         if gearbox not in (None, "automatic", "manual"):
             raise ValueError("gearbox must be 'automatic', 'manual' or left out")
-        out = ofran_recipe(pickup, pickup_date, pickup_time, dropoff_date, dropoff_time, gearbox == "automatic", gearbox == "manual", bool(zero_excess), inside_airport, offset, limit)
-        out["wishes"] = {"expect": out["expect"], "automatic": gearbox == "automatic", "manual": gearbox == "manual", "zero_excess": bool(zero_excess), "min_seats": min_seats, "max_total": max_total}
+        out = ofran_recipe(pickup, pickup_date, pickup_time, dropoff_date, dropoff_time, gearbox == "automatic", gearbox == "manual", bool(zero_excess), inside_airport, offset, limit, driver_years)
+        out["wishes"] = {"expect": out["expect"], "automatic": gearbox == "automatic", "manual": gearbox == "manual", "zero_excess": bool(zero_excess), "min_seats": min_seats, "max_total": max_total, "min_large_bags": min_large_bags}
         out["filters_used"] = ([f"{gearbox.capitalize()} gearbox (operator)"] if gearbox else []) + (["Excess cancelled / zero excess (operator)"] if zero_excess else []) + \
             ([f"at least {min_seats} seats (operator)"] if min_seats else []) + ([f"budget up to {max_total:g} EUR for the whole rental (operator)"] if max_total is not None else []) + \
-            (["Inside the airport (operator)"] if inside_airport else []) + ["driver age 30-69 (default: the agency's)"]
+            (["Inside the airport (operator)"] if inside_airport else []) + ([f"room for {min_large_bags} large bags (operator): NOT checkable on Ofran, its list shows only 'x/y' bags without saying which are large"] if min_large_bags else []) + [f"driver age {driver_years} (operator; Ofran's age box set to it)" if driver_years and not 30 <= driver_years <= 69 else "driver age 30-69 (default: the agency's)"]
         out["pickup_time"] = pickup_time
+        out["login_check"] = {"run_first": "Open https://www.ofran.co.il/ and run (() => /\u05d4\u05ea\u05e0\u05ea\u05e7\u05d5\u05ea/.test(document.body.innerText))() with the javascript tool BEFORE you fill the form.",
+                              "if_false": "The agency is not logged in (Ofran shows only the public prices). Stop: tell the operator to log in to Ofran in this Chrome (you never type a password), put Ofran in not_checked with the reason 'login: the agency is not logged in to Ofran', and go on with the other sources."}
         out["more"] = f"For the next {limit} cars call this tool again with the same values and offset={offset + limit}; say so to the operator at the end of the answer."
         return out

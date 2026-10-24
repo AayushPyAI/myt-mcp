@@ -266,9 +266,10 @@ def test_customer_invoices_from_the_trip_payload():
 
 # ---------- writing a reservation (reservations/Create and /Update) ----------
 
-def _create_adds_reservation(v3, products):
+def _create_adds_reservation(v3, products, supplier_kind=None):
     p = products[0]
-    v3["reservations"].append({"order_id": 500100, "reservation_id": 500200, "supplier_id": p["SupplierId"],
+    kind = supplier_kind or {1: "transportation", 4: "lodging", 5: "attraction", 7: "dmc"}[p["TypeId"]]      # a supplier whose type matches the product
+    v3["reservations"].append({"order_id": 500100, "reservation_id": 500200, "supplier_id": p["SupplierId"], "supplier_type": {kind: True},
                                "supplier_name": "Test Supplier", "product_name": p["Name"], "quantity": p["Quantity"],
                                "duration": p["Nights"], "price": {"amount": p["Price"]}, "currency": {"name": "EUR"},
                                "dates": {"start": _d(p["StartDate"])}})
@@ -313,10 +314,29 @@ async def test_create_with_confirm_sends_and_reads_back():
 
 
 @pytest.mark.anyio
-async def test_create_refuses_a_category_other_than_transport():
+async def test_create_refuses_a_category_that_is_not_verified():
     r = (await create_and_call("create_supplier_reservation", trip_id=1001, supplier_id=1, product_name="x",
-                               start_date="2027-03-01", price=10.0, category="Lodging"))
-    assert r.is_error and "Transport" in r.content[0].text and "silently drop" in r.content[0].text
+                               start_date="2027-03-01", price=10.0, category="Food"))
+    assert r.is_error and "Transport" in r.content[0].text and "Lodging" in r.content[0].text and "SUPPLIER's type" in r.content[0].text
+
+
+@pytest.mark.anyio
+async def test_create_lodging_uses_type_id_4_and_reads_back_a_lodging_supplier():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_create_adds_reservation)
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 102638, "product_name": "Hotel Vincci Liberdade",
+                                                               "start_date": "2027-03-06", "price": 348.5, "nights": 2, "category": "Lodging", "confirm": True})
+    assert not r.is_error and r.structured_content["sent"] is True
+    assert myt.create_calls[0]["products"][0]["TypeId"] == 4 and myt.create_calls[0]["products"][0]["Nights"] == 2
+
+
+@pytest.mark.anyio
+async def test_create_lodging_with_a_supplier_of_another_type_is_refused():
+    myt = FakeMYT(_v3([], {}, []), create_effect=lambda v3, products: _create_adds_reservation(v3, products, supplier_kind="transportation"))
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 98182, "product_name": "Hotel X",
+                                                               "start_date": "2027-03-06", "price": 100.0, "category": "Lodging", "confirm": True})
+    assert r.is_error and "not a lodging supplier" in r.content[0].text
 
 
 async def create_and_call(name, **args):
@@ -432,3 +452,170 @@ async def test_check_reservation_paperwork_fresh_true_invalidates_the_cache():
         await c.call_tool("check_reservation_paperwork", {"trip_id": 1001})
         await c.call_tool("check_reservation_paperwork", {"trip_id": 1001, "fresh": True})
     assert myt.invalidate_calls == [1001]
+
+
+@pytest.mark.anyio
+async def test_create_attraction_uses_type_id_5_and_reads_back_an_attraction_supplier():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_create_adds_reservation)
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 114469, "product_name": "Arouca Bridge tour",
+                                                               "start_date": "2027-03-03", "price": 92.0, "category": "Attraction", "confirm": True})
+    assert not r.is_error and r.structured_content["sent"] is True and myt.create_calls[0]["products"][0]["TypeId"] == 5
+
+
+@pytest.mark.anyio
+async def test_create_dmc_uses_type_id_7_and_reads_back_a_dmc_supplier():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_create_adds_reservation)
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 85936, "product_name": "Private transfer",
+                                                               "start_date": "2027-03-01", "price": 81.0, "category": "DMC", "confirm": True})
+    assert not r.is_error and r.structured_content["sent"] is True and myt.create_calls[0]["products"][0]["TypeId"] == 7
+
+
+@pytest.mark.anyio
+async def test_create_transport_under_a_dmc_supplier_is_accepted():
+    myt = FakeMYT(_v3([], {}, []), create_effect=lambda v3, products: _create_adds_reservation(v3, products, supplier_kind="dmc"))
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 85936, "product_name": "Transfer FCO to hotel",
+                                                               "start_date": "2027-03-01", "price": 81.0, "category": "Transport", "confirm": True})
+    assert not r.is_error and r.structured_content["sent"] is True and myt.create_calls[0]["products"][0]["TypeId"] == 1
+
+
+@pytest.mark.anyio
+async def test_create_attraction_under_a_dmc_supplier_is_accepted():
+    myt = FakeMYT(_v3([], {}, []), create_effect=lambda v3, products: _create_adds_reservation(v3, products, supplier_kind="dmc"))
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("create_supplier_reservation", {"trip_id": 1001, "supplier_id": 48039, "product_name": "Vatican tour",
+                                                               "start_date": "2027-03-03", "price": 227.0, "category": "Attraction", "confirm": True})
+    assert not r.is_error and r.structured_content["sent"] is True and myt.create_calls[0]["products"][0]["TypeId"] == 5
+
+
+# ---------- supplier directory ----------
+
+async def call_with(tool, args):
+    async with Client(await create_server_for(FakeMYT(_v3([], {}, [])))) as c:
+        return await c.call_tool(tool, args)
+
+
+@pytest.mark.anyio
+async def test_find_supplier_returns_id_type_and_the_categories_it_fits():
+    r = await call_with("find_supplier", {"name": "arbitrip"})
+    d = r.structured_content
+    assert not r.is_error and d["matches"][0]["id"] == 102638 and d["matches"][0]["type"] == "lodging"
+    assert d["matches"][0]["fits_categories"] == ["Lodging"]
+    d = (await call_with("find_supplier", {"name": "ratehawk"})).structured_content
+    assert d["matches"][0]["id"] == 85936 and d["matches"][0]["fits_categories"] == ["Transport", "Attraction", "DMC"]
+
+
+@pytest.mark.anyio
+async def test_find_supplier_keeps_only_suppliers_that_fit_the_category_and_never_guesses():
+    assert (await call_with("find_supplier", {"name": "sixt", "category": "Lodging"})).structured_content["matches"] == []
+    d = (await call_with("find_supplier", {"name": "sixt", "category": "Transport"})).structured_content
+    assert d["matches"][0]["id"] == 98182
+    d = (await call_with("find_supplier", {"name": "zzz unknown hotel"})).structured_content
+    assert d["matches"] == [] and "do not guess" in d["note"]
+
+
+@pytest.mark.anyio
+async def test_find_supplier_flags_a_supplier_whose_type_was_never_confirmed():
+    d = (await call_with("find_supplier", {"name": "lisbon airport transfers"})).structured_content
+    assert d["matches"][0]["id"] == 101768 and d["matches"][0]["type_known"] is False and "type_known=false" in d["note"]
+
+
+# ---------- plan_supplier_reservations ----------
+
+def _counting_effect(supplier_kinds, drop=()):
+    """Create effect that gives each product its own reservation id and the supplier type from the supplier id; `drop` ids vanish silently."""
+    counter = {"n": 0}
+
+    def effect(v3, products):
+        for p in products:
+            if p["SupplierId"] in drop:
+                continue
+            counter["n"] += 1
+            v3["reservations"].append({"order_id": 700000 + (p["SupplierId"] % 1000), "reservation_id": 800000 + counter["n"], "supplier_id": p["SupplierId"],
+                                       "supplier_type": {supplier_kinds[p["SupplierId"]]: True}, "supplier_name": "S", "product_name": p["Name"],
+                                       "quantity": p["Quantity"], "duration": p["Nights"], "price": {"amount": p["Price"]}, "currency": {"name": "EUR"},
+                                       "dates": {"start": _d(p["StartDate"])}})
+    return effect
+
+
+KINDS = {102638: "lodging", 85936: "dmc", 98182: "transportation"}
+PLAN = [
+    {"supplier": "Arbitrip", "category": "Lodging", "product_name": "Hotel Vincci Liberdade - Triple Superior", "start_date": "2027-03-06", "price": 348.5, "nights": 2},
+    {"supplier": "Arbitrip", "category": "Lodging", "product_name": "Terra Nostra Garden Hotel", "start_date": "2027-03-08", "price": 245.33, "nights": 3},
+    {"supplier": "RateHawk", "category": "Transport", "product_name": "Transfer FCO airport - Room Mate Mia", "start_date": "2027-03-01", "price": 81.0},
+]
+
+
+@pytest.mark.anyio
+async def test_plan_groups_by_supplier_totals_per_currency_and_sends_nothing_without_confirm():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_counting_effect(KINDS))
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": PLAN})
+    d = r.structured_content
+    assert not r.is_error and d["sent"] is False and myt.create_calls == [] and d["problems"] == []
+    by = {o["supplier"]: o for o in d["orders"]}
+    assert len(d["orders"]) == 2 and len(by["Arbitrip"]["products"]) == 2 and by["Arbitrip"]["totals"] == {"EUR": round(348.5 * 2 + 245.33 * 3, 2)}
+    assert d["total_by_currency"] == {"EUR": round(697 + 735.99 + 81, 2)} and d["reservations"] == 3
+
+
+@pytest.mark.anyio
+async def test_plan_with_confirm_creates_every_product_and_reads_the_trip_back_once():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_counting_effect(KINDS))
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": PLAN, "confirm": True})
+    d = r.structured_content
+    assert not r.is_error and d["sent"] is True and len(d["created"]) == 3 and d["all_supplier_types_ok"] is True
+    assert [p["products"][0]["TypeId"] for p in myt.create_calls] == [4, 4, 1] and len({x["reservation_id"] for x in d["created"]}) == 3
+    assert not any("[" in p["products"][0]["Name"] for p in myt.create_calls)      # real names, no test tag
+
+
+@pytest.mark.anyio
+async def test_plan_refuses_an_unknown_supplier_a_wrong_category_and_a_past_date_and_sends_nothing():
+    lines = [{"supplier": "Hotel That Is Not In MYT", "category": "Lodging", "product_name": "x", "start_date": "2027-03-06", "price": 100},
+             {"supplier": "Sixt", "category": "Lodging", "product_name": "y", "start_date": "2027-03-06", "price": 100},
+             {"supplier": "Arbitrip", "category": "Lodging", "product_name": "z", "start_date": "2020-01-01", "price": 100}]
+    myt = FakeMYT(_v3([], {}, []), create_effect=_counting_effect(KINDS))
+    async with Client(await create_server_for(myt)) as c:
+        preview = (await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": lines})).structured_content
+        r = await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": lines, "confirm": True})
+    text = " ".join(preview["problems"])
+    assert "no supplier called" in text and "none of which fits category Lodging" in text and "in the past" in text
+    assert r.is_error and "Nothing was sent" in r.content[0].text and myt.create_calls == []
+
+
+@pytest.mark.anyio
+async def test_plan_refuses_a_reservation_that_already_exists_and_a_duplicate_line():
+    existing = _res(2353695, 102638, "Arbitrip", "Terra Nostra Garden Hotel", 245.33, 1, 3, "2027-03-08")
+    lines = [PLAN[1], PLAN[0], PLAN[0]]
+    myt = FakeMYT(_v3([existing], {}, []), create_effect=_counting_effect(KINDS))
+    async with Client(await create_server_for(myt)) as c:
+        d = (await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": lines})).structured_content
+    text = " ".join(d["problems"])
+    assert "already exists (order 2353695" in text and "appear twice" in text
+
+
+@pytest.mark.anyio
+async def test_plan_reports_a_product_that_mYT_silently_dropped_and_names_what_was_created():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_counting_effect(KINDS, drop={85936}))
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": PLAN, "confirm": True})
+    text = r.content[0].text
+    assert r.is_error and "NOT visible" in text and "RateHawk" in text and "line 1 order" in text and "never resend" in text
+
+
+@pytest.mark.anyio
+async def test_plan_stops_at_the_first_failed_write():
+    myt = FakeMYT(_v3([], {}, []), create_error=MYTError("MYT said no"))
+    async with Client(await create_server_for(myt)) as c:
+        r = await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": PLAN, "confirm": True})
+    assert r.is_error and "MYT refused line 1" in r.content[0].text and len(myt.create_calls) == 1
+
+
+@pytest.mark.anyio
+async def test_plan_limits_the_number_of_lines():
+    lines = [{**PLAN[2], "product_name": f"Transfer {i}"} for i in range(13)]
+    async with Client(await create_server_for(FakeMYT(_v3([], {}, [])))) as c:
+        d = (await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": lines})).structured_content
+    assert any("at most 12" in p for p in d["problems"])

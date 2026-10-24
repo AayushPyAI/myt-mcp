@@ -40,13 +40,16 @@ def known_places() -> dict[str, str]:
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
-def results_url(place_id: str, contract_id: str, check_in: date, check_out: date, guests: int, stars: int | None, breakfast: bool, budget_per_night: float | None,
+def results_url(place_id: str, contract_id: str, check_in: date, check_out: date, guests: int, children_ages: list[int] | None, stars: int | None, breakfast: bool, budget_per_night: float | None,
                 max_distance_km: float | None) -> tuple[str, list[str]]:
     """The results address with the operator's filters, and the names of the filters it carries (the script checks that the page kept them)."""
     j = lambda obj: quote(json.dumps(obj, separators=(",", ":")), safe="")      # noqa: E731
     parts = [("place_id", place_id), ("check_in", f"{check_in:%y%m%d}"), ("check_out", f"{check_out:%y%m%d}"), ("guests", str(guests)), ("rooms", "1"), ("contract_id", contract_id),
              ("max_distance", str(int(-(-max_distance_km // 1)) if max_distance_km else 50))]
     keys = ["place_id", "check_in", "check_out", "guests", "rooms", "contract_id", "max_distance"]
+    if children_ages:           # found on the real page 23 Oct 2026: children=<count> and children_ages=<ages, comma-separated> (guests = the adults); the header then reads "2 Adults · 1 Child" and the prices change
+        parts += [("children", str(len(children_ages))), ("children_ages", ",".join(str(a) for a in children_ages))]
+        keys += ["children", "children_ages"]
     if budget_per_night is not None:
         parts.append(("max_price_per_night", str(int(budget_per_night)))), keys.append("max_price_per_night")
     parts += [("categories", j({"Apartment": True, "Other": True}))]
@@ -66,8 +69,8 @@ def arbitrip_hotels_recipe(city: str, check_in: date, check_out: date, adults: i
                            budget_per_night: float | None = None, max_distance_km: float | None = None, offset: int = 0, limit: int = BATCH, place_id: str | None = None) -> dict[str, Any]:
     if check_out <= check_in:
         raise ValueError("check_out must be after check_in")
-    if children_ages:
-        raise ValueError("children are not tested on Arbitrip yet: set the guests by hand in the search form and tell the operator")
+    if children_ages and (len(children_ages) > 6 or any(not 0 <= a <= 17 for a in children_ages)):
+        raise ValueError("children's ages must be 0-17 and at most 6 children")
     if not 1 <= limit <= 100 or offset < 0:
         raise ValueError("offset must be 0 or more and limit 1-100")
     if stars is not None and not 1 <= stars <= 5:
@@ -83,7 +86,7 @@ def arbitrip_hotels_recipe(city: str, check_in: date, check_out: date, adults: i
         return {"needs_contract_id": True, "steps": [
             "The agency contract id is missing on the server (ARBITRIP_CONTRACT_ID in .env). Ask the operator to add it: open any Arbitrip results page and read contract_id from its address. "
             "Without it Arbitrip does not show the agency's rates."]}
-    url, keys = results_url(pid, contract, check_in, check_out, adults, stars, breakfast, budget_per_night, max_distance_km)
+    url, keys = results_url(pid, contract, check_in, check_out, adults, children_ages, stars, breakfast, budget_per_night, max_distance_km)
     start = offset
     script = with_emit((HERE / "arbitrip_hotels.js").read_text(encoding="utf-8")).replace("__LIMIT__", str(limit)).replace("__SKIP__", str(start))
     script = script.replace("__EXPECT_SORT__", SORT_LABEL).replace("__EXPECT_KEYS__", json.dumps(keys))
@@ -133,7 +136,14 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
              "Ask the operator which hotels to check; the hotel page shows the free-cancellation rate."]
     if data.get("offset"):
         notes.append(f"These are Arbitrip options {int(data['offset']) + 1} to {int(data['offset']) + len(offers)} of the list.")
-    return SiteRows(offers=offers, read=len(offers), total=data.get("approx_total"), problems=problems, sorted_by_price=data.get("sort") == SORT_LABEL, extra_notes=notes)
+    if data.get("sort") == SORT_LABEL and not data.get("offset"):
+        notes.append("Arbitrip's list was read sorted by price (low to high), the cheapest first.")
+    approx = data.get("approx_total")
+    reached = len(offers) + int(data.get("offset") or 0)
+    if approx and reached > approx:      # the page's header count is an estimate (17 on one read, 14 on another, 15 rows each time): never print "15 of 14 read"
+        notes.append(f"The page's header says about {approx} results; {reached} rows were read (the header is only an estimate).")
+        approx = reached
+    return SiteRows(offers=offers, read=len(offers), total=approx, problems=problems, sorted_by_price=data.get("sort") == SORT_LABEL, extra_notes=notes)
 
 
 def register(mcp: MCPServer) -> None:
@@ -145,7 +155,7 @@ def register(mcp: MCPServer) -> None:
         """FOR HOTELS ON ARBITRIP (read in the operator's own Chrome with Claude in Chrome), next to RateHawk. ASK FIRST like ratehawk_hotels_recipe: without minimum
         `stars`, `budget_per_night` and `max_distance_km` it opens nothing and returns `ask_operator` (one message, wait; `operator_answered`=true for "no preference").
         Then it returns the results url (filters already in it) and a read-only SCRIPT: open the url, run the script with the javascript tool; it reads the next `limit`
-        (30) hotels from `offset`. Give its answer parts unchanged to compose_answer in `site_results` as {"site": "arbitrip_hotels", "result": <part>, "url": <the url>}
+        (30) hotels from `offset`. The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row
         with the `wishes` and `filters_used` from ratehawk_hotels_recipe. The list price can be a non-refundable room: Arbitrip rows are comparison only; for the hotels the
         operator wants, open the hotel page (Select) and read its rooms. `city` is the name as typed (lisbon); an unknown city returns steps to learn its place_id once."""
         asked = ask_gate(stars, budget_per_night, max_distance_km, operator_answered)

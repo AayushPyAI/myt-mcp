@@ -275,13 +275,19 @@ def test_ratehawk_transfers_checks_what_the_page_searched_against_the_request():
 import json
 
 
+def seal(text):
+    """What emit.js does to every part: the CRC32 of the part's own text, as its last key."""
+    import zlib
+    return text[:-1] + ',"crc":"' + format(zlib.crc32(text.encode("utf-8")), "08x") + '"}'
+
+
 def _part(run, part, parts, rows, read=3, **extra):
     head = {"ok": True, "header": "Lisbon: 443 accommodation options available", "sort": "Price (low to high)", "start_page": 1, "pages_read": 1,
             "price_order": "ascending", "stopped": None, "run": run, "rows_read": read, "part": part, "parts": parts}
     head.update(extra)
     cols = ["name", "price", "path"]
     common = {"stars": 4, "meal": "Breakfast incl.", "cancellation": "Free cancellation", "basis": "for 2 nights for 2 guests"}
-    return json.dumps({**head, "cols": cols, "common": common, "path_base": "/hotel/portugal/lisbon/", "rows": rows})
+    return seal(json.dumps({**head, "cols": cols, "common": common, "path_base": "/hotel/portugal/lisbon/", "rows": rows}))
 
 
 def test_parts_are_joined_decoded_and_checked():
@@ -516,7 +522,7 @@ def _arb(rows, **head):
     base = {"ok": True, "sort": "Price (Low to High)", "contract": "Selected Places", "filters_in_url": [], "breakfast_filter": True, "approx_total": 105, "offset": 0, "price_order": "ascending",
             "cols": ["name", "score", "label", "reviews", "area", "distance", "price", "per_night"], "common": {"stars": 4, "tax_included": True}, "path_base": "", "run": "r1", "part": 1, "parts": 1, "rows_read": len(rows), "rows": rows}
     base.update(head)
-    return json.dumps(base)
+    return seal(json.dumps(base))
 
 
 def test_arbitrip_url_carries_the_operators_filters_as_changes_from_the_agency_defaults(monkeypatch):
@@ -525,23 +531,24 @@ def test_arbitrip_url_carries_the_operators_filters_as_changes_from_the_agency_d
 
     from myt_mcp.sites.arbitrip_hotels import arbitrip_hotels_recipe, results_url
 
-    url, keys = results_url("PLACE", "CONTRACT", date(2027, 5, 3), date(2027, 5, 5), 2, 4, True, 250, 2.5)
+    url, keys = results_url("PLACE", "CONTRACT", date(2027, 5, 3), date(2027, 5, 5), 2, None, 4, True, 250, 2.5)
     q = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     assert q["check_in"] == ["270503"] and q["check_out"] == ["270505"] and q["guests"] == ["2"] and q["contract_id"] == ["CONTRACT"] and q["max_distance"] == ["3"] and q["max_price_per_night"] == ["250"]
     assert json.loads(q["stars"][0]) == {"2": False, "3": False}                  # 4 stars and up = the default 2-5 minus 2 and 3
     assert json.loads(q["categories"][0]) == {"Apartment": True, "Other": True} and json.loads(q["review"][0]) == {"Poor": True}      # no filter the operator did not name
     assert json.loads(q["amenities"][0]) == {"BREAKFAST_INCLUDED": True} and q["sort"] == ["Price (Low to High)"]
-    one, _ = results_url("P", "C", date(2027, 5, 3), date(2027, 5, 5), 2, 1, False, None, None)
+    one, _ = results_url("P", "C", date(2027, 5, 3), date(2027, 5, 5), 2, None, 1, False, None, None)
     assert json.loads(urllib.parse.parse_qs(urllib.parse.urlparse(one).query)["stars"][0]) == {"1": True} and "max_price_per_night" not in one and "amenities" not in one
-    none, _ = results_url("P", "C", date(2027, 5, 3), date(2027, 5, 5), 2, None, False, None, None)
+    none, _ = results_url("P", "C", date(2027, 5, 3), date(2027, 5, 5), 2, None, None, False, None, None)
     assert json.loads(urllib.parse.parse_qs(urllib.parse.urlparse(none).query)["stars"][0]) == {"1": True}
     monkeypatch.delenv("ARBITRIP_CONTRACT_ID", raising=False)
     assert arbitrip_hotels_recipe("Lisbon", date(2027, 5, 3), date(2027, 5, 5))["needs_contract_id"] is True
     monkeypatch.setenv("ARBITRIP_CONTRACT_ID", "CONTRACT")
     assert arbitrip_hotels_recipe("Lisbon", date(2027, 5, 3), date(2027, 5, 5), stars=4, limit=30)["filters_in_url"][-1] == "sort"
     assert arbitrip_hotels_recipe("Atlantis", date(2027, 5, 3), date(2027, 5, 5))["needs_place_id"] == "Atlantis"
-    with pytest.raises(ValueError, match="children"):
-        arbitrip_hotels_recipe("Lisbon", date(2027, 5, 3), date(2027, 5, 5), children_ages=[6])
+    assert "children_ages=6" in arbitrip_hotels_recipe("Lisbon", date(2027, 5, 3), date(2027, 5, 5), children_ages=[6])["url"]       # children are supported since 23 Oct 2026
+    with pytest.raises(ValueError, match="ages"):
+        arbitrip_hotels_recipe("Lisbon", date(2027, 5, 3), date(2027, 5, 5), children_ages=[30])
 
 
 def test_arbitrip_list_rows_are_comparison_only_and_never_a_pick_when_cancellation_matters():
@@ -575,7 +582,7 @@ def _rooms(rows, **head):
     base = {"ok": True, "hotel": "Hotel Principe Real", "hotel_path": "/hotel/hotel-principe-real/5ab3", "stars": 4, "score": "8.6", "reviews": "824", "distance": "0.9 km from center", "price_order": "ascending",
             "cols": ["room", "cancellation", "price", "per_night"], "common": {"meal": "Breakfast Included"}, "path_base": "", "run": "r", "part": 1, "parts": 1, "rows_read": len(rows), "rows": rows}
     base.update(head)
-    return json.dumps(base)
+    return seal(json.dumps(base))
 
 
 def test_arbitrip_rooms_confirm_free_cancellation_and_say_what_the_cheapest_room_is():
@@ -704,7 +711,7 @@ def test_ratehawk_transfers_ask_first_wishes_tab_and_hidden_filters():
 def _air(rows, **head):
     base = {"ok": True, "page_ticked": ["One way", "Economy", "All flights"], "settled": True, "cards_read": len(rows), "lowest_fare_order": "ascending", "rows": rows}
     base.update(head)
-    return json.dumps(base)
+    return seal(json.dumps(base))
 
 
 def _card(carrier="Air France", fares=None, stops="1 stop", date_text="Mar 6, Sat", route="Firenze-Peretola Airport FLR \u2192 Humberto Delgado Airport LIS"):
@@ -776,6 +783,9 @@ def test_ratehawk_trains_ask_first_station_ids_filters_and_checks():
     assert r["url"] == "https://www.ratehawk.com/railway/?from=8306421&to=8308409&date=2026-11-23&time=08%3A00&adt=2"
     assert 'const CHANGES = "Direct route"' in r["script"] and 'const CLASS = "Comfort"' in r["script"] and "const SKIP = 30;" in r["script"] and "const LIMIT = 30;" in r["script"]
     assert ratehawk_trains_recipe("Atlantis", "Roma Termini", date(2026, 11, 23), "08:00")["needs_station_id"] == "Atlantis"
+    gone = ratehawk_trains_recipe("Lisboa Oriente", "Porto Campanhã", date(2026, 11, 12), "08:00")
+    assert gone["not_served"] == "Lisboa Oriente" and "route not served" in gone["next"] and "url" not in gone
+    assert "not_served" not in ratehawk_trains_recipe("Porto Campanhã", "Roma Termini", date(2026, 11, 12), "08:00")
     with pytest.raises(ValueError, match="HH:MM"):
         ratehawk_trains_recipe("Roma Termini", "Napoli", date(2026, 11, 23), "8am")
     exp = ratehawk_trains_recipe("Firenze Santa Maria Novella", "Roma Termini", date(2026, 11, 23), "08:00", 2)["expect"]
@@ -1000,3 +1010,600 @@ def test_elal_selling_fast_label_is_kept_and_the_real_row_shapes_convert():
     nostop = dict(_el(), stops=None, duration=None)
     odd = convert_all([{"site": "elal", "result": _elal([nostop]), "url": "u"}], {"expect": dict(exp, direct_only=True)})[0]
     assert odd[0].details["stops"] == "stops not shown" and odd[0].connecting is True and odd[0].fits is False          # an unreadable layout is never treated as non-stop
+
+
+# ---------- TAP (recipe: the page's own availability answer, read from its session storage) ----------
+
+def _tap(rows, **head):
+    base = {"ok": True, "currency": "EUR", "pax": {"ADT": 2, "CHD": 1}, "not_available": False, "flights_total": 2, "offset": 0, "flights_in_part": 2, "page_direct": 1, "page_connecting": 1, "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _tp(fare="DISCNEW", total=434.38, adt=154.3, chd=125.78, bag=0, ref=0, fi=0, flights="TP875", dep="2027-03-06 12:20", arr="2027-03-06 14:30", stops=0, mins=190, via="", frm="FLR", cabin="Economy", seats=9):
+    # the first five rows are the real fares of TP875 FLR-LIS 6 Mar 2027 for 2 adults + 1 child (22 Oct 2026)
+    return {"fi": fi, "flights": flights, "op": "Portugália Airlines", "from": frm, "to": "LIS", "dep": dep, "arr": arr, "stops": stops, "mins": mins, "via": via, "fare": fare, "cabin": cabin,
+            "total": total, "adt": adt, "chd": chd, "inf": None, "bag": bag, "ref": ref, "seats": seats}
+
+
+TAP_REAL = [_tp(), _tp("CLANEW", 530.38, 189.3, 151.78, 1, 0, 1), _tp("PLUSNEW", 654.38, 234.3, 185.78, 1, 1, 2), _tp("EXENEW", 1407.38, 501.3, 404.78, 1, 0, 3, cabin="Executive", seats=7),
+            _tp("TOPNEW", 1544.38, 551.3, 441.78, 1, 1, 4, cabin="Executive", seats=7)]
+TAP_CONN = _tp("DISCNEW", 888.63, 318.12, 252.39, 0, 0, 0, "TP1234+TP827", "2027-03-06 06:25", "2027-03-06 14:30", 1, 545, "LIS")
+
+
+def test_tap_recipe_builds_the_deeplink_the_script_and_what_to_expect():
+    from datetime import date
+    from myt_mcp.sites.tap import tap_recipe
+    r = tap_recipe("flr", "lis", date(2027, 3, 6), 2, 1, 0, True, False, False, 12, 12)
+    assert r["url"].startswith("https://booking.flytap.com/booking/flights/deeplink?") and "origin=FLR" in r["url"] and "destination=LIS" in r["url"] and "adt=2" in r["url"] and "chd=1" in r["url"] and "depDate=06.03.2027" in r["url"]
+    assert "const LIMIT = 12; const SKIP = 12;" in r["script"] and "__LIMIT__" not in r["script"] and "airportTranslationData" in r["script"] and "window.__mytParts" in r["script"]
+    assert "const window" not in r["script"] and r["expect"]["leg"] == "FLR to LIS, 06 Mar 2027" and r["expect"]["direct_only"] is True
+    with pytest.raises(ValueError, match="IATA"):
+        tap_recipe("Florence", "LIS", date(2027, 3, 6))
+    with pytest.raises(ValueError, match="infants"):
+        tap_recipe("FLR", "LIS", date(2027, 3, 6), 1, 0, 2)
+
+
+def test_tap_converts_the_real_rows_counts_flights_once_and_keeps_bag_and_refund_per_fare():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.tap import tap_recipe
+    exp = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1)["expect"]
+    offers, sources, problems, _, notes = convert_all([{"site": "tap", "result": _tap(TAP_REAL + [TAP_CONN, dict(TAP_CONN, fare="CLANEW", fi=1, total=950.0, adt=340.0, chd=270.0, bag=1)]), "url": "u"}], {"expect": exp})
+    assert not problems and len(offers) == 7 and (sources[0].read, sources[0].of) == (2, 2) and all(o.quotable and o.currency == "EUR" for o in offers)
+    first = offers[0]
+    assert first.price_total == 434.38 and first.group == "FLR to LIS, 06 Mar 2027" and first.source == "TAP Air Portugal" and not first.connecting and "3 seated travellers" in first.price_basis
+    assert first.details["checked_bag"] == "no" and first.details["refund_change"].startswith("not refundable") and first.details["fare"] == "DISCNEW (Economy)" and "ADT 154.3 EUR" in first.details["per_person"]
+    plus = offers[2]
+    assert plus.details["checked_bag"] == "yes" and plus.details["refund_change"] == "refundable" and plus.flexible is True and plus.details["seats_left"] == 9
+    assert offers[5].connecting is True and "1 stop via LIS" in offers[5].name and offers[0].name.startswith("TP875 12:20-14:30 operated by Portugália Airlines")
+
+
+def test_tap_flights_of_two_legs_add_up_and_the_read_never_passes_the_total():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.tap import tap_recipe
+    out = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1)["expect"]
+    back = dict(out, leg="LIS to FLR, 13 Mar 2027")
+    item = lambda e: {"site": "tap", "result": _tap(TAP_REAL + [TAP_CONN]), "url": "u", "wishes": {"expect": e}}
+    one_leg = convert_all([item(out)], {})[1][0]
+    two_legs = convert_all([item(out), item(back)], {})[1][0]
+    assert (two_legs.read, two_legs.of) == (2 * one_leg.read, 2 * one_leg.of) and one_leg.read <= one_leg.of
+
+
+def test_tap_wishes_decide_fits_and_every_refusal_is_reported():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.tap import tap_recipe
+    exp = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1, 0, True, True, True)["expect"]
+    got = convert_all([{"site": "tap", "result": _tap(TAP_REAL + [TAP_CONN]), "url": "u"}], {"expect": exp})[0]
+    assert [o.fits for o in got] == [False, False, True, False, True, False]        # direct + checked bag + refundable: only PLUSNEW and TOPNEW of the direct flight
+    exp = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1)["expect"]
+    run = lambda text: convert_all([{"site": "tap", "result": text, "url": "u"}], {"expect": exp})[2]
+    assert any("passengers {'ADT': 2}" in p for p in run(_tap(TAP_REAL, pax={"ADT": 2})))
+    assert any("not on 2027-03-06" in p for p in run(_tap([_tp(dep="2027-03-07 12:20")])))
+    assert any("ends at" in p for p in run(_tap([dict(_tp(), to="OPO")])))
+    assert any("does not add up" in p for p in run(_tap([_tp(total=400.0)])))
+    assert any("not EUR" in p for p in run(_tap(TAP_REAL, currency="USD")))
+    assert any("direct and" in p and "run the script once more" in p for p in run(_tap(TAP_REAL + [TAP_CONN], page_direct=1, page_connecting=7)))
+    assert any("TAP script reported" in p for p in run(json.dumps({"ok": False, "error": "no flights"})))
+    assert any("not the script's JSON" in p for p in run("hello"))
+    elsewhere = convert_all([{"site": "tap", "result": _tap(TAP_REAL + [_tp(frm="ZMS", flights="TP9XYZ")], flights_total=2, page_direct=None, page_connecting=None), "url": "u"}], {"expect": exp})
+    assert len(elsewhere[0]) == 5 and any("another place than FLR" in n for n in elsewhere[4]) and not elsewhere[2]
+
+
+def test_tap_parts_are_counted_once_per_flight_and_a_later_window_says_so():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.tap import tap_recipe
+    exp = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1)["expect"]
+    part_a = _tap(TAP_REAL[:3], flights_total=2, page_direct=None, page_connecting=None)          # TP875's fares continue in the next part
+    part_b = _tap(TAP_REAL[3:] + [TAP_CONN], flights_total=2, page_direct=None, page_connecting=None)
+    offers, sources, problems, _, _ = convert_all([{"site": "tap", "result": part_a, "url": "u"}, {"site": "tap", "result": part_b, "url": "u"}], {"expect": exp})
+    assert not problems and len(offers) == 6 and (sources[0].read, sources[0].of) == (2, 2)
+    later = convert_all([{"site": "tap", "result": _tap([TAP_CONN], offset=12, flights_in_part=1, flights_total=13), "url": "u"}], {"expect": exp})
+    assert any("flights 13 to 13 of 13" in n for n in later[4])
+
+
+@pytest.mark.anyio
+async def test_tap_tool_asks_first_then_returns_the_url_script_wishes_and_filters_used():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        asked = (await c.call_tool("tap_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06"})).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3 and "url" not in asked
+        part = (await c.call_tool("tap_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06", "direct_only": False, "checked_bag": True, "refundable": False, "adults": 2, "children": 1})).structured_content
+        assert part["wishes"]["expect"]["checked_bag"] is True and part["url"].startswith("https://booking.flytap.com/") and "offset=24" in part["more"]
+        assert any("checked bag only (operator)" in f for f in part["filters_used"]) and any("Connections allowed (operator)" in f for f in part["filters_used"])
+        none = (await c.call_tool("tap_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06", "operator_answered": True})).structured_content
+        assert any("default: no preference" in f for f in none["filters_used"])
+
+
+# ---------- SATA / Azores Airlines (recipe: the page's own state store) ----------
+
+def _sata(rows, **head):
+    base = {"ok": True, "currency": "EUR", "searched": {"from": "LIS", "to": "PDL", "day": "2027-03-08", "adults": 2, "children": 1, "infants": 0, "directions": 1},
+            "no_flight_found": False, "flights_total": 10, "offset": 0, "flights_in_part": 2, "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _sa(fi, fare, total, adt, chd, bag, change, refund, flights="S4121", dep="2027-03-08 06:00", arr="2027-03-08 07:30", frm="LIS", stops=0, mins=150, nadt=2, nchd=1):
+    # the rows of S4121 and S4125 LIS-PDL 8 Mar 2027 for 2 adults + 1 child are the real ones (22 Oct 2026)
+    return {"fi": fi, "flights": flights, "from": frm, "to": "PDL", "dep": dep, "arr": arr, "mins": mins, "stops": stops, "via": "", "fare": fare, "cabin": "ECONOMY", "total": total, "adt": adt, "chd": chd, "inf": None,
+            "nadt": nadt, "nchd": nchd, "ninf": 0, "carry": "1pc up to 8kg (included)", "bag": bag, "change": change, "refund": refund}
+
+
+SATA_REAL = [_sa(0, "SPL_DOMESTIC_BF", 217.04, 147.36, 69.68, "BAG (chargeable)", "Penalty €100 (chargeable)", "Non Refundable (not included)"),
+             _sa(1, "BSC_DOMESTIC_BF", 250.04, 171.36, 78.68, "1 x 23 kg (included)", "Penalty €40 (chargeable)", "Non Refundable (not included)"),
+             _sa(2, "FLX_DOMESTIC_BF", 283.04, 195.36, 87.68, "1 x 23 kg (included)", "Penalty €25 (chargeable)", "Penalty €65 (chargeable)"),
+             _sa(3, "TOP_DOMESTIC_BF", 408.04, 291.36, 116.68, "2 x 23 kg (included)", "Without penalty* (included)", "Without penalties (included)")]
+
+
+def test_sata_recipe_builds_the_deeplink_and_the_script_without_hiding_window():
+    from datetime import date
+    from myt_mcp.sites.sata import sata_recipe
+    r = sata_recipe("lis", "pdl", date(2027, 3, 8), 2, 1, 0, False, True, False, 8, 8)
+    assert r["url"].startswith("https://book.azoresairlines.pt/booking/dl?") and "search=LIS.PDL.2027-03-08" in r["url"] and "adults=2" in r["url"] and "children=1" in r["url"] and "pointOfSale=PT" in r["url"]
+    assert "const LIMIT = 8; const SKIP = 8;" in r["script"] and "__LIMIT__" not in r["script"] and "Availability" in r["script"] and "const window" not in r["script"] and "window.__mytParts" in r["script"]
+    assert r["expect"]["leg"] == "LIS to PDL, 08 Mar 2027" and r["expect"]["checked_bag"] is True
+    with pytest.raises(ValueError, match="IATA"):
+        sata_recipe("Lisbon", "PDL", date(2027, 3, 8))
+
+
+def test_sata_converts_the_real_rows_with_group_totals_and_fare_terms():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.sata import sata_recipe
+    exp = sata_recipe("LIS", "PDL", date(2027, 3, 8), 2, 1)["expect"]
+    rows = SATA_REAL + [dict(r, flights="S4125", dep="2027-03-08 14:05", arr="2027-03-08 15:35") for r in SATA_REAL]
+    offers, sources, problems, _, notes = convert_all([{"site": "sata", "result": _sata(rows), "url": "u"}], {"expect": exp})
+    assert not problems and len(offers) == 8 and (sources[0].read, sources[0].of) == (2, 10) and all(o.quotable and o.currency == "EUR" for o in offers)
+    first = offers[0]
+    assert first.price_total == 217.04 and first.group == "LIS to PDL, 08 Mar 2027" and first.source == "SATA / Azores Airlines" and not first.connecting and "3 seated travellers" in first.price_basis
+    assert first.details["checked_bag"] == "BAG (chargeable)" and "Non Refundable" in first.details["refund_change"] and "adults 147.36 EUR for all 2 adults" in first.details["per_person"] and first.flexible is False
+    assert offers[3].flexible is True and offers[2].flexible is None and offers[1].name.startswith("S4121 06:00-07:30 (direct, 2h 30) fare BSC_DOMESTIC_BF")
+
+
+def test_sata_wishes_decide_fits_and_every_refusal_is_reported():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.sata import sata_recipe
+    exp = sata_recipe("LIS", "PDL", date(2027, 3, 8), 2, 1, 0, True, True, True)["expect"]
+    got = convert_all([{"site": "sata", "result": _sata(SATA_REAL + [_sa(0, "BSC_DOMESTIC_BF", 300.0, 200.0, 100.0, "1 x 23 kg (included)", "x", "Penalty €50 (chargeable)", flights="S4+SP", stops=1)]), "url": "u"}], {"expect": exp})[0]
+    assert [o.fits for o in got] == [False, False, True, True, False]       # direct + checked bag + refundable (a penalty is allowed): FLX and TOP; the one-stop flight fails 'direct'
+    exp = sata_recipe("LIS", "PDL", date(2027, 3, 8), 2, 1)["expect"]
+    run = lambda text: convert_all([{"site": "sata", "result": text, "url": "u"}], {"expect": exp})[2]
+    assert any("searched" in p and "not LIS to PDL on 2027-03-08 for 2" in p for p in run(_sata(SATA_REAL, searched={"from": "LIS", "to": "OPO", "day": "2027-03-08", "adults": 2, "children": 1, "infants": 0, "directions": 1})))
+    assert any("searched" in p for p in run(_sata(SATA_REAL, searched={"from": "LIS", "to": "PDL", "day": "2027-03-08", "adults": 3, "children": 0, "infants": 0, "directions": 1})))
+    assert any("2 directions" in p for p in run(_sata(SATA_REAL, searched={"from": "LIS", "to": "PDL", "day": "2027-03-08", "adults": 2, "children": 1, "infants": 0, "directions": 2})))
+    assert any("not on 2027-03-08" in p for p in run(_sata([_sa(0, "SPL_DOMESTIC_BF", 217.04, 147.36, 69.68, "BAG (chargeable)", "x", "y", dep="2027-03-09 06:00")])))
+    assert any("does not add up" in p for p in run(_sata([_sa(0, "SPL_DOMESTIC_BF", 200.0, 147.36, 69.68, "BAG (chargeable)", "x", "y")])))
+    assert any("priced for 3 adults" in p for p in run(_sata([_sa(0, "SPL_DOMESTIC_BF", 217.04, 147.36, 69.68, "BAG (chargeable)", "x", "y", nadt=3)])))
+    assert any("not EUR" in p for p in run(_sata(SATA_REAL, currency="USD")))
+    assert any("runs LIS to PDL" not in p and "runs OPO to PDL" in p for p in run(_sata([_sa(0, "SPL_DOMESTIC_BF", 217.04, 147.36, 69.68, "BAG (chargeable)", "x", "y", frm="OPO")])))
+    assert any("SATA script reported" in p for p in run(json.dumps({"ok": False, "error": "no flights"})))
+    none = convert_all([{"site": "sata", "result": _sata([], no_flight_found=True, flights_total=0, flights_in_part=0), "url": "u"}], {"expect": exp})
+    assert not none[0] and any("lists no flight for this route and day" in p and "route not served" in p for p in none[2])      # never "checked, 0 of 0 read"
+
+
+@pytest.mark.anyio
+async def test_sata_tool_asks_first_then_returns_the_url_script_wishes_and_filters_used():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        asked = (await c.call_tool("sata_recipe", {"origin": "LIS", "destination": "PDL", "day": "2027-03-08"})).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3 and "url" not in asked
+        part = (await c.call_tool("sata_recipe", {"origin": "LIS", "destination": "PDL", "day": "2027-03-08", "direct_only": True, "checked_bag": False, "refundable": False, "adults": 2, "children": 1})).structured_content
+        assert part["wishes"]["expect"]["direct_only"] is True and part["url"].startswith("https://book.azoresairlines.pt/") and "offset=16" in part["more"]
+        assert any("Direct flights only (operator)" in f for f in part["filters_used"]) and any("Any bag option (operator)" in f for f in part["filters_used"])
+
+
+@pytest.mark.anyio
+async def test_tap_and_sata_server_tools_are_pointers_to_the_recipes_unless_switched_on(monkeypatch):
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    monkeypatch.delenv("TAP_SERVER_BROWSER", raising=False)
+    monkeypatch.delenv("SATA_SERVER_BROWSER", raising=False)
+    async with Client(create_server(Settings())) as c:
+        names = {t.name for t in (await c.list_tools()).tools}
+        assert {"tap_flight_prices", "sata_flight_prices", "tap_recipe", "sata_recipe", "tap_fare_calendar"} <= names
+        tap = (await c.call_tool("tap_flight_prices", {"from_airport": "FLR", "to_airport": "LIS", "departure_date": "2027-03-06"})).structured_content
+        sata = (await c.call_tool("sata_flight_prices", {"from_airport": "LIS", "to_airport": "PDL", "departure_date": "2027-03-08"})).structured_content
+        assert tap["ok"] is False and tap["searched"] is False and "tap_recipe" in tap["next"]
+        assert sata["ok"] is False and sata["searched"] is False and "sata_recipe" in sata["next"]
+    monkeypatch.setenv("TAP_SERVER_BROWSER", "1")
+    async with Client(create_server(Settings())) as c:
+        tool = next(t for t in (await c.list_tools()).tools if t.name == "tap_flight_prices")
+        assert "NOT USED" not in (tool.description or "")
+
+
+# ---------- GetYourGuide (recipes: the list of a search, and the exact price of one activity) ----------
+
+def _gyf(rows, **head):
+    base = {"ok": True, "results_total": "500+", "query_text": "Florence golf cart tour", "date_chip": "Mar 5", "header_currency": "EUR", "cards_on_page": 24, "offset": 0, "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _gr(rank, title, path, meta, rating, reviews, price, tags=(), symbol="€"):
+    # rows 1-3 are the real first cards of "Florence golf cart tour" on 5 Mar 2027 (22 Oct 2026; prices there were shown in ILS)
+    return {"rank": rank, "title": title, "path": path, "city": "FLORENCE", "meta": meta, "rating": rating, "reviews": reviews, "symbol": symbol, "from": price, "per": None, "tags": list(tags)}
+
+
+GYG_REAL = [_gr(1, "Florence Golf Cart Tour: Best Highlights & Hidden Gems", "/florence-l32/florence-panoramic-golf-cart-ride-to-piazzale-michelangelo-t1356542/", "1.5 hours • Optional audio guide", 4.8, 102, 177, ["Top pick"]),
+            _gr(2, "Florence Golf Cart Tour of the Hills and Piazzale Michelangelo", "/florence-l32/florence-private-tour-in-an-electric-mini-car-with-a-gourmet-stop-in-via-de-neri-t896461/", "1.5 hours - 105 minutes • Private group • Optional audio guide", 4.8, 418, 278, ["Top rated"]),
+            _gr(3, "Florence Official Grand Panoramic City Tour by Golf Cart", "/florence-l32/florence-old-town-golf-cart-excursion-t48659/", "1.5 hours • Small group • Optional audio guide", 4.3, 1012, 170, ["Certified by GetYourGuide"]),
+            _gr(4, "Pasta Cooking Class with Unlimited Wine", "/florence-l32/pasta-cooking-class-t12345/", "2 - 2.5 hours", 4.8, 16903, 125, ["Top rated"])]
+
+
+def test_gyg_find_builds_the_search_url_and_converts_the_real_cards_for_the_wishes():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.getyourguide_find import getyourguide_find_recipe
+    r = getyourguide_find_recipe("Florence golf cart tour", date(2027, 3, 5), 24, 0, None, True, 250.0, None, 2.0)
+    assert r["url"] == "https://www.getyourguide.com/s/?q=Florence+golf+cart+tour&date_from=2027-03-05&date_to=2027-03-05" and "const LIMIT = 24; const SKIP = 0;" in r["script"] and "window.__mytParts" in r["script"] and "const window" not in r["script"]
+    exp = r["expect"]
+    assert exp["title_contains"] == ["florence", "golf", "cart"] and exp["group"] == "Florence golf cart tour, 05 Mar 2027"
+    offers, sources, problems, _, notes = convert_all([{"site": "getyourguide_find", "result": _gyf(GYG_REAL), "url": "u"}], {"expect": exp})
+    assert not problems and len(offers) == 3 and (sources[0].read, sources[0].of) == (4, 500) and not any(o.quotable for o in offers)      # 4 read; the pasta class is padding and is left out
+    assert offers[0].link == "https://www.getyourguide.com/florence-l32/florence-panoramic-golf-cart-ride-to-piazzale-michelangelo-t1356542/" and offers[0].price_total == 177 and offers[0].currency == "EUR"
+    assert offers[1].details["private_or_group"] == "private group" and offers[2].details["private_or_group"] == "small group" and offers[0].details["rating"] == "4.8 (102 reviews)"
+    # wishes: max 250 per person, at most 2 hours, free cancellation (the list rarely says: unknown stays None)
+    assert [o.fits for o in offers] == [None, False, None]          # row 2: 278 > 250; row 4 is padding (no title word) and is left out; the others: free cancellation unknown
+    assert any("pads the list" in n for n in notes)
+    assert offers[2].group == exp["group"]
+
+
+def test_gyg_find_refusals_and_wishes():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.getyourguide_find import getyourguide_find_recipe
+    exp = getyourguide_find_recipe("Florence golf cart tour", date(2027, 3, 5))["expect"]
+    run = lambda text: convert_all([{"site": "getyourguide_find", "result": text, "url": "u"}], {"expect": exp})[2]
+    assert any("not EUR" in p for p in run(_gyf(GYG_REAL, header_currency="ILS")))
+    assert any("'₪' prices" in p for p in run(_gyf([_gr(1, "Florence Golf Cart Tour", "/a-t1/", "1 hour", 4.8, 1, 177, symbol="₪")], header_currency=None)))
+    assert any("searched 'Rome pasta'" in p for p in run(_gyf(GYG_REAL, query_text="Rome pasta")))
+    assert any("date is 'Mar 6'" in p for p in run(_gyf(GYG_REAL, date_chip="Mar 6")))
+    assert any("script reported" in p for p in run(json.dumps({"ok": False, "error": "x"})))
+    best = getyourguide_find_recipe("Florence golf cart tour", date(2027, 3, 5), 24, 0, ["golf"], False, None, 4.5, None)["expect"]
+    fits = convert_all([{"site": "getyourguide_find", "result": _gyf(GYG_REAL), "url": "u"}], {"expect": best})[0]
+    assert [o.fits for o in fits] == [True, True, False]          # min rating 4.5: 4.8, 4.8 ok; 4.3 no; the pasta class (no 'golf') is left out altogether
+    free = getyourguide_find_recipe("Florence golf cart tour", date(2027, 3, 5), 24, 0, None, True)["expect"]
+    tagged = [_gr(1, "Florence golf cart tour A", "/a-t1/", "1 hour", 4.8, 1, 100, ["Free cancellation"])]
+    assert convert_all([{"site": "getyourguide_find", "result": _gyf(tagged), "url": "u"}], {"expect": free})[0][0].fits is True
+    later = convert_all([{"site": "getyourguide_find", "result": _gyf(GYG_REAL[:1], offset=24), "url": "u"}], {"expect": exp})
+    assert any("results 25 to 25" in n for n in later[4])
+
+
+@pytest.mark.anyio
+async def test_gyg_find_tool_asks_first():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        asked = (await c.call_tool("getyourguide_find_recipe", {"query": "Florence golf cart tour", "day": "2027-03-05"})).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3 and "url" not in asked
+        r = (await c.call_tool("getyourguide_find_recipe", {"query": "Florence golf cart tour", "day": "2027-03-05", "free_cancellation": True, "max_price": 150, "max_hours": 2})).structured_content
+        assert r["wishes"]["free_cancellation"] is True and r["wishes"]["max_price"] == 150 and r["url"].startswith("https://www.getyourguide.com/s/?q=") and "offset=48" in r["more"]
+        assert any("At most 150 EUR per person (operator)" in f for f in r["filters_used"])
+        none = (await c.call_tool("getyourguide_find_recipe", {"query": "Florence golf cart tour", "operator_answered": True})).structured_content
+        assert any("No price limit (default: no preference)" in f for f in none["filters_used"]) and "date_from" not in none["url"]
+
+
+def _gya(options, **head):
+    base = {"ok": True, "activity": "Florence Golf Cart Tour: Best Highlights & Hidden Gems", "availability": "1 option available", "travellers": "Adult x 3", "locale_currency": None, "options_found": len(options), "rows": options}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _gopt(symbol="€", price=717, **kw):
+    # the real option of the golf cart tour for 3 adults on 5 Mar 2027 (22 Oct 2026; shown in ILS)
+    o = {"n": 1, "title": "Florence Golf Cart Tour: Best Highlights & Hidden Gems", "duration": "1.5 hours", "guide": "Audio guide: English", "cancel": "Cancel for free until Mar 4", "pay_later": True, "meeting_point": True,
+         "day": "Friday, March 5, 2027", "times": ["8:30 AM", "9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM"], "price_symbol": symbol, "price": price, "breakdown": ["3 Adult × 239"], "taxes_included": True, "unavailable": None}
+    o.update(kw)
+    return o
+
+
+def test_gyg_activity_recipe_converts_the_exact_group_price_and_refuses_what_does_not_match():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.getyourguide_activity import getyourguide_activity_recipe
+    url = "https://www.getyourguide.com/florence-l32/florence-panoramic-golf-cart-ride-to-piazzale-michelangelo-t1356542/"
+    r = getyourguide_activity_recipe(url, date(2027, 3, 5), 2, [8], "Golf cart tour Florence")
+    assert r["url"] == url + "?date_from=2027-03-05&date_to=2027-03-05" and r["expect"]["total"] == 3 and r["expect"]["ages"] == [8] and any("EUR" in s for s in r["steps"]) and any("category" in s for s in r["steps"])
+    assert "window.__mytParts" in r["script"] and "const window" not in r["script"] and r["expect"]["group"] == "Golf cart tour Florence, 05 Mar 2027"
+    exp = r["expect"]
+    run = lambda text, e=exp, w=None: convert_all([{"site": "getyourguide_activity", "result": text, "url": "u"}], {"expect": e, **(w or {})})
+    offers, sources, problems, _, notes = run(_gya([_gopt()]))
+    assert not problems and len(offers) == 1 and offers[0].quotable and offers[0].price_total == 717 and offers[0].currency == "EUR" and offers[0].flexible is True and (sources[0].read, sources[0].of) == (1, 1)
+    d = offers[0].details
+    assert "whole group (3 travellers; 3 Adult × 239)" in offers[0].price_basis and "all taxes and fees included" in offers[0].price_basis and d["start_times"].startswith("8 start time(s): 8:30 AM, 9:00 AM") and "last 12:00 PM" in d["start_times"]
+    assert d["cancellation"] == "Cancel for free until Mar 4" and d["language"] == "Audio guide: English" and offers[0].group == "Golf cart tour Florence, 05 Mar 2027"
+    assert any("not EUR" in p for p in run(_gya([_gopt("₪")]))[2])
+    assert any("2 traveller(s) selected" in p for p in run(_gya([_gopt()], travellers="Adult x 2"))[2])
+    assert any("could not be read" in p for p in run(_gya([_gopt()], travellers=None))[2])
+    assert any("is for 2027-03-06" in p for p in run(_gya([_gopt(day="Saturday, March 6, 2027")]))[2])
+    none = run(_gya([], availability="Not available for your selection"))
+    assert not none[0] and any("Not available for your selection" in n for n in none[4])
+    unavail = run(_gya([_gopt(price=None, price_symbol=None, unavailable="At least 2 participants are required for this activity.")]))
+    assert not unavail[0] and any("At least 2 participants" in n for n in unavail[4])
+    nofree = _gopt(cancel="Non-refundable")
+    assert run(_gya([nofree]))[0][0].flexible is False
+    flex = run(_gya([dict(nofree, title="Florence Golf Cart Tour: Evening"), _gopt()]), w={"free_cancellation": True})
+    from myt_mcp.compose import apply_wishes
+    apply_wishes(flex[0], {"free_cancellation": True})
+    assert [o.fits for o in flex[0]] == [False, True]
+    with pytest.raises(ValueError, match="activity link"):
+        getyourguide_activity_recipe("https://www.getyourguide.com/s/?q=x", date(2027, 3, 5), 2, [])
+    with pytest.raises(ValueError, match="1-15"):
+        getyourguide_activity_recipe(url, date(2027, 3, 5), 0, [])
+
+
+@pytest.mark.anyio
+async def test_gyg_activity_tool_returns_steps_script_and_wishes():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    url = "https://www.getyourguide.com/florence-l32/florence-panoramic-golf-cart-ride-to-piazzale-michelangelo-t1356542/"
+    async with Client(create_server(Settings())) as c:
+        r = (await c.call_tool("getyourguide_activity_recipe", {"url": url, "day": "2027-03-05", "adults": 2, "children_ages": [8], "free_cancellation": True})).structured_content
+        assert r["wishes"]["expect"]["total"] == 3 and r["wishes"]["free_cancellation"] is True and r["steps"] and "script" in r and any("Free cancellation only (operator)" in f for f in r["filters_used"])
+
+
+# ---------- Viator (recipes: the list of a search page, and the exact price of one activity) ----------
+
+def _vif(rows, **head):
+    base = {"ok": True, "query_text": "Florence golf cart tour", "results_total": "200+", "page": 1, "shown_range": "1-24", "travellers_filter": "2 Adults", "sort": "Featured", "rows": rows}
+    base.update(head)
+    return json.dumps(base)
+
+
+def _vr(rank, title, path, duration, free, rating, reviews, price, was=None, symbol="€", varies=False):
+    # rows 1-4 are the real first cards of "Florence golf cart tour" (22 Oct 2026, prices in EUR)
+    return {"rank": rank, "title": title, "path": path, "duration": duration, "free_cancel": free, "rating": rating, "reviews": reviews, "symbol": symbol, "from": price, "was": was, "varies": varies, "tags": []}
+
+
+VIA_REAL = [_vr(1, "Private Golf Cart Tour in Florence", "/tours/Florence/Golf-cart-tour/d519-5559058P1", "1 hour 2 minutes to 1 hour 38 minutes", True, 4.7, 648, 68),
+            _vr(2, "Florence Golf Cart Tour with Piazzale Michelangelo", "/tours/Florence/Private-Golf-Cart-Tour-of-Florence-Discover-Iconic-Landmarks/d519-5546346P3", "1 hour 40 minutes", True, 5.0, 68, 73, varies=True),
+            _vr(3, "Florence Golf Cart Tour: Best Highlights & Hidden Gems", "/tours/Florence/Florence-Panoramic-Golf-Cart-Tour-Michelangelo-and-San-Miniato/d519-566707", "1 hour 45 minutes", True, 4.5, 13, 48, was=54),
+            _vr(4, "Private tour of Florence on a golf cart", "/tours/Florence/Private-Tour-of-Florence-on-a-Golf-Cart-Tour/d519-239317P1", "1 hour", False, 4.4, 102, 50),
+            _vr(5, "Cooking Class in Chianti", "/tours/Florence/Cooking-Class/d519-1P1", "3 hours", True, 4.9, 900, 90)]
+
+
+def test_viator_find_builds_page_urls_and_converts_the_real_cards_for_the_wishes():
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.viator_find import hours, viator_find_recipe
+    r = viator_find_recipe("Florence golf cart tour", "5 Mar 2027", 1, None, True, 70.0, None, 1.75)
+    assert r["url"] == "https://www.viator.com/searchResults/all?text=Florence+golf+cart+tour" and "const PAGES" not in r["script"] and "window.__mytParts" in r["script"] and "const window" not in r["script"]
+    assert viator_find_recipe("Florence golf cart tour", None, 3)["url"] == "https://www.viator.com/searchResults/all/3?text=Florence+golf+cart+tour"
+    exp = r["expect"]
+    assert exp["title_contains"] == ["florence", "golf", "cart"] and exp["group"] == "Florence golf cart tour, 5 Mar 2027"
+    assert hours("1 hour 2 minutes to 1 hour 38 minutes") == pytest.approx(1 + 38 / 60) and hours("1 hour 40 minutes") == pytest.approx(1 + 40 / 60) and hours("2 hours") == 2 and hours("3 days") == 72 and hours(None) is None
+    offers, sources, problems, _, notes = convert_all([{"site": "viator_find", "result": _vif(VIA_REAL), "url": "u"}], {"expect": exp})
+    assert not problems and len(offers) == 4 and (sources[0].read, sources[0].of) == (5, 200) and not any(o.quotable for o in offers)      # 5 read; the cooking class is padding and is left out
+    assert offers[1].link == "https://www.viator.com" + VIA_REAL[1]["path"] and offers[1].price_total == 73 and "varies by group size" in offers[1].price_basis and "discounted from 54 EUR" in offers[2].price_basis and offers[2].price_total == 48
+    # wishes: free cancellation, at most 70 per person, at most 1.75 hours
+    assert [o.fits for o in offers] == [True, False, True, False]       # 2: 73 > 70; 4: no free cancellation; the cooking class (no title word) is left out
+    assert any("pads the list" in n for n in notes) and offers[3].details["cancellation"] == "not shown on the list"
+
+
+def test_viator_find_refusals():
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.viator_find import viator_find_recipe
+    exp = viator_find_recipe("Florence golf cart tour", None, 2)["expect"]
+    run = lambda text: convert_all([{"site": "viator_find", "result": text, "url": "u"}], {"expect": exp})[2]
+    assert any("searched 'Rome food'" in p for p in run(_vif(VIA_REAL, query_text="Rome food", page=2)))
+    assert any("result page 1, not 2" in p for p in run(_vif(VIA_REAL, page=1)))
+    assert any("not EUR" in p for p in run(_vif([_vr(1, "Florence golf cart", "/tours/a/d1-X", "1 hour", True, 4.5, 3, 80, symbol="₪")], page=2)))
+    assert any("script reported" in p for p in run(json.dumps({"ok": False, "error": "x"})))
+
+
+@pytest.mark.anyio
+async def test_viator_find_tool_asks_first():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        asked = (await c.call_tool("viator_find_recipe", {"query": "Florence golf cart tour"})).structured_content
+        assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 3 and "url" not in asked
+        r = (await c.call_tool("viator_find_recipe", {"query": "Florence golf cart tour", "free_cancellation": False, "max_price": 100, "max_hours": 2, "page": 2})).structured_content
+        assert r["url"].startswith("https://www.viator.com/searchResults/all/2?") and "page=3" in r["more"] and any("At most 100 EUR per person (operator)" in f for f in r["filters_used"])
+        none = (await c.call_tool("viator_find_recipe", {"query": "Florence golf cart tour", "operator_answered": True})).structured_content
+        assert any("default: no preference" in f for f in none["filters_used"])
+
+
+def _via(row=None, **head):
+    # the real reading of the golf cart tour for 2 adults + 1 child on 5 Mar 2027 (22 Oct 2026); page-level fields sit in the head, the option in `rows`
+    HEAD_KEYS = {"title": "activity", "travellers_box": "travellers_box", "date_box": "date_box", "duration": "duration", "offered_in": "offered_in", "mobile_ticket": "mobile_ticket", "included": "included",
+                 "meeting_text": "meeting_text", "additional": "additional", "cancel_policy": "cancel_policy"}
+    base_head = {"ok": True, "url_path": "/tours/Florence/Private-Golf-Cart-Tour-of-Florence-Discover-Iconic-Landmarks/d519-5546346P3", "activity": "Florence Golf Cart Tour with Piazzale Michelangelo", "date_box": "Fri, Mar 5", "travellers_box": 3,
+                 "options_found": 1, "duration": "1 hour 40 minutes (approx.)", "offered_in": "English and 5 more", "mobile_ticket": True}
+    base_row = {"option": None, "selected": True, "priced": True, "price_text": "€195.00", "from_text": None, "start_time": "9:00 AM",
+                "times": ["9:00 AM", "9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "8:00 PM"], "cancellation": "Free cancellationbefore 9:00 AM on Mar 4, 2027 (local time)",
+                "pay_later": "Reserve now, pay nothing until Mar 3, 2027", "dialog_travellers": "2 Adults, 1 Child", "dialog_when": "Fri, Mar 5, 2027 • 9:00 AM", "breakdown": ["2 Adults x €73.00 = €146.00", "1 Child x €49.00 = €49.00"],
+                "dialog_total": "€195.00"}
+    for k, v in (row or {}).items():
+        (base_head.__setitem__(HEAD_KEYS[k], v) if k in HEAD_KEYS else base_row.__setitem__(k, v))
+    base_head.update(head)
+    return json.dumps({**base_head, "rows": [base_row]})
+
+
+def test_viator_activity_recipe_converts_the_exact_group_price_and_refuses_what_does_not_match():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.viator_activity import viator_activity_recipe
+    url = "https://www.viator.com/tours/Florence/Private-Golf-Cart-Tour-of-Florence-Discover-Iconic-Landmarks/d519-5546346P3"
+    r = viator_activity_recipe(url + "?x=1", date(2027, 3, 5), 2, [8], "Golf cart tour Florence")
+    assert r["url"] == url and r["expect"]["total"] == 3 and any("calendar" in s and "March 2027" in s for s in r["steps"]) and any("age band" in s for s in r["steps"]) and any("EUR" in s for s in r["steps"])
+    assert "window.__mytParts" in r["script"] and "const window" not in r["script"]
+    exp = r["expect"]
+    run = lambda text, e=exp, w=None: convert_all([{"site": "viator_activity", "result": text, "url": "u"}], {"expect": e, **(w or {})})
+    offers, sources, problems, _, notes = run(_via())
+    assert not problems and len(offers) == 1 and offers[0].quotable and offers[0].price_total == 195.0 and offers[0].currency == "EUR" and offers[0].flexible is True and (sources[0].read, sources[0].of) == (1, 1)
+    d = offers[0].details
+    assert "whole group (3 travellers; 2 Adults x €73.00 = €146.00; 1 Child x €49.00 = €49.00)" in offers[0].price_basis and d["start_times"].startswith("chosen: 9:00 AM; 8 start time(s): 9:00 AM, 9:30 AM") and "last 8:00 PM" in d["start_times"]
+    assert d["cancellation"] == "Free cancellation before 9:00 AM on Mar 4, 2027 (local time)" and d["language"] == "offered in: English and 5 more" and offers[0].group == "Golf cart tour Florence, 05 Mar 2027"
+    assert any("still shows 'From" in p for p in run(_via({"priced": False, "price_text": None, "from_text": "From €73.00"}))[2])
+    assert any("not EUR" in p for p in run(_via({"price_text": "₪195.00", "dialog_total": "₪195.00"}))[2])
+    assert any("is for 2027-03-06" in p or "price is for 2027-03-06" in p for p in run(_via({"dialog_when": "Sat, Mar 6, 2027 • 9:00 AM"}))[2])
+    assert any("2 traveller" in p for p in run(_via({"dialog_travellers": "2 Adults", "travellers_box": 2}))[2])
+    assert any("could not be read" in p for p in run(_via({"dialog_when": None, "date_box": None}))[2])
+    assert any("says €200.00" in p or "'Price details' says" in p for p in run(_via({"dialog_total": "€200.00"}))[2])
+    assert any("not the activity asked" in p for p in run(_via(url_path="/tours/Rome/other/d1-X"))[2])
+    assert run(_via({"cancellation": "Non-refundable"}))[0][0].flexible is False
+    with pytest.raises(ValueError, match="activity link"):
+        viator_activity_recipe("https://www.viator.com/searchResults/all?text=x", date(2027, 3, 5), 2, [])
+
+
+@pytest.mark.anyio
+async def test_viator_activity_tool_returns_steps_script_and_wishes():
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    url = "https://www.viator.com/tours/Florence/Private-Golf-Cart-Tour-of-Florence-Discover-Iconic-Landmarks/d519-5546346P3"
+    async with Client(create_server(Settings())) as c:
+        r = (await c.call_tool("viator_activity_recipe", {"url": url, "day": "2027-03-05", "adults": 2, "children_ages": [8]})).structured_content
+        assert r["wishes"]["expect"]["total"] == 3 and r["steps"] and "script" in r and "Free cancellation only" not in " ".join(r["filters_used"])
+
+
+@pytest.mark.anyio
+async def test_viator_and_gyg_server_tools_are_pointers_to_the_recipes_unless_switched_on(monkeypatch):
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    monkeypatch.delenv("VIATOR_SERVER_BROWSER", raising=False)
+    monkeypatch.delenv("GYG_SERVER_BROWSER", raising=False)
+    async with Client(create_server(Settings())) as c:
+        names = {t.name for t in (await c.list_tools()).tools}
+        assert {"viator_search_activities", "viator_activity_details", "getyourguide_find_activities", "getyourguide_activity_details", "viator_find_recipe", "viator_activity_recipe",
+                "getyourguide_find_recipe", "getyourguide_activity_recipe"} <= names
+        v = (await c.call_tool("viator_search_activities", {"query": "Florence golf cart tour"})).structured_content
+        g = (await c.call_tool("getyourguide_find_activities", {"query": "Florence golf cart tour"})).structured_content
+        vd = (await c.call_tool("viator_activity_details", {"url": "https://www.viator.com/tours/a/b/d1-X"})).structured_content
+        gd = (await c.call_tool("getyourguide_activity_details", {"url": "https://www.getyourguide.com/a/b-t1/", "activity_date": "2027-03-05"})).structured_content
+        assert all(x["ok"] is False and x["searched"] is False for x in (v, g, vd, gd))
+        assert "viator_find_recipe" in v["next"] and "getyourguide_find_recipe" in g["next"] and "viator_activity_recipe" in vd["next"] and "getyourguide_activity_recipe" in gd["next"]
+
+
+def test_sata_counts_a_technical_stop_like_the_page_and_says_so():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.sata import sata_recipe
+    exp = sata_recipe("LIS", "FLW", date(2027, 3, 9), 2, 0, 1, True)["expect"]
+    # real row (22 Oct 2026): S4121 LIS-PDL + SP542 PDL-FLW (two legs: a technical stop), the page says "2 Stops"; 2 adults + 1 infant (the infant pays 6)
+    row = {"fi": 0, "flights": "S4121+SP542", "from": "LIS", "to": "FLW", "dep": "2027-03-09 06:00", "arr": "2027-03-09 13:25", "mins": 505, "stops": 2, "tech": 1, "via": "PDL,TER", "fare": "SPL_DOMESTIC_BF",
+           "cabin": "ECONOMY", "total": 225.36, "adt": 219.36, "chd": None, "inf": 6, "nadt": 2, "nchd": 0, "ninf": 1, "carry": "1pc up to 8kg (included)", "bag": "BAG (chargeable)", "change": "Penalty €100 (chargeable)", "refund": "Non Refundable (not included)"}
+    s = {"from": "LIS", "to": "FLW", "day": "2027-03-09", "adults": 2, "children": 0, "infants": 1, "directions": 1}
+    offers, sources, problems, _, _ = convert_all([{"site": "sata", "result": _sata([row], searched=s, flights_total=7, flights_in_part=1), "url": "u"}], {"expect": exp})
+    assert not problems and offers[0].connecting is True and offers[0].fits is False and "2 stop(s) via PDL,TER" in offers[0].details["stops"] and "1 technical stop" in offers[0].details["stops"]
+    assert "2 seated travellers" in offers[0].price_basis and "infants 6 EUR for all 1 infants" in offers[0].details["per_person"]
+
+
+def test_gyg_activity_with_five_options_and_a_child_category_and_page_sections():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.getyourguide_activity import getyourguide_activity_recipe
+    url = "https://www.getyourguide.com/florence-l32/florence-private-tour-in-an-electric-mini-car-with-a-gourmet-stop-in-via-de-neri-t896461/"
+    r = getyourguide_activity_recipe(url, date(2027, 3, 5), 2, [8], "Golf cart tour")
+    assert "Show all options" in r["script"] and "available options" in r["script"] and "HEAD.test" in r["script"]
+    titles = ["Departure from Piazza Torquato Tasso – 90 minutes", "Departure from Piazzale Vittorio Veneto – 90 minutes", "Departure from Porta Romana – 90 minutes", "Departure from Libertà Square – 105 minutes", "Departure from Porta San Frediano – 90 minutes"]
+    # the real page (22 Oct 2026): "Choose from 5 available options", travellers "Adult x 2, Child x 1" (Adult 18-99, Youth 11-17, Child 3-10, Infant under 3), EUR 195 = 2 x 80 + 1 x 35, a private group
+    opts = [_gopt(title=t, price=195, breakdown=["2 Adult × €80.00", "1 Child × €35.00"], spots="Only 10 spots left", times=["10:00 AM", "11:00 AM", "12:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", "5:00 PM", "7:00 PM"]) for t in titles]
+    text = _gya(opts, availability="5 available options", travellers="Adult x 2, Child x 1", activity="Florence Golf Cart Tour of the Hills and Piazzale Michelangelo", includes="Private tour by electric golf cart with driver; audio guide",
+                meeting_page="Meeting point may vary depending on the option you select. Check availability for more details.", group_size="Private: Just your group, up to 20 people", know_before="The tour takes place in an electric golf cart with scenic stops.")
+    offers, sources, problems, _, notes = convert_all([{"site": "getyourguide_activity", "result": text, "url": "u"}], {"expect": r["expect"]})
+    assert not problems and len(offers) == 5 and (sources[0].read, sources[0].of) == (5, 5) and len({o.name for o in offers}) == 5
+    d = offers[0].details
+    assert d["private_or_group"].startswith("private group (Private: Just your group, up to 20 people)") and d["availability"] == "Only 10 spots left" and d["includes"].startswith("Private tour by electric golf cart")
+    assert "Meeting point may vary" in d["meeting_point"] and "1 Child × €35.00" in offers[0].price_basis
+    assert not [p for p in convert_all([{"site": "getyourguide_activity", "result": text, "url": "u"}], {"expect": r["expect"]})[2]]
+
+
+def test_viator_activity_reads_the_page_sections_meeting_point_includes_and_policy():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.viator_activity import viator_activity_recipe
+    url = "https://www.viator.com/tours/Florence/Private-Golf-Cart-Tour-of-Florence-Discover-Iconic-Landmarks/d519-5546346P3"
+    exp = viator_activity_recipe(url, date(2027, 3, 5), 2, [8])["expect"]
+    # the real sections of the page (22 Oct 2026)
+    extra = {"included": "Bottled water; Gratuities", "meeting_text": "Meeting point; Piazza Vittorio Veneto, 4, 50123 Firenze FI, Italy; Open in Google Maps; Default meeting point. Hotel pickup is possible depending on your area",
+             "additional": "Confirmation will be received at time of booking; Not wheelchair accessible; Stroller accessible; Infant seats available", "cancel_policy": "You can cancel up to 24 hours in advance of the experience for a full refund."}
+    offers, _, problems, _, _ = convert_all([{"site": "viator_activity", "result": _via(extra), "url": "u"}], {"expect": exp})
+    d = offers[0].details
+    assert not problems and d["includes"] == "Bottled water; Gratuities" and d["meeting_point"].startswith("Meeting point; Piazza Vittorio Veneto") and "Not wheelchair accessible" in d["additional_info"]
+    assert d["cancellation"].endswith("policy: You can cancel up to 24 hours in advance of the experience for a full refund.")
+    assert "const ORDER" in viator_activity_recipe(url, date(2027, 3, 5), 2, [])["script"] and "i < 8" in viator_activity_recipe(url, date(2027, 3, 5), 2, [])["script"]
+
+
+def test_viator_activity_with_several_options_gives_one_offer_per_option():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.viator_activity import viator_activity_recipe
+    url = "https://www.viator.com/tours/Florence/Florence-Panoramic-tour-of-the-center-and-Piazzale-Michelangelo/d519-5541780P1"
+    exp = viator_activity_recipe(url, date(2027, 3, 5), 2, [8], "Golf cart tour")["expect"]
+    # the real page (22 Oct 2026): age bands Adult 17-99, Youth 10-16, Child 0-9; two options, the first selected (it shows its start times and cancellation), the second only its price
+    head = {"ok": True, "url_path": "/tours/Florence/Florence-Panoramic-tour-of-the-center-and-Piazzale-Michelangelo/d519-5541780P1", "activity": "Tour in Golf Cart from Florence with Tuscan hills or Fiesole", "date_box": "Fri, Mar 5", "travellers_box": 3,
+            "options_found": 2, "duration": "1 hour to 2 hours 25 minutes (approx.)", "offered_in": "English and 9 more", "mobile_ticket": True}
+    rows = [{"option": "Tour around Florence", "selected": True, "priced": True, "price_text": "€167.00", "breakdown": ["2 Adults x €69.00", "1 Child x €29.00 −57%"], "times": ["9:30 AM", "10:00 AM", "10:30 AM", "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "5:00 PM"],
+             "cancellation": "Free cancellationbefore 9:30 AM on Mar 4, 2027 (local time)", "pay_later": "Reserve now, pay nothing until Mar 3, 2027"},
+            {"option": "From Florence: Fiesole tour with visit to the archaeological area", "selected": False, "priced": True, "price_text": "€267.00", "breakdown": ["2 Adults x €109.00", "1 Child x €49.00 −55%"], "times": [], "cancellation": None, "pay_later": None}]
+    offers, sources, problems, _, notes = convert_all([{"site": "viator_activity", "result": json.dumps({**head, "rows": rows}), "url": "u"}], {"expect": exp})
+    assert not problems and len(offers) == 2 and (sources[0].read, sources[0].of) == (2, 2) and [o.price_total for o in offers] == [167.0, 267.0] and all(o.quotable for o in offers)
+    assert offers[0].name.startswith("Tour in Golf Cart from Florence with Tuscan hills or Fiesole - Tour around Florence (1 hour to 2 hours 25 minutes approx.)") and offers[0].flexible is True
+    assert "2 Adults x €69.00; 1 Child x €29.00 −57%" in offers[0].price_basis and offers[0].details["option_state"] == "selected on the page" and offers[0].details["start_times"].startswith("8 start time(s): 9:30 AM")
+    assert offers[1].details["start_times"] == "select this option on the page to see its start times" and offers[1].details["cancellation"].startswith("not shown until this option is selected") and offers[1].flexible is None
+    assert any("several options" in n for n in notes)
+    bad = convert_all([{"site": "viator_activity", "result": json.dumps({**head, "travellers_box": 2, "date_box": "Sat, Mar 6", "rows": rows}), "url": "u"}], {"expect": exp})[2]
+    assert any("2 traveller" in p for p in bad) and any("'Sat, Mar 6'" in p for p in bad)
+
+
+def test_skyscanner_direct_toggle_is_expected_when_direct_only_was_asked():
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.skyscanner import skyscanner_recipe
+    exp = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6], "economy", True)["expect"]
+    rows = [_sk("Best", "Azores Airlines", "06:00", "07:30", 192, 64)]
+    filters = {"stops": ["Direct"], "ticked_extras": ["Direct flights"], "unticked_defaults": 0}       # preferdirects=true in the url ticks the 'Direct flights' toggle itself (seen live 23 Oct 2026)
+    assert not convert_all([{"site": "skyscanner", "result": _sky(rows, filters=filters, direct_only=True), "url": "u"}], {"expect": exp})[2]
+    asked_any = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6], "economy", False)["expect"]
+    assert convert_all([{"site": "skyscanner", "result": _sky(rows, filters=filters, direct_only=True), "url": "u"}], {"expect": asked_any})[2]       # not asked: still flagged
+
+
+def test_the_drivers_age_is_stated_and_a_driver_outside_the_ratehawk_band_gets_a_warning():
+    from myt_mcp.sites.ratehawk_cars import driver_filter
+    assert driver_filter("26,69", None) == "driver age 26,69 (default: the agency's)"
+    assert driver_filter("26,69", 40) == "driver age 40 (operator)"
+    assert "young- or senior-driver fee may be missing" in driver_filter("26,69", 25) and "26-69 band" in driver_filter("26,69", 72)
+
+
+def test_ofran_takes_the_drivers_age_under_30_from_the_page_and_refuses_a_box_left_at_30_69():
+    from myt_mcp.sites.ofran import ofran_recipe
+    young = ofran_recipe("Lisbon Airport", "2026-12-10", "18:30", "2026-12-17", "17:00", driver_years=25)
+    assert young["expect"]["age"] is None and young["expect"]["driver_years"] == 25 and "set the driver age box to the operator's age (25)" in young["steps"][0]
+    assert ofran_recipe("Lisbon Airport", "2026-12-10", "18:30", "2026-12-17", "17:00", driver_years=40)["expect"]["age"] == "30-69"
+
+
+def test_ofran_says_the_large_bag_wish_cannot_be_checked_on_its_list():
+    import inspect
+    from myt_mcp.sites import ofran
+    src = inspect.getsource(ofran)
+    assert "min_large_bags" in src and "NOT checkable on Ofran" in src and "no Ofran car was checked for it" in src
+
+
+def test_ofran_pick_up_station_is_given_in_english_and_an_unknown_wording_stays():
+    from myt_mcp.sites.ofran import station_text
+    assert station_text("תחנת איסוף בתוך שדה התעופה") == "Pick-up station inside the airport"
+    assert "outside the airport" in station_text("תחנת איסוף מחוץ לשדה התעופה") and station_text("Faro") == "Faro" and station_text(None) is None
+
+
+def test_a_big_price_gap_between_sources_is_named_for_transfers_and_cars_only():
+    from myt_mcp.compose import Offer, price_gap_notes
+    mk = lambda src, price: Offer(group="g", source=src, name="x", price_total=price, currency="EUR", price_basis="b", fits=True, details={})
+    rows = [mk("RateHawk Transfers", 13.0), mk("Kiwitaxi", 40.0), mk("Kiwitaxi", 46.0)]
+    note = price_gap_notes("transfers", rows)
+    assert len(note) == 1 and "13.00 EUR" in note[0] and "40.00 EUR" in note[0] and "compare them row by row" in note[0]
+    assert not price_gap_notes("transfers", [mk("RateHawk Transfers", 13.0), mk("Kiwitaxi", 20.0)]) and not price_gap_notes("flights", rows)

@@ -486,3 +486,17 @@ def test_core_instructions_say_every_user_is_an_operator_and_never_decline():
 
     head = INSTRUCTIONS[:300]
     assert "every user is one" in head and "Never decline" in head and "task_plan" in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
+
+
+def test_check_answer_rejects_skipped_asking_and_chrome_unavailable_excuse():
+    from myt_mcp.tools.answer_check import check_answer_text
+
+    draft = (GOOD + "\nNot checked: El Al, Skyscanner (these need Claude in Chrome, which isn’t available in this chat).\n"
+             "Filters used: 2 adults (as you asked). I haven’t asked whether you need direct only or a checked bag.")
+    r = check_answer_text(draft, "flights")
+    text = " ".join(r["missing"]).lower()
+    assert r["ok"] is False
+    assert "operator was not asked" in text
+    assert "claude in chrome" in text
+    # an ordinary complete answer is unaffected
+    assert check_answer_text(GOOD, "flights")["ok"] is True

@@ -6,7 +6,7 @@ await (async () => {
   const SORTS = __SORTS__; const LIMIT = __LIMIT__; const SKIP = __SKIP__;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const text = () => document.body.innerText;
-  if (/are you a person or a robot|press\s*&\s*hold|verify you are human|captcha/i.test(text().slice(0, 2500))) return JSON.stringify({ ok: false, error: 'Skyscanner shows a human check (captcha). Stop: do not retry and do not work around it; tell the operator to look at the page.' });
+  if (/are you a person or a robot|press\s*&\s*hold|verify you are human|(?<!re)captcha/i.test(text().slice(0, 2500))) return JSON.stringify({ ok: false, error: 'Skyscanner shows a human check (captcha). Stop: do not retry and do not work around it; tell the operator to look at the page.' });
   if (!/\/transport\/flights\//.test(location.pathname)) return JSON.stringify({ ok: false, error: 'not a Skyscanner flight results page: open the url first' });
   const desc = () => [...document.querySelectorAll('[class*=FlightsTicketA11yDescriptor]')].map((e) => e.innerText.replace(/\s+/g, ' ').trim());
   for (let i = 0; i < 100 && !desc().length; i++) await wait(500);
@@ -18,6 +18,7 @@ await (async () => {
   const parsed = []; const unparsed = []; let ads = 0;
   const readAll = (sort) => {
     for (const d of desc()) {
+      if (/^Flight option \d+: Advertisement by /.test(d)) { ads++; continue; }      // a sponsored ticket can be worded differently from the real ones: it is never read
       const m = d.match(RE);
       if (!m) { if (unparsed.length < 3) unparsed.push(d.slice(0, 200)); continue; }
       if (m[2]) { ads++; continue; }

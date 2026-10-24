@@ -23,6 +23,7 @@ from myt_mcp.sites import SiteRows, with_emit
 
 NAME = "skyscanner"
 SOURCE = "Skyscanner"
+NEEDS_WIDE_WINDOW = True       # a narrow window shows the mobile layout, which the script cannot read
 GROUP = "Flights"
 HERE = Path(__file__).parent
 CABINS = {"economy": ("economy", "Economy"), "premium": ("premiumeconomy", "Premium economy"), "business": ("business", "Business"), "first": ("first", "First")}
@@ -76,7 +77,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             problems.append("Skyscanner's stop filters are not as asked (direct only vs connections): open the url again")
         f = data.get("filters")
         if f is not None:        # a filter the operator did not ask for (bags, emissions, nearby airports, an airline or layover box switched off) changes the list
-            extra = f.get("ticked_extras") or []
+            extra = [x for x in f.get("ticked_extras") or [] if not (exp.get("direct_only") and x.startswith("Direct flights"))]      # the url's preferdirects=true ticks that toggle itself
             if extra or f.get("unticked_defaults"):
                 problems.append(f"Skyscanner shows filters the operator did not ask for ({', '.join(extra) or str(f.get('unticked_defaults')) + ' airline or layover box(es) switched off'}): clear them, open the url again and run the script once more")
     sorts = {s["sort"] for s in data.get("sorts") or []}
@@ -111,8 +112,7 @@ def register(mcp: MCPServer) -> None:
         """FOR SKYSCANNER (COMPARISON ONLY; one leg, one way; read in the operator's own Chrome with Claude in Chrome), next to the airlines and RateHawk. ASK FIRST: without `direct_only`
         (true/false) and `cabin` ('economy' / 'premium' / 'business' / 'first') it opens nothing and returns `ask_operator`: ask them in ONE message, wait, call again with the answers
         (`operator_answered`=true for "no preference", only after the operator replied). Then it returns the results url (filters in it) and a read-only SCRIPT: open the url, run the script
-        with the javascript tool; it reads the Best and the Cheapest tabs (`limit` tickets each from `offset`, sponsored ones left out; for more call again with offset=offset+limit). Give its answer parts unchanged to compose_answer in `site_results`
-        as {"site": "skyscanner", "result": <part>, "url": <the url>} with the returned `wishes`. `origin` / `destination` are 3-letter airport or city codes; give `children_ages`. Skyscanner
+        with the javascript tool; it reads the Best and the Cheapest tabs (`limit` tickets each from `offset`, sponsored ones left out; for more call again with offset=offset+limit). The script sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. `origin` / `destination` are 3-letter airport or city codes; give `children_ages`. Skyscanner
         rows are comparison only: the price to quote comes from the airline's page. A human check (captcha) is never worked around: stop and tell the operator. One call per leg."""
         missing = [q for q, given in ((ASK["stops"], direct_only is not None), (ASK["cabin"], cabin is not None)) if not given]
         if missing and not operator_answered:

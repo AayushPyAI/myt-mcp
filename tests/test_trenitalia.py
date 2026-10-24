@@ -447,3 +447,37 @@ async def test_a_rejected_search_for_a_near_date_stays_an_error():
     async with Client(_always_400()) as c:
         r = await c.call_tool("train_prices", {"from_station": "Firenze", "to_station": "Roma", "travel_date": SOON})
     assert r.is_error and "rejected this search (400)" in r.content[0].text
+
+
+# ---------- HTTP first, the automation Chrome second (23 Oct 2026) ----------
+
+class _Chrome:
+    def __init__(self, status=200, text='[{"id": 83, "displayName": "Firenze S. M. Novella"}]'):
+        self.calls, self.status, self.text = [], status, text
+
+    async def fetch(self, origin, start_url, method, url, body=None, headers=None):
+        self.calls.append((method, url))
+        return {"status": self.status, "url": url, "text": self.text}
+
+
+async def test_a_refused_http_request_is_repeated_in_the_automation_chrome():
+    http = httpx.AsyncClient(base_url="https://lefrecce.test", transport=httpx.MockTransport(lambda request: httpx.Response(403, text="blocked")))
+    chrome = _Chrome()
+    client = TrenitaliaClient(http=http, limiter=SiteLimiter("Trenitalia", 0, 1000), browser=chrome)
+    stations = await client.find_stations("Firenze")
+    assert stations == [{"id": 83, "name": "Firenze S. M. Novella"}] and chrome.calls[0][0] == "GET" and "locations/search?name=Firenze" in chrome.calls[0][1]
+
+
+async def test_a_working_http_request_never_opens_the_browser_and_a_failing_browser_keeps_the_http_message():
+    ok = httpx.AsyncClient(base_url="https://lefrecce.test", transport=httpx.MockTransport(lambda request: httpx.Response(200, json=[{"id": 1, "displayName": "Roma Termini"}])))
+    chrome = _Chrome()
+    assert await TrenitaliaClient(http=ok, limiter=SiteLimiter("Trenitalia", 0, 1000), browser=chrome).find_stations("Roma")
+    assert chrome.calls == []
+    from myt_mcp.errors import IntegrationError
+
+    class Broken:
+        async def fetch(self, *a, **k):
+            raise IntegrationError("browser is not running")
+    refused = httpx.AsyncClient(base_url="https://lefrecce.test", transport=httpx.MockTransport(lambda request: httpx.Response(429, text="slow down")))
+    with pytest.raises(TrenitaliaError, match="refused the request \\(429\\)"):
+        await TrenitaliaClient(http=refused, limiter=SiteLimiter("Trenitalia", 0, 1000), browser=Broken()).find_stations("Roma")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 # Airport codes for the Aspire airports a Selected Places trip is likely to pass through. Anything else is
@@ -36,6 +37,16 @@ def _each(ticket: dict[str, Any]) -> float | None:
     return round(unit - (0 if already_applied else discount), 2)
 
 
+BOARDING_MINUTES = 45
+
+
+def _when(text: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(text).replace("Z", "")) if text else None
+    except ValueError:
+        return None
+
+
 def summarize_rates(answer: dict[str, Any], group: dict[str, int]) -> dict[str, Any]:
     """Prices for the group (adults/children/infants) at one lounge, for one flight time."""
     if answer.get("isError"):
@@ -67,6 +78,10 @@ def summarize_rates(answer: dict[str, Any], group: dict[str, int]) -> dict[str, 
         "total_price": round(total, 2),
         "currency": next((line["currency"] for line in lines if line["currency"]), "EUR"),
     }
+    exit_at, flight_at = _when(data.get("loungeExitDateTime")), _when(data.get("flightDateTime"))
+    if exit_at and flight_at and (flight_at - exit_at).total_seconds() < BOARDING_MINUTES * 60:
+        result["boarding_note"] = (f"Aspire lists the exit at {exit_at:%H:%M}, which is the flight time ({flight_at:%H:%M}): the family must leave the lounge for the gate at least "
+                                   f"{BOARDING_MINUTES} minutes before departure (boarding closes earlier), so the usable stay is shorter than the window shown.")
     if data.get("showShortStayWarning"):
         problems.append("the stay is shorter than usual for this flight time (opening hours)")
     if problems:

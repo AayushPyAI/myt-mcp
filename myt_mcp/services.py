@@ -73,7 +73,7 @@ class Services:
             raise IntegrationError("Trenitalia checks are switched off on the server (TRENITALIA_ENABLED=false). Ask the operator for the train price instead.")
         if self._trenitalia is None:
             limiter = SiteLimiter("Trenitalia", max(s.scrape_min_interval_seconds, 3.0), s.scrape_max_per_hour)
-            self._trenitalia = TrenitaliaClient(limiter=limiter, search_cache_minutes=s.scrape_cache_minutes)
+            self._trenitalia = TrenitaliaClient(limiter=limiter, search_cache_minutes=s.scrape_cache_minutes, browser=self.browser() if s.browser_cdp_url else None)
         return self._trenitalia
 
     def viator(self) -> ViatorClient:
@@ -125,7 +125,7 @@ class Services:
             raise IntegrationError("Kiwitaxi transfer checks are switched off on the server (KIWITAXI_ENABLED=false). Ask the operator for the transfer price.")
         if self._kiwitaxi is None:
             limiter = SiteLimiter("Kiwitaxi", max(s.scrape_min_interval_seconds, 5.0), min(s.scrape_max_per_hour, 30))
-            self._kiwitaxi = KiwitaxiClient(limiter=limiter, cache_minutes=s.scrape_cache_minutes)
+            self._kiwitaxi = KiwitaxiClient(limiter=limiter, cache_minutes=s.scrape_cache_minutes, browser=self.browser() if s.browser_cdp_url else None)
         return self._kiwitaxi
 
     def israir(self) -> IsrairClient:

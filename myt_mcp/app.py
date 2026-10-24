@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 
 from myt_mcp.config import Settings
+from myt_mcp.ingest import STORE
 from myt_mcp.services import Services
 from myt_mcp.tools import activities, answer_check, browser_sources, compose_answer, flights, guide, lounges, minisite, ofran, quote, ratehawk_live, rates, reservations, task_plan, trains, transfers, trips
 
@@ -95,6 +96,16 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
+
+    cors = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Cache-Control": "no-store"}
+
+    @mcp.custom_route("/ingest/{token}", methods=["POST", "OPTIONS"])
+    async def ingest_answer(request: Request) -> JSONResponse:
+        """The answer of a Chrome script, posted by the page itself (see myt_mcp/ingest.py). The token was made for one recipe call."""
+        if request.method == "OPTIONS":
+            return JSONResponse({}, headers=cors)
+        status, receipt = STORE.accept(request.path_params["token"], await request.body())
+        return JSONResponse(receipt, status_code=status, headers=cors)
 
     @mcp.custom_route("/favicon.ico", methods=["GET"])
     async def favicon(_: Request) -> RedirectResponse:

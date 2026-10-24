@@ -42,8 +42,13 @@ BANNED = {
 }
 
 
+# the draft admits it did not ask the operator first, or that the Chrome sources were skipped because the tool "is not available"
+SKIPPED_ASKING = re.compile(r"\b(?:i\s+)?(?:haven'?t|have\s+not|hasn'?t|did\s+not|didn'?t)\s+(?:yet\s+)?(?:asked|checked\s+with\s+you)\b|\bto\s+narrow\s+this\s+down,?\s+tell\s+me\b")
+NO_CHROME = re.compile(r"claude in chrome[^.\n]{0,60}(?:isn'?t|is\s+not|not|un)\s*available|(?:can'?t|cannot|unable\s+to)\s+(?:use|open|reach)\s+claude in chrome")
+
+
 def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
-    low = text.lower()
+    low = text.lower().replace("\u2019", "'")
     missing: list[str] = []
     warnings: list[str] = []
 
@@ -70,6 +75,13 @@ def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
         missing.append('"In MYT supplier?" for the Cheapest, Best fit and Recommended supplier (yes / no / not checked: why)')
     if kind in {"cars", "transfers"} and not re.search(r"pick-?\s?up", low):
         missing.append("the pick-up time used (the same on every source)")
+
+    if kind in NEEDS_FILTERS and SKIPPED_ASKING.search(low):
+        missing.append("the draft says the operator was not asked (or asks them afterwards): ask first, before any source is read "
+                       "(direct/stops, bags, stars, budget ... as the recipe tool lists), then search with those answers")
+    if kind in COMPARING and NO_CHROME.search(low):
+        missing.append("do not give a partial comparison because Claude in Chrome 'is not available': call the browser tool once to check; "
+                       "if it really is not connected, tell the operator to switch Claude in Chrome on in this chat and stop (do not send a final answer)")
 
     for phrase, why in BANNED.items():
         if phrase in low:

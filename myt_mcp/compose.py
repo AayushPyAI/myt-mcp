@@ -27,8 +27,10 @@ NEEDS_SUPPLIER_CHECK = {"flights", "hotels", "cars", "transfers", "activities"}
 NEEDS_PICKUP = {"cars", "transfers"}
 BANNED_REASONS = ("for time", "out of scope", "this pass", "keep it short", "say the word", "not asked", "didn't ask", "did not ask", "on request",
                   "happy to run", "would need the quotation", "no myt trip", "trip number")
+MAX_ROWS_BY_KIND = {"flights": 20, "hotels": 20, "cars": 20, "transfers": 20, "trains": 20}      # rows the table shows per group; the picks always use every row read
+PER_SOURCE_MIN_ROWS = 3
 ALLOWED_REASON_WORDS = ("browser", "chrome", "login", "captcha", "block", "not served", "does not sell", "doesn't sell", "does not fly", "did not answer",
-                        "no flights", "not sold", "refused", "not available", "switched off")
+                        "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow")
 SOURCE_WORDS = ("operator", "trip", "default")
 
 
@@ -61,6 +63,16 @@ class NotChecked(BaseModel):
     reason: str
 
 
+def directory_status(name: str) -> str:
+    """'In MYT supplier?' from the local directory of the 31 suppliers read from MYT on 22 Oct 2026. A name that is not in it is NOT proof that MYT lacks the supplier: it stays 'not checked'."""
+    from myt_mcp.myt.supplier_directory import find_suppliers
+    hits = find_suppliers(name)
+    if not hits:
+        return "not checked: not provided (not in the local supplier directory; search it in the quotation's Search supplier box)"
+    s = hits[0]
+    return f"yes: {s['name']} (supplier id {s['id']}, type {s.get('type') or 'not shown'}; from the local supplier directory, 22 Oct 2026)"
+
+
 def _money(v: float | None, cur: str | None) -> str:
     return "not shown" if v is None else f"{v:,.2f} {cur or ''}".strip()
 
@@ -90,7 +102,7 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
         if any(b in low for b in BANNED_REASONS):
             problems.append(f"{n.name}: '{n.reason}' is not an allowed reason; read it, or use: no browser tool, login/captcha/block, route not served, did not answer")
         elif not any(w in low for w in ALLOWED_REASON_WORDS):
-            problems.append(f"{n.name}: the reason must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, source did not answer")
+            problems.append(f"{n.name}: the reason must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, source did not answer, or 'could not be read: <the script's own error>'")
     if kind in NEEDS_FILTERS:
         if not filters_used:
             problems.append("filters_used is empty: write each filter with its source, e.g. 'direct only (trip default)'")
@@ -161,6 +173,49 @@ def _solid(o: Offer) -> bool:
         return float(str(o.details.get("score"))) >= 7.5 and int(o.details.get("reviews")) >= 50
     except (TypeError, ValueError):
         return False
+
+
+def cheaper_unconnected_notes(kind: str, rows: list[Offer]) -> list[str]:
+    """A comparison row (Skyscanner...) cheaper than the best quotable one, whose airline no connected source sells, must not just disappear into 'comparison only': say who, how much, and where to check
+    (23 Oct 2026: Skyscanner showed Arkia at 531 EUR for the group against 1,283 EUR quotable; no connected source sells Arkia)."""
+    if kind != "flights":
+        return []
+    cur = _primary_currency(rows)
+    quotable = [o for o in rows if o.quotable and o.fits is not False and o.price_total is not None and (o.currency or "") == cur]
+    if not quotable:
+        return []
+    best = min(o.price_total for o in quotable)
+    sold = " ".join(o.name.lower() for o in rows if o.quotable)
+    notes = []
+    for o in sorted((o for o in rows if not o.quotable and o.price_total is not None and (o.currency or "") == cur and o.price_total < best), key=lambda r: r.price_total):
+        airline = re.split(r"\s+\d{1,2}:\d{2}", o.name, maxsplit=1)[0].strip()
+        first = airline.lower().split(" ")[0]
+        if first and first not in sold and not any(first in (x.name or "").lower() for x in quotable):
+            notes.append(f"Cheaper, but no connected source sells it: {o.source} lists {o.name} at {o.price_total:,.2f} {cur} against {best:,.2f} {cur} for the best quotable option. "
+                         f"Check {airline}'s own website (their price may need a different bag or refund condition than the wishes) before quoting; it is not a pick.")
+            break
+    return notes
+
+
+PRICE_GAP = 2.0       # the cheapest row of one source is this many times cheaper than the cheapest of another
+
+
+def price_gap_notes(kind: str, rows: list[Offer]) -> list[str]:
+    """Sources that sell almost the same thing (a transfer, a car) can differ by a lot because of the vehicle class, the drop-off point or what is included: say it, so the cheapest is not quoted blindly
+    (24 Oct 2026: RateHawk Economy 13 EUR against Kiwitaxi Comfort 40 EUR for the same airport transfer, the RateHawk drop-off was a hotel next to the square)."""
+    if kind not in ("transfers", "cars"):
+        return []
+    cur = _primary_currency(rows)
+    best: dict[str, float] = {}
+    for o in rows:
+        if o.quotable and o.fits is not False and o.price_total is not None and (o.currency or "") == cur:
+            best[o.source] = min(best.get(o.source, o.price_total), o.price_total)
+    if len(best) < 2:
+        return []
+    low, high = min(best, key=best.get), max(best, key=best.get)
+    if best[low] <= 0 or best[high] / best[low] < PRICE_GAP:
+        return []
+    return [f"Big price gap between sources: the cheapest {low} row is {best[low]:,.2f} {cur} and the cheapest {high} row is {best[high]:,.2f} {cur}. The vehicle class, the pick-up or drop-off point and what is included can differ: compare them row by row before quoting the cheapest."]
 
 
 def picks(kind: str, rows: list[Offer], sorted_by_price: bool) -> tuple[list[tuple[str, str, str]], list[str]]:
@@ -263,6 +318,8 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
         lines += ["", f"### {g}", "", "| Source | Option | " + " | ".join(k.replace("_", " ") for k in keys) + " | Price | Basis | Quotable | Link |",
                   "|" + "---|" * (len(keys) + 6)]
         pk, pnotes = picks(kind, rows, sorted_by_price)
+        pnotes += cheaper_unconnected_notes(kind, rows)
+        pnotes += price_gap_notes(kind, rows)
         kept = [o for o in rows if o.fits is not False]
         pool = kept if kept else rows        # an option that clearly misses a wish of the operator is not listed (rows without wishes, such as comparison rows, stay)
         ordered = sorted(pool, key=lambda r: (r.price_total is None, r.price_total or 0))
@@ -270,6 +327,8 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
         if max_rows and len(ordered) > max_rows:       # the picks always use EVERY row read; the table shows the cheapest, the picks and (hotels) the best rated
             keep = {id(o) for o in ordered[:max_rows]}
             keep |= {id(o) for _, text, _ in pk for o in rows if text.startswith(f"{o.source}: {o.name} - ")}
+            for src in dict.fromkeys(o.source for o in ordered):                # no source disappears from the table: its cheapest rows stay
+                keep |= {id(o) for o in [x for x in ordered if x.source == src][:PER_SOURCE_MIN_ROWS]}
             if kind == "hotels":
                 keep |= {id(o) for o in sorted((o for o in rows if _solid(o)), key=lambda r: -float(str(r.details.get("score"))))[:5]}
             shown = [o for o in ordered if id(o) in keep]
@@ -296,7 +355,7 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
             if label in ("Cheapest", "Best fit", "Recommended") and text != "not determined":
                 m = next((o for o in rows if text.startswith(f"{o.source}: {o.name}")), None)
                 if m and m.supplier:
-                    supplier_lines[m.supplier] = myt_supplier.get(m.supplier, "not checked: not provided")
+                    supplier_lines[m.supplier] = myt_supplier.get(m.supplier) or directory_status(m.supplier)
     if kind in NEEDS_SUPPLIER_CHECK:
         lines += ["", "In MYT supplier? " + ("; ".join(f"{s}: {v}" for s, v in supplier_lines.items()) or "no supplier given for the picks: not checked")]
     if gaps:

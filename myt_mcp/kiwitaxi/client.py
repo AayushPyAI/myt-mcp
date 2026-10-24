@@ -11,6 +11,7 @@ headers are sent. Prices are asked in EUR through the site's currency cookie.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import uuid
 from datetime import date
@@ -19,6 +20,9 @@ from typing import Any
 import httpx
 
 from myt_mcp.cache import TTLCache
+from urllib.parse import urlencode
+
+from myt_mcp.browser import FETCH_JS
 from myt_mcp.errors import IntegrationError
 from myt_mcp.kiwitaxi.parse import parse_results, place_matches
 from myt_mcp.ratelimit import SiteLimiter
@@ -39,9 +43,14 @@ class KiwitaxiError(IntegrationError):
     pass
 
 
+class KiwitaxiBlocked(KiwitaxiError):
+    """The plain HTTP request was refused, failed or met a human check: the case where the automation Chrome is tried (a wrong place name is not one)."""
+
+
 class KiwitaxiClient:
-    def __init__(self, *, transport: httpx.AsyncBaseTransport | None = None, limiter: SiteLimiter | None = None, cache_minutes: float = 10.0):
+    def __init__(self, *, transport: httpx.AsyncBaseTransport | None = None, limiter: SiteLimiter | None = None, cache_minutes: float = 10.0, browser: Any = None):
         self._transport = transport
+        self._browser = browser          # the server's automation Chrome: used only when the plain HTTP search is blocked or fails
         self._limiter = limiter or SiteLimiter("Kiwitaxi", min_interval=5.0, max_per_hour=30)
         self._cache: TTLCache[dict[str, Any]] = TTLCache(cache_minutes * 60, max_entries=64, track_fetch_time=True)
 
@@ -52,7 +61,7 @@ class KiwitaxiClient:
         params = {"language": "en", "searchSession": session, "input": text, **({"pairId": pair_id} if pair_id else {})}
         r = await http.get(f"{ORIGIN}/en/search/autocomplete", params=params, headers=JSON_HEADERS)
         if r.status_code != 200:
-            raise KiwitaxiError(f"Kiwitaxi's place search answered {r.status_code}; try again later or check the website.")
+            raise KiwitaxiBlocked(f"Kiwitaxi's place search answered {r.status_code}; try again later or check the website.")
         try:
             found = r.json()
         except ValueError:
@@ -100,15 +109,64 @@ class KiwitaxiClient:
                         await asyncio.sleep(0.4)
                         r = await http.get(f"{ORIGIN}{r.headers['location']}" if r.headers["location"].startswith("/") else r.headers["location"], follow_redirects=True)
                 except httpx.HTTPError as e:
-                    raise KiwitaxiError(f"Kiwitaxi could not be reached ({type(e).__name__}); try again later or check the website.") from None
+                    raise KiwitaxiBlocked(f"Kiwitaxi could not be reached ({type(e).__name__}); try again later or check the website.") from None
             if HUMAN_CHECK.search(r.text[:3000]) and "car-class-card" not in r.text:
-                raise KiwitaxiError("Kiwitaxi showed a human check. Stopping; open the search in the browser yourself.")
+                raise KiwitaxiBlocked("Kiwitaxi showed a human check. Stopping; open the search in the browser yourself.")
             if r.status_code not in (200, 404):
-                raise KiwitaxiError(f"Kiwitaxi's results page answered {r.status_code}; try again later or check the website.")
+                raise KiwitaxiBlocked(f"Kiwitaxi's results page answered {r.status_code}; try again later or check the website.")
             parsed = parse_results(r.text) if r.status_code == 200 else {"route": {k: None for k in ("from", "to", "to_address", "date", "passengers", "driving_time")}, "offers": []}
             return {**parsed, "url": str(r.url).split("#")[0],
                     "chosen_from": origin, "chosen_to": destination,
                     "other_from": [p["title"] for p in origins[:5] if p is not origin],
                     "other_to": [p["title"] for p in destinations[:5] if p is not destination]}
 
-        return await self._cache.get_or_load(key, load)
+        async def load_with_fallback() -> dict[str, Any]:
+            try:
+                return await load()
+            except KiwitaxiBlocked as blocked:
+                if self._browser is None:
+                    raise
+                try:                          # HTTP first, the automation Chrome second
+                    return await self._search_in_browser(from_text, to_text, day, passengers, from_pick, to_pick)
+                except IntegrationError:
+                    raise blocked from None   # keep the HTTP answer's own message
+
+        return await self._cache.get_or_load(key, load_with_fallback)
+
+    async def _search_in_browser(self, from_text: str, to_text: str, day: date, passengers: int, from_pick: int, to_pick: int) -> dict[str, Any]:
+        """The same three requests, made by the kiwitaxi.com page in the automation Chrome (its own cookies); a human check there is still a stop."""
+        async def action(page: Any) -> dict[str, Any]:
+            await page.evaluate("document.cookie = 'userCurrencyCode=EUR; path=/'")
+            get = lambda url: page.evaluate(FETCH_JS, ["GET", url, None, {"Accept": "text/html,application/json"}])      # noqa: E731
+
+            async def places(text: str, session: str, pair_id: str | None = None) -> list[dict[str, Any]]:
+                params = {"language": "en", "searchSession": session, "input": text, **({"pairId": pair_id} if pair_id else {})}
+                got = await get(f"{ORIGIN}/en/search/autocomplete?{urlencode(params)}")
+                try:
+                    found = json.loads(got["text"])
+                except ValueError:
+                    raise KiwitaxiError("Kiwitaxi's place search returned a page instead of data in the browser too.") from None
+                return [p for p in found if isinstance(p, dict) and p.get("id") and p.get("title")] if isinstance(found, list) else []
+
+            session = str(uuid.uuid4())
+            origins = await places(from_text, session)
+            if len(origins) <= from_pick:
+                raise KiwitaxiError(f"Kiwitaxi knows no place for {from_text!r}; try another name (airport name or code, or a street address with the city).")
+            origin = self._choose(origins, from_text, from_pick, "from_place", "from_match")
+            destinations = await places(to_text, session, origin["id"])
+            if len(destinations) <= to_pick:
+                raise KiwitaxiError(f"Kiwitaxi knows no place for {to_text!r}; try another name (hotel name or a street address with the city).")
+            destination = self._choose(destinations, to_text, to_pick, "to_place", "to_match")
+            params = {"search_session": session, "from": origin["title"], "place_from_id": origin["id"], "place_from_address": origin.get("address") or "", "to": destination["title"],
+                      "place_to_id": destination["id"], "place_to_address": destination.get("address") or "", "all_passenger_count": passengers, "passenger_count": passengers, "date_start": day.isoformat()}
+            got = await get(f"{ORIGIN}/en/product-search-v2?{urlencode(params)}")        # the browser follows the redirect to the results page
+            html = str(got["text"])
+            if HUMAN_CHECK.search(html[:3000]) and "car-class-card" not in html:
+                raise KiwitaxiError("Kiwitaxi showed a human check in the browser too. Stopping; open the search in the browser yourself.")
+            if int(got["status"]) not in (200, 404):
+                raise KiwitaxiError(f"Kiwitaxi's results page answered {got['status']} in the browser too.")
+            parsed = parse_results(html) if int(got["status"]) == 200 else {"route": {k: None for k in ("from", "to", "to_address", "date", "passengers", "driving_time")}, "offers": []}
+            return {**parsed, "url": str(got["url"]).split("#")[0], "chosen_from": origin, "chosen_to": destination,
+                    "other_from": [p["title"] for p in origins[:5] if p is not origin], "other_to": [p["title"] for p in destinations[:5] if p is not destination]}
+
+        return await self._browser.run(ORIGIN, f"{ORIGIN}/en/", action)

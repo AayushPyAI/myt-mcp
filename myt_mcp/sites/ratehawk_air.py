@@ -23,6 +23,7 @@ from myt_mcp.sites import SiteRows, with_emit
 
 NAME = "ratehawk_air"
 SOURCE = "RateHawk Air"
+NEEDS_WIDE_WINDOW = True       # a narrow window shows the mobile layout, which the script cannot read
 GROUP = "Flights"
 HERE = Path(__file__).parent
 CABINS = {"economy": "Economy", "premium": "Premium", "business": "Business", "first": "First"}
@@ -132,8 +133,7 @@ def register(mcp: MCPServer) -> None:
         """FOR FLIGHTS ON RATEHAWK (one leg, one way; read in the operator's own Chrome with Claude in Chrome), next to TAP, Israir and the other flight sources. ASK FIRST: without `stops`
         ('direct' / 'one_stop' / 'any'), `checked_bag` (true/false) and `cabin` ('economy' / 'premium' / 'business' / 'first') it opens nothing and returns `ask_operator`: ask those
         questions in ONE message, wait, call again with the answers (`operator_answered`=true for "no preference", only after the operator replied). Then it returns the results url (filters
-        already in it) and a read-only SCRIPT: open the url, run the script with the javascript tool, give its answer parts unchanged to compose_answer in `site_results` as {"site":
-        "ratehawk_air", "result": <part>, "url": <the url>} with the returned `wishes`. `origin` / `destination` are 3-letter airport codes. Children's ages are not in the address:
+        already in it) and a read-only SCRIPT: open the url, run the script with the javascript tool, The script sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. `origin` / `destination` are 3-letter airport codes. Children's ages are not in the address:
         say so to the operator. One call per leg."""
         missing = [q for q, given in ((ASK_AIR["stops"], stops is not None), (ASK_AIR["bag"], checked_bag is not None), (ASK_AIR["cabin"], cabin is not None)) if not given]
         if missing and not operator_answered:

@@ -23,6 +23,7 @@ from myt_mcp.sites import SiteRows, place_matches, with_emit
 
 NAME = "ratehawk_trains"
 SOURCE = "RateHawk Trains"
+NEEDS_WIDE_WINDOW = True       # a narrow window shows the mobile layout, which the script cannot read
 GROUP = "Trains"
 HERE = Path(__file__).parent
 CHANGES = {"direct": "Direct route", "one_change": "Up to 1 change of train", "any": "All routes"}
@@ -37,6 +38,12 @@ def known_stations() -> dict[str, int]:
     return {k: int(v) for k, v in data.items() if not k.startswith("_")}
 
 
+def not_available_station(*names: str) -> str | None:
+    data = json.loads((HERE / "ratehawk_stations.json").read_text(encoding="utf-8"))
+    banned = {_norm(n) for n in data.get("_not_available", {}).get("names", [])}
+    return next((n for n in names if n and any(w in banned for w in [_norm(n), _norm(n).split(" ")[0]])), None)
+
+
 def ratehawk_trains_recipe(origin: str, destination: str, day: date, time: str, adults: int = 2, changes: str = "any", train_class: str | None = None,
                            origin_id: int | None = None, destination_id: int | None = None, offset: int = 0, limit: int = BATCH) -> dict[str, Any]:
     if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", time):
@@ -45,6 +52,8 @@ def ratehawk_trains_recipe(origin: str, destination: str, day: date, time: str, 
         raise ValueError(f"adults 1-9, changes one of {sorted(CHANGES)}, class one of {sorted(CLASSES)} or left out")
     if offset < 0 or not 1 <= limit <= 100:
         raise ValueError("offset must be 0 or more and limit 1-100")
+    if not (origin_id and destination_id) and (gone := not_available_station(origin, destination)):
+        return {"not_served": gone, "next": f"Nothing was opened. RateHawk's Train tickets search does not offer '{gone}': put RateHawk Train tickets in not_checked with the reason 'route not served: RateHawk's train search has no {gone} station'. Do not look for the station on the page."}
     ids = known_stations()
     o_id = origin_id or ids.get(re.sub(r"\s+", " ", origin.strip().lower()))
     d_id = destination_id or ids.get(re.sub(r"\s+", " ", destination.strip().lower()))
@@ -131,8 +140,7 @@ def register(mcp: MCPServer) -> None:
         """FOR TRAINS ON RATEHAWK (one leg, one way; read in the operator's own Chrome with Claude in Chrome), next to Trenitalia. ASK FIRST: without `changes` ('direct' / 'one_change' / 'any'),
         `train_class` ('standard' / 'comfort' / 'premier') and `max_total` (EUR, whole group) it opens nothing and returns `ask_operator`: ask those questions in ONE message, wait, call again with
         the answers (`operator_answered`=true for "no preference", only after the operator replied). `time` is the earliest departure (HH:MM, the operator's or the trip's). Then it returns the
-        results url and a read-only SCRIPT: open the url, run the script with the javascript tool; it ticks the filters, presses Load more and reads the next `limit` (30) trains from `offset`. Give
-        its answer parts unchanged to compose_answer in `site_results` as {"site": "ratehawk_trains", "result": <part>, "url": <the url>} with the returned `wishes` and `filters_used`. Station names
+        results url and a read-only SCRIPT: open the url, run the script with the javascript tool; it ticks the filters, presses Load more and reads the next `limit` (30) trains from `offset`. The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row with the returned `wishes` and `filters_used`. Station names
         as RateHawk writes them ('Firenze Santa Maria Novella', 'Roma Termini'); an unknown station returns steps to learn its id once. One call per leg."""
         missing = [q for q, given in ((ASK_TRAINS["changes"], changes is not None), (ASK_TRAINS["class"], train_class is not None), (ASK_TRAINS["budget"], max_total is not None)) if not given]
         if missing and not operator_answered:

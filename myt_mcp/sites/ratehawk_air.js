@@ -7,7 +7,7 @@ await (async () => {
   const cardOf = (b) => { let e = b; for (let i = 0; i < 16 && e; i++) { e = e.parentElement; if (e && (e.innerText.match(/Choose/g) || []).length === 1 && /\d\d:\d\d/.test(e.innerText) && e.innerText.length > 100) return e; } return null; };
   const cards = () => chooseButtons().map(cardOf).filter(Boolean);
   for (let i = 0; i < 120 && !cards().length; i++) await wait(500);
-  if (!cards().length) return JSON.stringify({ ok: false, error: 'no flight cards: not a RateHawk air results page, logged out, no flights for this search, or still searching (wait and run once more)' });
+  if (!cards().length) return JSON.stringify({ ok: false, error: (window.innerWidth < 1000 ? 'The browser window is only ' + window.innerWidth + ' px wide, so RateHawk shows its narrow (mobile) layout without the Choose buttons: make the page at least 1200 px wide (close or shrink the side panel, or ask the operator to zoom out with Ctrl and minus) and run the script again. ' : '') + 'no flight cards: not a RateHawk air results page, logged out, no flights for this search, or still searching (wait and run once more)' });
   let last = -1; let stable = 0;
   for (let i = 0; i < 60 && stable < 5; i++) { await wait(1000); const n = cards().length; if (n === last) stable++; else { stable = 0; last = n; } }
   const isTime = (x) => /^\d\d:\d\d$/.test(x || '');

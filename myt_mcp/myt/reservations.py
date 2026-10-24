@@ -234,13 +234,20 @@ def customer_invoices(v3: dict[str, Any]) -> dict[str, Any]:
 
 # --- writing a reservation (reservations/Create and /Update) ---------------------------------------------------------
 
-TRANSPORT_TYPE_ID = 1          # the only TypeId confirmed to work with reservations/Create (17 Oct 2026)
-KNOWN_CREATE_CATEGORIES = {"Transport": TRANSPORT_TYPE_ID}
-CATEGORY_NOTE = ("MYT's write API only reliably creates 'Transport' reservations (flights, trains, transfers, car rental): a "
-                 "live test on 17 Oct 2026 sent one product of each TypeId 1-7 and MYT answered 200 but silently dropped all "
-                 "but TypeId 1 (Transport), with no error naming which or why. Other categories (Lodging, Food, Staff, "
-                 "Attraction, Other, DMC) need category ids this API does not document; use Claude in Chrome for those "
-                 "until MYT support confirms the missing fields.")
+TRANSPORT_TYPE_ID = 1          # confirmed to work with reservations/Create (17 Oct 2026)
+LODGING_TYPE_ID = 4            # confirmed 22 Oct 2026: order 2353695 on trip 168, supplier Arbitrip (lodging)
+ATTRACTION_TYPE_ID = 5         # confirmed 22 Oct 2026: order 2353710 on trip 168, supplier Detours Porto (attraction); MYT stored first category "Other"
+DMC_TYPE_ID = 7                # confirmed 22 Oct 2026: order 2353714 on trip 168, supplier RateHawk (dmc); MYT stored product type "DMC"
+KNOWN_CREATE_CATEGORIES = {"Transport": TRANSPORT_TYPE_ID, "Lodging": LODGING_TYPE_ID, "Attraction": ATTRACTION_TYPE_ID, "DMC": DMC_TYPE_ID}
+# supplier types each category is verified with; a DMC supplier (RateHawk) also carries Transportation products (verified 22 Oct 2026:
+# TypeId 1 under RateHawk is stored as product type Transportation and joins the supplier's existing order on the trip; TypeId 5 under
+# Get your guide is stored as Attraction, order 2353721)
+SUPPLIER_KIND = {"Transport": ("transportation", "dmc"), "Lodging": ("lodging",), "Attraction": ("attraction", "dmc"), "DMC": ("dmc",)}      # the supplier's type MYT stores the product under
+CATEGORY_NOTE = ("reservations/Create only keeps a product whose TypeId matches the SUPPLIER's type: Transport (TypeId 1) with a "
+                 "transportation supplier (airline, car, train), Lodging (TypeId 4) with a lodging supplier such as Arbitrip and "
+                 "Attraction (TypeId 5) with an attraction supplier and DMC (TypeId 7) with a DMC supplier (all verified). NOTE: real DMC reservations (trip 435) are typed by what they are (RateHawk transfers = Transportation, GetYourGuide tours = Attraction), not DMC: TypeId 1 / 5 under a DMC supplier is still to be tested. The 17 Oct 2026 test that sent TypeIds 1-7 and saw all but 1 dropped most likely used one "
+                 "supplier for every type. Food, Staff and Other are not verified yet: use Claude in Chrome for "
+                 "those, or test them one at a time with a matching supplier.")
 
 
 def build_create_product(*, supplier_id: int, start_date: str, name: str, price: float, currency_code_id: int,

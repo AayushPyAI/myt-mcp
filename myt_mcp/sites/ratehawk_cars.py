@@ -16,6 +16,7 @@ from myt_mcp.sites import SiteRows, with_emit
 
 NAME = "ratehawk_cars"
 SOURCE = "RateHawk Car rental"
+NEEDS_WIDE_WINDOW = True       # a narrow window shows the mobile layout, which the script cannot read
 GROUP = "Cars"
 HERE = Path(__file__).parent
 FILTER_LABELS = {"automatic": "Automatic", "manual": "Manual", "zero_excess": "Zero excess", "full_insurance": "Full insurance", "refundable_excess": "Refundable excess",
@@ -58,10 +59,10 @@ def ratehawk_cars_recipe(pickup: str, dropoff: str | None, pickup_date: str, pic
             "known_places": sorted(ids)}
     url = (f"https://www.ratehawk.com/cars/?route={p_id},{d_id}&date={pickup_date}T{pickup_time},{dropoff_date}T{dropoff_time}&age={driver_age}&residency={residency}")
     script = with_emit((HERE / "ratehawk_cars.js").read_text(encoding="utf-8")).replace("__MAX_CARS__", str(max_cars)).replace("__SKIP__", str(skip)).replace("__FILTERS__", json.dumps(filters))
-    return {"required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results.", "url": url, "filters_to_tick": filters, "script": script, "expect": {"pickup": pickup, "pickup_time": pickup_time, "dropoff_time": dropoff_time},
+    return {"required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results (only when the answer says `part 1 of N`; an `ingest` receipt has no parts).", "url": url, "filters_to_tick": filters, "script": script, "expect": {"pickup": pickup, "pickup_time": pickup_time, "dropoff_time": dropoff_time},
             "steps": ["Open `url` in the operator's logged-in RateHawk tab; if it asks to log in, stop and tell the operator. Wait about 12 seconds for the cards.",
                       "Run `script` with the javascript tool (it ticks the filters, scrolls to load the cars, reads each card). ok=false means do what `error` says; never read the cards by eye.",
-                      "Pass its answer text UNCHANGED to compose_answer as site_results [{\"site\": \"ratehawk_cars\", \"result\": <answer>, \"url\": <url>}]; give `pickup_time` there too (the same on every source)."]}
+                      "The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row; give `pickup_time` there too (the same on every source)."]}
 
 
 def _num(v: Any) -> int | float | None:
@@ -98,6 +99,9 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                 ok &= (r.get("gearbox") or "").lower() == "automatic"
             if wishes.get("manual"):
                 ok &= (r.get("gearbox") or "").lower() == "manual"
+            if wishes.get("min_large_bags"):         # the page lists "2 large + 1 small bags": a car with fewer LARGE bags than asked does not fit (a Clio took 2 large for a family of 3, 23 Oct 2026)
+                large = _num(r.get("large_bags"))
+                ok &= large is not None and large >= int(wishes["min_large_bags"])
             if wishes.get("min_seats"):
                 seats = _num(r.get("seats"))
                 ok &= seats is not None and seats >= int(wishes["min_seats"])
@@ -126,7 +130,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=False, extra_notes=notes)
 
 
-ASK_CARS = {"gearbox": "Gearbox: automatic, manual, or no preference?", "seats": "How many people (minimum seats), or no preference?",
+ASK_CARS = {"gearbox": "Gearbox: automatic, manual, or no preference?", "seats": "How many people (minimum seats) and how many LARGE suitcases must the car hold (minimum large bags), or no preference?",
             "excess": "Zero excess (full cover) needed, or no preference?", "budget": "Budget for the whole rental in EUR, or no preference?"}
 
 
@@ -141,32 +145,45 @@ def cars_ask_gate(gearbox: str | None, min_seats: int | None, zero_excess: bool 
                     "wait for the reply, then call this tool again with the answers. For 'no preference' leave that value out and set operator_answered=true (only after the operator replied in this chat)."}
 
 
+RATEHAWK_MIN_AGE = 26
+
+
+def driver_filter(band: str, years: int | None) -> str:
+    if years is None:
+        return f"driver age {band} (default: the agency's)"
+    low, high = (int(x) for x in band.split(","))
+    inside = low <= years <= high
+    return f"driver age {years} (operator)" + ("" if inside else f": RateHawk was searched with its {low}-{high} band, so a young- or senior-driver fee may be missing from the prices")
+
+
 def register(mcp: MCPServer) -> None:
     @mcp.tool(name="ratehawk_cars_recipe", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
     async def ratehawk_cars_recipe_tool(pickup: str, pickup_date: str, pickup_time: str, dropoff_date: str, dropoff_time: str, dropoff: str | None = None,
                                         pickup_id: int | None = None, dropoff_id: int | None = None, driver_age: str = "26,69", gearbox: str | None = None,
-                                        min_seats: int | None = None, zero_excess: bool | None = None, max_total: float | None = None, airport_in_terminal: bool = False,
-                                        operator_answered: bool = False, offset: int = 0, limit: int = 30) -> dict[str, Any]:
-        """FOR CAR RENTAL ON RATEHAWK (read in the operator's own Chrome with Claude in Chrome). ASK FIRST: without `gearbox` ('automatic' / 'manual'), `min_seats`,
+                                        min_seats: int | None = None, zero_excess: bool | None = None, max_total: float | None = None, airport_in_terminal: bool = False, min_large_bags: int | None = None,
+                                        driver_years: int | None = None, operator_answered: bool = False, offset: int = 0, limit: int = 30) -> dict[str, Any]:
+        """FOR CAR RENTAL ON RATEHAWK (read in the operator's own Chrome with Claude in Chrome). ASK FIRST: without `gearbox` ('automatic' / 'manual'), `min_seats` (ask the number of LARGE suitcases in the same question and pass it as `min_large_bags`: the page lists 'N large + M small bags' and a car with fewer large bags than asked is marked as not fitting),
         `zero_excess` (true/false) and `max_total` (EUR, whole rental) it opens nothing and returns `ask_operator`: ask those questions in ONE message, wait, call again
         with the answers (`operator_answered`=true for "no preference", only after the operator replied). Times are required (from the trip's flight or the operator; never
         your own choice) and the same on Ofran. Then it returns the results URL and a read-only SCRIPT: open the url, run the script with the javascript tool; it reads the next
-        `limit` (30) cars from `offset`. Give its answer parts unchanged to compose_answer in `site_results` as {"site": "ratehawk_cars", "result": <part>, "url": <the url>} with
-        the returned `wishes`, `filters_used` and `pickup_time`. For more cars call again with offset=offset+limit. If it answers `needs_location_id`, follow its steps once to learn
-        RateHawk's id for the place. `pickup` is the place name ('Faro Airport'); dates YYYY-MM-DD."""
+        `limit` (30) cars from `offset`. The script sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row, `filters_used` and `pickup_time`. For more cars call again with offset=offset+limit. If it answers `needs_location_id`, follow its steps once to learn
+        RateHawk's id for the place. `driver_years` = the driver's age in years as the operator said it (RateHawk's address only has the 26-69 band: the answer says so when the driver is outside it). `pickup` is the place name ('Faro Airport'); dates YYYY-MM-DD."""
         asked = cars_ask_gate(gearbox, min_seats, zero_excess, max_total, operator_answered)
         if asked:
             return asked
+        band_low, band_high = (int(x) for x in driver_age.split(","))
+        if band_low < RATEHAWK_MIN_AGE:       # RateHawk's form starts at 26 and turns a lower age in the address into 26 (23 Oct 2026): ask for what it really searches and say so
+            driver_years, driver_age = driver_years or band_low, f"{RATEHAWK_MIN_AGE},{band_high}"
         if gearbox not in (None, "automatic", "manual"):
             raise ValueError("gearbox must be 'automatic', 'manual' or left out")
         out = ratehawk_cars_recipe(pickup, dropoff, pickup_date, pickup_time, dropoff_date, dropoff_time, pickup_id, dropoff_id, driver_age, "il", gearbox == "automatic", bool(zero_excess),
                                    airport_in_terminal, 40, gearbox == "manual", offset, limit)
         if "url" in out:
-            out["wishes"] = {"automatic": gearbox == "automatic", "manual": gearbox == "manual", "zero_excess": bool(zero_excess), "min_seats": min_seats, "max_total": max_total}
+            out["wishes"] = {"automatic": gearbox == "automatic", "manual": gearbox == "manual", "zero_excess": bool(zero_excess), "min_seats": min_seats, "min_large_bags": min_large_bags, "max_total": max_total}
             out["filters_used"] = ([f"{gearbox.capitalize()} gearbox (operator)"] if gearbox else []) + (["Zero excess (operator)"] if zero_excess else []) + \
-                ([f"at least {min_seats} seats (operator)"] if min_seats else []) + ([f"budget up to {max_total:g} EUR for the whole rental (operator)"] if max_total is not None else []) + \
-                (["Airport (in the terminal) (operator)"] if airport_in_terminal else []) + [f"driver age {driver_age} (default: the agency's)"]
+                ([f"at least {min_seats} seats (operator)"] if min_seats else []) + ([f"room for at least {min_large_bags} large bags (operator)"] if min_large_bags else []) + ([f"budget up to {max_total:g} EUR for the whole rental (operator)"] if max_total is not None else []) + \
+                (["Airport (in the terminal) (operator)"] if airport_in_terminal else []) + [driver_filter(driver_age, driver_years)]
             out["pickup_time"] = pickup_time
             out["more"] = f"For the next {limit} cars call this tool again with the same values and offset={offset + limit}; say so to the operator at the end of the answer."
         return out

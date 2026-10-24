@@ -29,7 +29,7 @@ HERE = Path(__file__).parent
 ORIGIN = "https://app.arbitrip.com"
 
 
-def arbitrip_rooms_recipe(city: str, check_in: date, check_out: date, adults: int = 2, place_id: str | None = None) -> dict[str, Any]:
+def arbitrip_rooms_recipe(city: str, check_in: date, check_out: date, adults: int = 2, place_id: str | None = None, children_ages: list[int] | None = None) -> dict[str, Any]:
     if check_out <= check_in:
         raise ValueError("check_out must be after check_in")
     pid = place_id or known_places().get(re.sub(r"\s+", " ", city.strip().lower()))
@@ -37,8 +37,11 @@ def arbitrip_rooms_recipe(city: str, check_in: date, check_out: date, adults: in
     if not pid or not contract:
         return {"error": "the place id or the agency contract id is not known: call arbitrip_hotels_recipe first (it explains how to learn them)"}
     expect = {"check_in": f"{check_in:%y%m%d}", "check_out": f"{check_out:%y%m%d}", "guests": str(adults)}
+    ages = list(children_ages or [])
+    if ages:
+        expect |= {"children": str(len(ages)), "children_ages": ",".join(str(a) for a in ages)}
     script = with_emit((HERE / "arbitrip_rooms.js").read_text(encoding="utf-8")).replace("__EXPECT__", json.dumps(expect))
-    query = f"place_id={pid}&check_in={expect['check_in']}&check_out={expect['check_out']}&guests={adults}&rooms=1&contract_id={contract}"
+    query = f"place_id={pid}&check_in={expect['check_in']}&check_out={expect['check_out']}&guests={adults}" + (f"&children={len(ages)}&children_ages={','.join(str(a) for a in ages)}" if ages else "") + f"&rooms=1&contract_id={contract}"
     return {"script": script, "expect": expect, "link_query": query}
 
 
@@ -93,10 +96,9 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
 def register(mcp: MCPServer) -> None:
     @mcp.tool(name="arbitrip_rooms_recipe", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
-    async def arbitrip_rooms_recipe_tool(city: str, check_in: date, check_out: date, adults: int = 2, place_id: str | None = None) -> dict[str, Any]:
+    async def arbitrip_rooms_recipe_tool(city: str, check_in: date, check_out: date, adults: int = 2, place_id: str | None = None, children_ages: list[int] | None = None) -> dict[str, Any]:
         """FOR ONE ARBITRIP HOTEL (read in the operator's own Chrome): the list price is only the cheapest room and can be NON-REFUNDABLE, so for each hotel the operator
         wants, press Select on it in the Arbitrip results (a new tab opens: that is the hotel page) and run the returned read-only SCRIPT in that tab. It reads every
-        room with its cancellation and meal plan and checks the dates and guests. Give the answer parts unchanged to compose_answer in `site_results` as {"site":
-        "arbitrip_rooms", "result": <part>, "url": <the hotel page address>}, and add `arbitrip_link_query` (the returned `link_query`) to the `wishes` you pass, so the link opens
+        room with its cancellation and meal plan and checks the dates and guests. The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row, and add `arbitrip_link_query` (the returned `link_query`) to the `wishes` you pass, so the link opens
         the same search. One call per hotel; never book (do not press Book)."""
-        return arbitrip_rooms_recipe(city, check_in, check_out, adults, place_id)
+        return arbitrip_rooms_recipe(city, check_in, check_out, adults, place_id, children_ages)

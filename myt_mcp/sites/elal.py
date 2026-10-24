@@ -45,7 +45,7 @@ def elal_recipe(origin: str, destination: str, day: date, adults: int = 2, child
              f"Departure: click the field, pick the month tab and the day {day:%d %b %Y} (the calendar shows the lowest price of each day; a day with no price has no seats), press Done.",
              f"Passengers: open the passenger box and set Senior {seniors}, Adults {adults}, Child {children}, Infant {infants}. Press Search. If a cookie banner is in the way, close it with the choice that declines non-essential cookies.",
              f"Wait about 10 seconds until the flights show: the page must be English and its heading must show {day:%d %B %Y} (the day strip above the flights). If the address is booking.elal.com/booking/flights in Hebrew, open {RESULTS_URL}. Then run `script` with the javascript tool; ok=false: do what `error` says; never read the rows by eye.",
-             "Pass its answer parts UNCHANGED to compose_answer as site_results [{\"site\": \"elal\", \"result\": <part>, \"url\": <the results page address>}] with the returned `wishes`. For another day click that day in the strip and run the script again; \"Selling fast\" and \"N left at this price\" are the airline's own seat warnings."]
+             "The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row with the returned `wishes`. For another day click that day in the strip and run the script again; \"Selling fast\" and \"N left at this price\" are the airline's own seat warnings."]
     return {"script": with_emit((HERE / "elal.js").read_text(encoding="utf-8")), "url": RESULTS_URL, "expect": expect, "steps": steps}
 
 
@@ -108,8 +108,7 @@ def register(mcp: MCPServer) -> None:
         """FOR EL AL (legs touching Israel; one leg, one way; read in the operator's own Chrome with Claude in Chrome, on El Al's own booking engine; these are the airline's own prices). ASK FIRST:
         without `direct_only` (true/false) and `cabin` ('economy' / 'premium' / 'business' / 'any') it opens nothing and returns `ask_operator`: ask them in ONE message, wait, call again with the
         answers (`operator_answered`=true for "no preference", only after the operator replied). Then it returns the steps to fill El Al's search once (there is no address for a search) and a read-only
-        SCRIPT for the results page: run it there, give its answer parts unchanged to compose_answer in `site_results` as {"site": "elal", "result": <part>, "url": <the results page address>} with the
-        returned `wishes`. Airport codes as `origin` / `destination`; passengers split into adults, children, seniors (60+) and infants. A human check is never worked around: stop and tell the operator."""
+        SCRIPT for the results page: run it there, The script sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. Airport codes as `origin` / `destination`; passengers split into adults, children, seniors (60+) and infants. A human check is never worked around: stop and tell the operator."""
         missing = [q for q, given in ((ASK["stops"], direct_only is not None), (ASK["cabin"], cabin is not None)) if not given]
         if missing and not operator_answered:
             return {"ok": False, "ask_operator": missing, "searched": False,

@@ -3,5 +3,14 @@
   "firenze santa maria novella": 8306421,
   "firenze s.m. novella": 8306421,
   "roma termini": 8308409,
-  "roma termini railway station": 8308409
+  "roma termini railway station": 8308409,
+  "_not_available": {
+    "note": "Stations RateHawk's Train tickets search does NOT offer (operator typed them on 24 Oct 2026 and got no suggestion). A route using one is 'route not served'; do not look for them again.",
+    "names": [
+      "lisboa",
+      "lisbon",
+      "lisboa oriente",
+      "lisbon oriente"
+    ]
+  }
 }

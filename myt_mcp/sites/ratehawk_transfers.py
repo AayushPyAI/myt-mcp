@@ -21,6 +21,7 @@ from myt_mcp.sites import SiteRows, place_matches, with_emit
 
 NAME = "ratehawk_transfers"
 SOURCE = "RateHawk Transfers"
+NEEDS_WIDE_WINDOW = True       # a narrow window shows the mobile layout, which the script cannot read
 GROUP = "Transfers"
 HERE = Path(__file__).parent
 
@@ -34,7 +35,7 @@ def ratehawk_transfers_recipe(pickup_place: str, dropoff_place: str, day: str, p
         raise ValueError("adults must be between 1 and 16")
     ages = children_ages or []
     return {
-        "required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results.",
+        "required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results (only when the answer says `part 1 of N`; an `ingest` receipt has no parts).",
         "script": with_emit((HERE / "ratehawk_transfers.js").read_text(encoding="utf-8")),
         "expect": {"pickup": pickup_place, "dropoff": dropoff_place, "day": day, "time": pickup_time, "adults": adults, "children": len(ages), **({"sort_tab": sort_tab} if sort_tab else {})},
         "steps": [
@@ -42,7 +43,7 @@ def ratehawk_transfers_recipe(pickup_place: str, dropoff_place: str, day: str, p
             "Pick-up point and drop-off: click the field once, select all (cmd+A), type a distinctive part of the name (an airport code like FCO, a hotel name), click the suggestion, and read the label back.",
             "Date: click it, pick the month then the day. Pick-up time: a list in 15-minute steps (pick the earlier one and say so). Passengers: adults, and 'Add children' with each age.",
             "Press Search, wait about 15 seconds until the cards show, then run `script` with the javascript tool (ok=false: wait and run once more). Never read the cards by eye.",
-            "Pass its answer text UNCHANGED to compose_answer as site_results [{\"site\": \"ratehawk_transfers\", \"result\": <answer>, \"url\": <the page address>}], with `expect` as `wishes` (+ pickup_time) so the server checks the form."]}
+            "The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row, with `expect` as `wishes` (+ pickup_time) so the server checks the form."]}
 
 
 def _norm(s: str | None) -> str:
@@ -132,8 +133,7 @@ def register(mcp: MCPServer) -> None:
         """FOR TRANSFERS ON RATEHAWK (the agency's first choice; read in the operator's own Chrome with Claude in Chrome). ASK FIRST: without `bags`, `flight_tracking` (true/false),
         `vehicle` ('cheapest' / 'comfortable' / 'spacious') and `max_total` (EUR) it opens nothing and returns `ask_operator`: ask those questions in ONE message, wait, call again with the
         answers (`operator_answered`=true for "no preference", only after the operator replied). The pick-up time is required (the trip's flight or the operator; never your own) and must be
-        the same on Kiwitaxi and Mozio. Then it returns the steps to fill RateHawk's Transfers form once and a read-only SCRIPT for the results page. Run the script there and pass its answer
-        unchanged to compose_answer in `site_results` as {"site": "ratehawk_transfers", "result": <answer>, "url": <page address>}, with the returned `wishes`, `filters_used` and `pickup_time`."""
+        the same on Kiwitaxi and Mozio. Then it returns the steps to fill RateHawk's Transfers form once and a read-only SCRIPT for the results page. The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row, with the returned `wishes`, `filters_used` and `pickup_time`."""
         asked = transfers_ask_gate(bags, flight_tracking, vehicle, max_total, operator_answered)
         if asked:
             return asked

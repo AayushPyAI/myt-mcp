@@ -327,6 +327,12 @@ async def test_lounge_tool_and_page_cache():
     assert posts[0][2]["ArrivalDate"] == FLIGHT.strftime("%Y-%m-%dT%H:%M:00")
 
 
+async def test_an_airport_aspire_does_not_serve_answers_with_a_link_and_the_not_checked_reason():
+    async with Client(lounge_server(FakeTransport())) as c:
+        d = (await c.call_tool("lounge_prices", {"airport": "LIS", "flight_departure": FLIGHT.isoformat()})).structured_content
+    assert d["lounges"] == [] and d["source"].endswith("/airports/") and "route not served" in d["next"]
+
+
 async def test_rates_for_another_flight_time_are_not_used():
     transport = FakeTransport({"availability/rates": Reply(200, json.dumps(TLV_RATES))})   # always 10 Nov 08:00
     async with Client(lounge_server(transport)) as c:

@@ -38,6 +38,8 @@ echo "2/3 Tunnel: $TUNNEL_URL"
 
 # 3. MCP server, allowing the new tunnel host
 sed -i '' "s|^ALLOWED_HOSTS=.*|ALLOWED_HOSTS=127.0.0.1:*,localhost:*,${TUNNEL_URL#https://}|" .env
+# the Chrome scripts post their answers to this address (myt_mcp/ingest.py): the tunnel
+grep -q "^PUBLIC_BASE_URL=" .env && sed -i '' "s|^PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=${TUNNEL_URL}|" .env || echo "PUBLIC_BASE_URL=${TUNNEL_URL}" >> .env
 if [ -f "$LOGS/server.pid" ]; then kill "$(cat "$LOGS/server.pid")" 2>/dev/null || true; fi
 # whatever still listens on 8000 is an old server with the old tunnel host in its allow-list (it answers 421), so stop it too
 lsof -tiTCP:8000 -sTCP:LISTEN | xargs kill 2>/dev/null || true; sleep 2

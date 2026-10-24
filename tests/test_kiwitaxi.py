@@ -230,3 +230,47 @@ async def test_no_suggestion_that_looks_like_the_typed_place_is_an_error_with_th
     # an explicit pick is trusted: the operator looked at the suggestions
     found = await client_for(Site(places={"florence airport": [BUDAPEST, FLR], "room mate": [HOTEL]})).search("Florence Airport", "Room Mate Collection Mia Rome", DAY, 3, from_pick=1)
     assert found["chosen_from"]["title"] == "Florence Airport (FLR)"
+
+
+# ---------- HTTP first, the automation Chrome second (23 Oct 2026) ----------
+
+class FakeChrome:
+    """The automation Chrome: its page answers the same three requests the way the real kiwitaxi.com page does."""
+
+    def __init__(self):
+        self.calls = []
+
+    async def run(self, origin, start_url, action):
+        chrome = self
+
+        class Page:
+            async def evaluate(self, js, args=None):
+                if not args:
+                    return None
+                url = args[1]
+                chrome.calls.append(url.split("?")[0])
+                if "autocomplete" in url:
+                    return {"status": 200, "url": url, "text": __import__("json").dumps([FCO] if "pairId" not in url else [HOTEL])}
+                return {"status": 200, "url": "https://kiwitaxi.com/en/results", "text": PAGE}
+        return await action(Page())
+
+
+async def test_a_blocked_http_search_is_repeated_in_the_automation_chrome():
+    blocked = httpx.MockTransport(lambda request: httpx.Response(403, text="Access denied"))
+    chrome = FakeChrome()
+    client = KiwitaxiClient(transport=blocked, limiter=SiteLimiter("Kiwitaxi", 0, 100), browser=chrome)
+    result = await client.search("FCO", "Room Mate Collection Mia", DAY, 3)
+    assert [o["vehicle"] for o in result["offers"]][:2] == ["Minibus 7PAX", "Comfort"] and result["chosen_from"]["title"].startswith("Rome Airport")
+    assert chrome.calls[0].endswith("/search/autocomplete") and chrome.calls[-1].endswith("/product-search-v2")
+
+
+async def test_without_a_browser_or_for_a_wrong_place_nothing_changes():
+    blocked = httpx.MockTransport(lambda request: httpx.Response(403, text="Access denied"))
+    with pytest.raises(KiwitaxiError, match="answered 403"):
+        await KiwitaxiClient(transport=blocked, limiter=SiteLimiter("Kiwitaxi", 0, 100)).search("FCO", "Room Mate Collection Mia", DAY, 3)
+    chrome = FakeChrome()
+    client = KiwitaxiClient(transport=httpx.MockTransport(Site()), limiter=SiteLimiter("Kiwitaxi", 0, 1000), browser=chrome)
+    assert (await client.search("Fiumicino", "Room Mate Collection Mia", DAY, 3))["offers"] and chrome.calls == []        # HTTP answered: the browser is never touched
+    with pytest.raises(KiwitaxiError, match="knows no place"):                                                           # a wrong place name is not a block: no fallback
+        await KiwitaxiClient(transport=httpx.MockTransport(Site(places={})), limiter=SiteLimiter("Kiwitaxi", 0, 1000), browser=chrome).search("Fiumicino", "x", DAY, 3)
+    assert chrome.calls == []

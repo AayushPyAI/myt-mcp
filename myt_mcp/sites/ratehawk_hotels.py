@@ -18,10 +18,11 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer, SourceRead, meets_limits
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, read_in_server_browser, server_reads, with_emit
 
 NAME = "ratehawk_hotels"
 SOURCE = "RateHawk"
+NEEDS_WIDE_WINDOW = True       # a narrow window shows the mobile layout, which the script cannot read
 GROUP = "Hotels"
 
 RECIPES = Path(__file__).parent
@@ -66,12 +67,12 @@ def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: d
     script = with_emit((RECIPES / "ratehawk_hotels.js").read_text(encoding="utf-8")).replace("__MAX_PAGES__", str(max_pages)).replace("__START_PAGE__", str(start_page)).replace("__SKIP__", str(skip)).replace("__LIMIT__", str(limit))
     script = script.replace("__EXPECT_SORT__", label)
     return {
-        "required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results.",
+        "required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results (only when the answer says `part 1 of N`; an `ingest` receipt has no parts).",
         "url": url, "expect_sort": label, "start_page": start_page, "script": script,
         "steps": ["Open `url` in the operator's logged-in RateHawk tab (Claude in Chrome navigate). If the page asks to log in, stop and tell the operator.",
                   "Wait about 10 seconds until the results show, then run `script` with the javascript tool (it only reads the page and presses Forward).",
                   "If its answer has ok=false, do what `error` says (usually: open the url again) and run it once more; never read the list by eye instead.",
-                  "Pass every part of the answer, unchanged, to compose_answer as items of site_results {\"site\": \"ratehawk_hotels\", \"result\": <part>, \"url\": <this url>}. Only if the operator asks for the best rated, run the recipe again with sort='rating' and pass those parts too.",
+                  "The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row. Only if the operator asks for the best rated, run the recipe again with sort='rating' and pass those parts too.",
                   "Children: the url already has them (guests=2and6 means 2 adults and a child of 6). One child was tested; with two or more, check the page's guest count says the same."],
         "never": "Do not retype, shorten or summarise the rows: compose_answer reads the script's own text.",
     }
@@ -154,6 +155,13 @@ def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, 
     return list(by_path.values()), [source], problems, sorted_by_price
 
 
+def offset_given(result_json: str) -> bool:
+    try:
+        return bool(json.loads(result_json).get("offset"))
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     offers, sources, problems, by_price = offers_from_ratehawk([result_json], [], wishes, group)
     notes: list[str] = []
@@ -163,6 +171,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         offset = 0
     if offset > 0 and offers:
         notes.append(f"These are options {offset + 1} to {offset + len(offers)} of the list (cheaper ones were shown before): the Cheapest here is not the cheapest overall.")
+    if by_price and not offset_given(result_json):
+        notes.append(f"RateHawk's list was read sorted by price (low to high): {sources[0].read} of {sources[0].of or 'its'} hotels, the cheapest first.")
     return SiteRows(offers=offers, read=sources[0].read, total=sources[0].of, problems=problems, sorted_by_price=by_price, extra_notes=notes)
 
 
@@ -200,12 +210,11 @@ def register(mcp: MCPServer) -> None:
                                           breakfast: bool = False, free_cancellation: bool = False, stars: int | None = None, budget_per_night: float | None = None,
                                           max_distance_km: float | None = None, operator_answered: bool = False, offset: int = 0, limit: int = BATCH,
                                           children_ages: list[int] | None = None) -> dict[str, Any]:
-        """FOR HOTELS ON RATEHAWK (read in the operator's own Chrome with Claude in Chrome). ASK FIRST: without minimum `stars`, `budget_per_night` (EUR) and
+        """FOR HOTELS ON RATEHAWK (THE SERVER READS THE PAGE ITSELF in its own logged-in browser, because RateHawk's hotel pages do not let the operator's Chrome send data to the server: you open nothing and run no script; the answer is a short receipt with an `ingest` id: call compose_answer with `runs`=[that id]; ok=false: put RateHawk in not_checked with the reason it gives and never type a row; if the server has no browser it returns the url and a script for the operator's Chrome instead). ASK FIRST: without minimum `stars`, `budget_per_night` (EUR) and
         `max_distance_km` this tool opens nothing and returns `ask_operator`: ask those questions in ONE message, wait for the reply, call again with the
         answers (`operator_answered`=true for "no preference", only after the operator replied). Then it returns the exact results URL (filters already in
         it) and a tested read-only SCRIPT: open the url, run the script with the javascript tool; it reads the next `limit` (30) hotels from `offset`, checks the
-        sort, the page and the count. Give the script's answer parts unchanged to compose_answer in `site_results` as {"site": "ratehawk_hotels", "result":
-        <part>, "url": <the url>} with the returned `wishes` and `filters_used`. When the operator wants more, call this tool again with offset=offset+limit.
+        sort, the page and the count. The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row with the returned `wishes` and `filters_used`. When the operator wants more, call this tool again with offset=offset+limit.
         Never read the list by eye. `country` and `city` are the words in RateHawk's address (portugal, lisbon). Give `children_ages` for children."""
         asked = ask_gate(stars, budget_per_night, max_distance_km, operator_answered)
         if asked:
@@ -214,4 +223,10 @@ def register(mcp: MCPServer) -> None:
         wishes, filters = limits(stars, budget_per_night, max_distance_km, breakfast, free_cancellation, (check_out - check_in).days)
         out["wishes"], out["filters_used"] = wishes, filters + ["Guests: " + " and ".join([f"{adults} adults"] + [f"child {a}" for a in children_ages or []]) + " (operator)"]
         out["more"] = f"For the next {limit} hotels call this tool again with the same values and offset={offset + limit}; say so to the operator at the end of the answer."
+        if server_reads("RATEHAWK_HOTELS_READ_IN_SERVER", default=False):
+            # ratehawk.com's hotel pages only let the page talk to RateHawk's own hosts (default-src), so the operator's Chrome cannot send the answer to this server; the server reads the list in its
+            # automation Chrome (logged in to RateHawk). OFF by default again since GetYourGuide blocked the shared IP on 24 Oct 2026: RATEHAWK_HOTELS_READ_IN_SERVER=1 switches it on. It is the agency's own login: see the safeguards of read_in_server_browser.
+            result = await read_in_server_browser(NAME, "https://www.ratehawk.com", out["url"], out)
+            result["more"] = out["more"]
+            return result
         return out

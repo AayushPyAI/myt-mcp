@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx
 
+from urllib.parse import urlencode
+
 from myt_mcp.cache import TTLCache
 from myt_mcp.errors import IntegrationError
 from myt_mcp.ratelimit import SiteLimiter
@@ -30,7 +32,8 @@ class TrenitaliaError(IntegrationError):
 
 class TrenitaliaClient:
     def __init__(self, *, http: httpx.AsyncClient | None = None, limiter: SiteLimiter | None = None,
-                 search_cache_minutes: float = 10.0, timeout: float = 30.0):
+                 search_cache_minutes: float = 10.0, timeout: float = 30.0, browser: Any = None):
+        self._browser = browser          # the server's automation Chrome: used only when the plain HTTP request is refused or fails (a block, a network error)
         self._http = http or httpx.AsyncClient(
             base_url=BASE_URL, timeout=timeout,
             headers={"User-Agent": UA, "Accept": "application/json", "Content-Type": "application/json"},
@@ -44,29 +47,50 @@ class TrenitaliaClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
+    async def _http_status(self, method: str, path: str, kwargs: dict[str, Any]) -> tuple[int, str]:
+        resp = await self._http.request(method, path, **kwargs)
+        return resp.status_code, resp.text
+
+    async def _browser_status(self, method: str, path: str, kwargs: dict[str, Any]) -> tuple[int, str]:
+        """The same request, made by the page of www.lefrecce.it in the automation Chrome (its own cookies and network)."""
+        url = BASE_URL + path + (("?" + urlencode(kwargs["params"])) if kwargs.get("params") else "")
+        got = await self._browser.fetch("https://www.lefrecce.it", "https://www.lefrecce.it/", method, url, kwargs.get("json"), None)
+        return int(got["status"]), str(got["text"])
+
     async def _request(self, method: str, path: str, *, limiter: SiteLimiter, **kwargs: Any) -> Any:
         await limiter.acquire()
+        status: int | None = None
+        text = ""
+        failure: TrenitaliaError | None = None
         try:
-            resp = await self._http.request(method, path, **kwargs)
+            status, text = await self._http_status(method, path, kwargs)
         except httpx.TimeoutException:
-            raise TrenitaliaError("Trenitalia did not answer in time. Try again in a minute.") from None
+            failure = TrenitaliaError("Trenitalia did not answer in time. Try again in a minute.")
         except httpx.HTTPError as e:
-            raise TrenitaliaError(f"Could not reach Trenitalia ({type(e).__name__}).") from None
-        if resp.status_code in (403, 429):
-            raise TrenitaliaError(f"Trenitalia refused the request ({resp.status_code}). Wait a while before trying again.")
-        if resp.status_code >= 500:
-            raise TrenitaliaError(f"Trenitalia is having problems ({resp.status_code}). Try again later.")
-        if resp.status_code == 400 and path.startswith("/ticket"):
+            failure = TrenitaliaError(f"Could not reach Trenitalia ({type(e).__name__}).")
+        if self._browser is not None and (failure is not None or status in (403, 429)):
+            try:                       # HTTP first, the automation Chrome second
+                status, text = await self._browser_status(method, path, kwargs)
+                failure = None
+            except IntegrationError:
+                pass                   # keep the HTTP answer's own message below
+        if failure is not None or status is None:
+            raise failure or TrenitaliaError("Trenitalia did not answer.")
+        if status in (403, 429):
+            raise TrenitaliaError(f"Trenitalia refused the request ({status}). Wait a while before trying again.")
+        if status >= 500:
+            raise TrenitaliaError(f"Trenitalia is having problems ({status}). Try again later.")
+        if status == 400 and path.startswith("/ticket"):
             raise TrenitaliaError("Trenitalia rejected this search (400). There are two possible causes and this answer does not say which: "
                                   "(1) the date is beyond its published timetable (trains were shown about 11 months ahead, not 14); "
                                   "(2) Trenitalia cannot sell these two stations as one ticket (for example Fiumicino Aeroporto to Firenze, "
                                   "rejected on every date, even in March 2027). Do not tell the operator which one it is: retry the SAME date "
                                   "with the city station (Roma Termini instead of Fiumicino Aeroporto). If that works, the date is fine and the "
                                   "airport leg is a separate transfer (not priced by this tool).")
-        if resp.status_code >= 400:
-            raise TrenitaliaError(f"Trenitalia could not run this search ({resp.status_code}): {resp.text[:160]}")
+        if status >= 400:
+            raise TrenitaliaError(f"Trenitalia could not run this search ({status}): {text[:160]}")
         try:
-            return resp.json()
+            return json.loads(text)
         except ValueError:
             raise TrenitaliaError("Trenitalia returned a page instead of data; the site may have changed.") from None
 

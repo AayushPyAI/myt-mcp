@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.mcpserver import MCPServer
 from pydantic import BaseModel, Field, field_validator
@@ -14,9 +14,11 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
+from myt_mcp.myt import supplier_directory
 from myt_mcp.myt.paperwork import paperwork_check
+from myt_mcp.myt.reservation_plan import build_plan
 from myt_mcp.myt.summaries import _amount, _date
-from myt_mcp.myt.reservations import (CATEGORY_NOTE, KNOWN_CREATE_CATEGORIES, build_create_product, build_update_row,
+from myt_mcp.myt.reservations import (CATEGORY_NOTE, KNOWN_CREATE_CATEGORIES, SUPPLIER_KIND, _key, build_create_product, build_update_row,
                                       customer_invoices, find_reservation, reconcile, reservations_summary)
 from myt_mcp.services import Services
 
@@ -48,6 +50,24 @@ class ScreenDoc(BaseModel):
             if digits.isdigit():
                 return int(digits)
         return value
+
+
+class PlanLine(BaseModel):
+    """One supplier reservation the operator has approved."""
+
+    supplier: str = Field(description="Supplier name as MYT knows it, e.g. 'Arbitrip', 'RateHawk', 'Sixt' (find_supplier shows the matches)")
+    category: Literal["Transport", "Lodging", "Attraction", "DMC"] = Field(
+        description="Transport (flight, train, transfer, car; also a RateHawk transfer), Lodging (hotel; Arbitrip), Attraction (tour, ticket; also a Get your guide tour). Not DMC.")
+    product_name: str = Field(description="What is booked, e.g. 'Hotel Vincci Liberdade - Triple Superior Room, breakfast'")
+    start_date: date
+    price: float = Field(description="NET price per unit (per night for a hotel). Never add profit: it belongs to the quote")
+    quantity: float = Field(default=1, description="Rooms, vehicles or travellers (with pricing PP)")
+    nights: int = Field(default=1, description="Nights for a hotel, days for a car, else 1")
+    pricing: Literal["PS", "PP"] = Field(default="PS", description="PS: the price covers the whole booking; PP: per person")
+    currency: str = "EUR"
+    supplier_id: int | None = Field(default=None, description="Only when the name matches several suppliers (from find_supplier)")
+    arrival_time: str | None = Field(default=None, description="HH:MM, 24-hour")
+    comments: str | None = None
 
 
 def register(mcp: MCPServer, services: Services) -> None:
@@ -99,6 +119,96 @@ def register(mcp: MCPServer, services: Services) -> None:
         check_days(soon_days)
         return reconcile(await trip_v3(trip_id, fresh), date.today(), soon_days)
 
+    @mcp.tool(annotations=READ_ONLY)
+    @tool_errors
+    async def find_supplier(name: str, category: str | None = None) -> dict[str, Any]:
+        """Find a MYT supplier id by name BEFORE creating a reservation or a quote line. Reads only a local directory of suppliers seen
+        on real trips (id, type, subtype, the categories it fits); it calls nothing on MYT. `name` can be a word or two ("arbitrip",
+        "ratehawk", "sixt"); `category` ("Transport", "Lodging", "Attraction", "DMC") keeps only suppliers that fit it. A supplier that
+        is not listed is NOT guessed and never created: ask the operator for the exact name used in MYT, or read it on the MYT screen."""
+        want = SUPPLIER_KIND.get(category) if category else None
+        if category and not want:
+            raise ToolError(f"category must be one of {', '.join(SUPPLIER_KIND)}.")
+        found = supplier_directory.find_suppliers(name)
+        rows = []
+        for s in found:
+            fits = [c for c, kinds in SUPPLIER_KIND.items() if s.get("type") in kinds]
+            if want and s.get("type") is not None and s["type"] not in want:
+                continue
+            rows.append({"id": s["id"], "name": s["name"], "private_name": s.get("private_name"), "type": s.get("type"), "subtype": s.get("subtype"),
+                         "fits_categories": fits or None, "type_known": s.get("type") is not None, "seen_on_trips": s.get("trips")})
+        note = ("Not in the directory: do not guess an id. Ask the operator for the supplier's exact name in MYT or read it on the MYT screen; "
+                "never create a supplier." if not rows else
+                "type_known=false: the supplier was seen on a quote line only, so its type (and which category fits) is not confirmed; "
+                "check it on the MYT screen before creating a reservation." if any(not r["type_known"] for r in rows) else
+                "Use the id of the supplier whose type fits the category.")
+        return {"query": name, "category": category, "matches": rows, "directory_size": len(supplier_directory.load()), "note": note}
+
+    @mcp.tool(annotations=WRITE)
+    @tool_errors
+    @with_checked_at
+    async def plan_supplier_reservations(trip_id: int, lines: list[PlanLine], confirm: bool = False) -> dict[str, Any]:
+        """Plan (and, after the operator's yes, create) the supplier reservations of a trip. Reservations come BEFORE the quote: the operator
+        approves the lines (supplier, product, date, quantity, NET price), the reservations are created, and the quote is made from them.
+        Without confirm=True nothing is sent: it shows the plan grouped by supplier (MYT puts one supplier's products into one order),
+        totals per currency, `problems` (unknown or ambiguous supplier, category that does not fit the supplier's type, past date, a
+        reservation that already exists, more than 12 lines) and `warnings`. Show it to the operator and wait for a clear yes.
+        With confirm=True and no problems it creates the products one by one, then reads the trip back ONCE and reports the order id
+        and reservation id of each, or an error naming the ones that are missing. Test trips only unless the operator names another trip.
+        It never creates a supplier, never sends a request to a supplier (status stays Ready To Send) and never deletes anything.
+        Categories: see PlanLine; the supplier's type decides what MYT keeps, so use find_supplier for the id and type first."""
+        services.check_trip(trip_id)
+        before = await trip_v3(trip_id, fresh=True)
+        plan = build_plan([line.model_dump() for line in lines], before.get("reservations") or [], _today())
+        base = {"trip_id": trip_id, **plan}
+        if not confirm:
+            return {**base, "sent": False,
+                    "note": "Nothing was sent. Show this plan to the operator; call again with the same lines and confirm=true only after their explicit yes."}
+        if plan["problems"]:
+            raise ToolError("Nothing was sent. Fix these first: " + "; ".join(plan["problems"]))
+        myt = services.myt()
+        known_ids = {r.get("reservation_id") for r in before.get("reservations") or []}     # taken before anything is sent
+        sent, failed = [], None
+        for order in plan["orders"]:
+            for p in order["products"]:
+                tag = uuid.uuid4().hex[:10]
+                product = build_create_product(
+                    supplier_id=order["supplier_id"], start_date=p["start_date"], name=p["product"], price=p["unit_price"],
+                    currency_code_id=await myt.currency_code_id(p["currency"]), pricing_type_id=1 if p["pricing"] == "PS" else 2,
+                    type_id=KNOWN_CREATE_CATEGORIES[p["category"]], quantity=p["quantity"], nights=p["nights"],
+                    arrival_time=p["arrival_time"] or "10:00", comments=p["comments"] or "")
+                try:
+                    await myt.create_reservation(trip_id, [product], external_id=f"claude-{tag}", comments=p["comments"])
+                except Exception as e:      # stop at the first failure: never keep writing after an error
+                    failed = f"line {p['line']} ({order['supplier']} / {p['product']}): {e}"
+                    break
+                sent.append((order, p))
+            if failed:
+                break
+        after = await trip_v3(trip_id, fresh=True)
+        taken: set[Any] = set()
+        results, missing = [], []
+        for order, p in sent:
+            hit = next((r for r in after.get("reservations") or []
+                        if r.get("reservation_id") not in known_ids | taken and r.get("supplier_id") == order["supplier_id"]
+                        and _key(r.get("product_name")) == _key(p["product"])
+                        and ((r.get("dates") or {}).get("start") or {}).get("date", "")[:10] == p["start_date"]), None)
+            if not hit:
+                missing.append(f"line {p['line']} ({order['supplier']} / {p['product']})")
+                continue
+            taken.add(hit["reservation_id"])
+            kinds = SUPPLIER_KIND[p["category"]]
+            results.append({"line": p["line"], "order_id": hit["order_id"], "reservation_id": hit["reservation_id"], "supplier": order["supplier"],
+                            "product": p["product"], "supplier_type_ok": any((hit.get("supplier_type") or {}).get(k) for k in kinds)})
+        if failed or missing:
+            raise ToolError(("MYT refused " + failed + ". " if failed else "") + ("Created and confirmed: " + (", ".join(
+                f"line {r['line']} order {r['order_id']}" for r in results) or "nothing") + ". ") +
+                (("NOT visible when the trip is read back (MYT may have silently dropped them): " + "; ".join(missing) + ". ") if missing else "") +
+                "Nothing more was sent. Tell the operator before trying again; never resend a line that is listed as created.")
+        return {**base, "sent": True, "created": results, "all_supplier_types_ok": all(r["supplier_type_ok"] for r in results),
+                "next_step": "Status starts at Ready To Send; confirm or voucher it on the MYT screen (never Send Request: it emails the supplier). "
+                             "Then the quote is made from these reservations."}
+
     @mcp.tool(annotations=WRITE)
     @tool_errors
     @with_checked_at
@@ -109,8 +219,9 @@ def register(mcp: MCPServer, services: Services) -> None:
     ) -> dict[str, Any]:
         """Create ONE supplier reservation (a supplier order) on a trip through MYT's write API (reservations/Create): the
         object the Supplier Reservations screen shows, separate from the quotation's cost lines (writing a quote line is a
-        different, UI-only flow). Only category="Transport" (flights, trains, transfers, car rental) is supported: """ + CATEGORY_NOTE.split("other categories")[0] + """other categories
-        are refused here rather than silently failing; use Claude in Chrome for them.
+        different, UI-only flow). category is "Transport" (flights, trains, transfers, car rental; supplier of type transportation, or a DMC supplier such as RateHawk for its transfers) or
+        "Lodging" (hotels; supplier of type lodging such as Arbitrip) or "Attraction" (tours, tickets; supplier of type attraction, or a DMC supplier such as Get your guide for its tours) or "DMC" (supplier of type dmc, e.g. RateHawk). The supplier's type must match the category, or MYT answers 200 and silently drops the product
+        (this tool then refuses the result). Other categories are refused here; use Claude in Chrome for them.
         `supplier_id` must be an existing MYT supplier id (from this trip's suppliers or quotation); never invent one.
         `pricing` is "PS" (the price covers the whole booking) or "PP" (per person; MYT multiplies by travellers).
         Without confirm=True this only shows exactly what would be sent and changes nothing: show it to the operator first.
@@ -151,6 +262,10 @@ def register(mcp: MCPServer, services: Services) -> None:
         if not match:
             raise ToolError("MYT answered success but the reservation is NOT visible when the trip is read back; nothing more "
                             "was sent. This can happen when a field MYT silently rejects. Tell the operator before trying again.")
+        kinds = SUPPLIER_KIND[category]
+        if not any((match.get("supplier_type") or {}).get(k) for k in kinds):
+            raise ToolError(f"The reservation was created (order {match['order_id']}) but its supplier is not a {' or '.join(kinds)} supplier, "
+                            f"so it is not a proper {category} reservation. Tell the operator; supplier_id {supplier_id} does not fit {category}.")
         return {**preview, "sent": True, "order_id": match["order_id"], "reservation_id": match["reservation_id"],
                "confirmed_by_reading_the_trip_back": True,
                "next_step": "Status starts at Ready To Send; move it on (Skip To COR, Print Voucher...) on the MYT screen."}

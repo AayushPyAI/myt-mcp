@@ -11,6 +11,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
+from myt_mcp.lounges.aspire import SITE
 from myt_mcp.lounges.parse import check_rates, match_airport, summarize_rates
 from myt_mcp.services import Services
 
@@ -39,6 +40,8 @@ def register(mcp: MCPServer, services: Services) -> None:
         if not matches:
             return {"airport": airport, "lounges": [],
                     "note": "Aspire has no lounge at this airport. Ask the operator about other lounge providers there.",
+                    "source": f"{SITE}/airports/",      # the page that lists the airports Aspire serves: the link the answer needs
+                    "next": "Put Aspire Lounges in not_checked with the reason 'route not served: Aspire has no lounge at this airport' (never '0 of 0 lounges checked'), link the source above, and say which airports Aspire does serve if the operator asks.",
                     "aspire_airports": [a.replace("-", " ") for a in airports]}
         if len(matches) > 1:
             raise ToolError(f"{airport!r} matches several Aspire airports: {', '.join(matches)}. Use the IATA code or a fuller name.")
