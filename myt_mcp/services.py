@@ -11,6 +11,7 @@ from myt_mcp.gyg.client import GygClient
 from myt_mcp.israir.client import IsrairClient
 from myt_mcp.kiwitaxi.client import KiwitaxiClient
 from myt_mcp.lounges import aspire as aspire_api
+from myt_mcp.lounges import airlines as airline_lounges_api
 from myt_mcp.lounges import loungepair as loungepair_api
 from myt_mcp.minisite.client import MinisiteClient
 from myt_mcp.mozio.client import MozioClient
@@ -27,7 +28,7 @@ from myt_mcp.viator.client import ViatorClient
 class Services:
     def __init__(self, settings: Settings, *, myt: MYTClient | None = None, ofran: OfranClient | None = None,
                  trenitalia: TrenitaliaClient | None = None, viator: ViatorClient | None = None,
-                 sata: SataClient | None = None, aspire: aspire_api.AspireClient | None = None, loungepair: loungepair_api.LoungePairClient | None = None,
+                 sata: SataClient | None = None, aspire: aspire_api.AspireClient | None = None, loungepair: loungepair_api.LoungePairClient | None = None, airline_lounges: airline_lounges_api.AirlineLoungesClient | None = None,
                  gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, israir: IsrairClient | None = None, tap: TapClient | None = None,
                  mozio: MozioClient | None = None, boi: BoiClient | None = None, minisite: MinisiteClient | None = None):
         self.settings = settings
@@ -38,6 +39,7 @@ class Services:
         self._sata = sata
         self._aspire = aspire
         self._loungepair = loungepair
+        self._airline_lounges = airline_lounges
         self._gyg = gyg
         self._kiwitaxi = kiwitaxi
         self._israir = israir
@@ -95,6 +97,11 @@ class Services:
             limiter = SiteLimiter("SATA", s.scrape_min_interval_seconds, s.scrape_max_per_hour)
             self._sata = SataClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes)
         return self._sata
+
+    def airline_lounges(self) -> airline_lounges_api.AirlineLoungesClient:
+        if self._airline_lounges is None:
+            self._airline_lounges = airline_lounges_api.AirlineLoungesClient()
+        return self._airline_lounges
 
     def loungepair(self) -> loungepair_api.LoungePairClient:
         if self._loungepair is None:
@@ -177,6 +184,6 @@ class Services:
                                    "call find_trip with that number first and use the trip_id it returns.".replace("{trip_id}", str(trip_id)))
 
     async def aclose(self) -> None:
-        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._loungepair, self._gyg, self._kiwitaxi, self._israir, self._tap, self._mozio, self._boi, self._minisite, self._browser):
+        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._loungepair, self._airline_lounges, self._gyg, self._kiwitaxi, self._israir, self._tap, self._mozio, self._boi, self._minisite, self._browser):
             if client is not None:
                 await client.aclose()

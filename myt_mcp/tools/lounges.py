@@ -12,6 +12,7 @@ from mcp.types import ToolAnnotations
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
 from myt_mcp.lounges.aspire import SITE
+from myt_mcp.lounges.airlines import azores_rows, offer_azores, offer_tap, tap_rows
 from myt_mcp.lounges.loungepair import SITE as LOUNGEPAIR_SITE
 from myt_mcp.lounges.loungepair import hours_note, offer_row
 from myt_mcp.lounges.parse import check_rates, match_airport, summarize_rates
@@ -87,4 +88,30 @@ def register(mcp: MCPServer, services: Services) -> None:
         children = next((lounge["children"] for lounge in lounges if lounge["children"]), None)
         if children:
             answer["age_rules"] = children
+        return answer
+
+    @mcp.tool(annotations=READ_ONLY)
+    @tool_errors
+    @with_checked_at
+    async def airline_lounges(airport: str) -> dict[str, Any]:
+        """Lounge access the AIRLINES sell, from their own public pages: Azores Airlines (its lounge prices per airport, e.g. the ANA Lounge at LIS, OPO, FAO) and TAP Air Portugal (the lounges TAP
+        runs, e.g. TAP Premium Lounge Tejo and Atlântico at Lisbon, with opening hours and capacity, and TAP's 'from' price). `airport` is the 3-letter IATA code. Next to `lounge_prices` and
+        `loungepair_lounges`. Every lounge comes with a ready `offer` row for compose_answer(offers=[...]): pass it AS IT IS. They are comparison rows: the Azores price is sold with an Azores Airlines
+        flight booking and the TAP price with a TAP booking, and neither page lists who flies free (fare, status or card). Nothing is booked."""
+        iata = airport.strip().upper()
+        if len(iata) != 3 or not iata.isalpha():
+            raise ToolError("Give the 3-letter IATA code of the airport (LIS, OPO, FAO...).")
+        azores = azores_rows(await services.airline_lounges().azores(), iata)
+        tap = await services.airline_lounges().tap()
+        own = tap_rows(tap, iata)
+        lounges = [{"source": "Azores Airlines", **row, "offer": offer_azores(row, iata)} for row in azores] + \
+                  [{"source": "TAP Air Portugal", **row, "from_price_eur": tap["from_price_eur"], "offer": offer_tap(row, iata, tap["from_price_eur"])} for row in own]
+        answer: dict[str, Any] = {"airport": iata, "comparison_only": True, "lounges": lounges}
+        if not lounges:
+            answer["note"] = "Neither Azores Airlines nor TAP lists a lounge of its own at this airport."
+            answer["source"] = "https://azoresairlines.pt/en/information/before-boarding/lounges"
+            return answer
+        answer["source"] = lounges[0]["url"]
+        if own:
+            answer["tap_price_note"] = tap["price_note"]
         return answer
