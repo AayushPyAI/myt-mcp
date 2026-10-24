@@ -363,7 +363,7 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
     lines += ["", "Sources: " + " | ".join(f"{s.name}: {s.link}" for s in sources_read)]
     if notes.strip():
         lines += ["", "Notes (assistant's judgement, not from a source): " + notes.strip()]
-    return {"ok": True, "answer": "\n".join(lines), "next": "Show `answer` to the operator exactly as written. Do not change a number, a pick or a reason. You may add questions after it."}
+    return {"ok": True, "answer": "\n".join(lines), "next": "Call check_answer with this `answer` (and this kind) BEFORE you send it, then show `answer` to the operator exactly as written. Do not retype, reword or reorder a row, and do not change a number, a pick or a reason. You may add questions after it."}
 
 
 def apply_wishes(offers: list[Offer], wishes: dict | None) -> None:

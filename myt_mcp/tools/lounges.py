@@ -12,6 +12,8 @@ from mcp.types import ToolAnnotations
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
 from myt_mcp.lounges.aspire import SITE
+from myt_mcp.lounges.loungepair import SITE as LOUNGEPAIR_SITE
+from myt_mcp.lounges.loungepair import hours_note, offer_row
 from myt_mcp.lounges.parse import check_rates, match_airport, summarize_rates
 from myt_mcp.services import Services
 
@@ -59,4 +61,30 @@ def register(mcp: MCPServer, services: Services) -> None:
             answer["note"] = "Could not read the lounges on this airport's Aspire page; check the website."
         if children or infants:
             answer["age_rules"] = "Aspire's child and infant ages differ by lounge; check the lounge page before quoting."
+        return answer
+
+    @mcp.tool(annotations=READ_ONLY)
+    @tool_errors
+    @with_checked_at
+    async def loungepair_lounges(airport: str, flight_departure: datetime | None = None) -> dict[str, Any]:
+        """Airport lounge access on LoungePair (one-time passes; a comparison source next to `lounge_prices`, and the only one for airports Aspire does not serve). `airport` is the 3-letter
+        IATA code (LIS, TLV, FCO...). Returns each lounge LoungePair lists there: name, terminal, opening hours, the LOWEST price per person in EUR ("from" price, not the price for the
+        flight or the group), the FlexiPass extra (change or cancel unused passes), and the notices the page shows (for example "temporarily closed for renovation": always say it).
+        Every row is a comparison, never a quote: the exact price is in LoungePair's booking widget. Each lounge comes with a ready `offer` row: pass it to compose_answer(offers=[...]) AS IT IS and never multiply the price by the group or reword it. Give `flight_departure` (the flight's local date and time) to get the boarding note: leave the lounge 45 minutes before departure. Nothing is booked."""
+        iata = airport.strip().upper()
+        lounges = await services.loungepair().lounges(iata)
+        flight_at = flight_departure.replace(tzinfo=None) if flight_departure else None
+        answer: dict[str, Any] = {"airport": iata, "comparison_only": True, "lounges": [
+            {**lounge, "price_kind": "'from' price per person in EUR, the lowest LoungePair sells at any date; not a price for this flight or group", "quotable": False,
+             "offer": offer_row(lounge, iata, flight_at), "boarding_note": hours_note(lounge.get("opening_hours"), flight_at)} for lounge in lounges]}
+        if not lounges:
+            answer["note"] = "LoungePair lists no lounge at this airport."
+            answer["source"] = f"{LOUNGEPAIR_SITE}/at/{iata}/"
+            return answer
+        answer["source"] = lounges[0]["url"]
+        if any(lounge["closed"] for lounge in lounges):
+            answer["warning"] = "A lounge here is marked closed on its LoungePair page: say so and do not offer it as an option."
+        children = next((lounge["children"] for lounge in lounges if lounge["children"]), None)
+        if children:
+            answer["age_rules"] = children
         return answer

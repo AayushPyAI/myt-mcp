@@ -105,7 +105,8 @@ PLANS: dict[str, dict[str, Any]] = {
     },
     "lounges": {
         "ask_once": ["flight departure time", "adults and children"],
-        "sources": [{"name": "Aspire Lounges", "how": "lounge_prices", "use": "always"}],
+        "sources": [{"name": "Aspire Lounges", "how": "lounge_prices", "use": "always"},
+                    {"name": "LoungePair", "how": "loungepair_lounges (3-letter airport code; its price is a 'from' price per person for any date: comparison only, never the quote)", "use": "always, next to Aspire; it also covers airports Aspire does not serve"}],
         "fields": ["lounge and terminal", "entry window against the flight", "length of stay", "adult and child price", "link"],
         "filters": "the entry window must fit the flight time.",
         "never": ["write opening hours or a menu the tool did not return"],

@@ -9,6 +9,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
+from myt_mcp.composed import COMPOSED
 from myt_mcp.ingest import STORE
 from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, compose
 from myt_mcp.sites import carried_wishes, convert_all, register_all
@@ -102,6 +103,8 @@ def register(mcp: MCPServer) -> None:
         log.info("CHECK compose_answer kind=%s ok=%s items=%s offers=%s carried=%s passed=%s problems=%s", kind, out.get("ok"), [(i.get("site"), len(i.get("result", ""))) for i in items], len(offers),
                  {k[0]: {w: (c["wishes"].get("expect") or {}).get(w) for w in ("direct_only", "checked_bag", "refundable")} for k, c in carried.items()},
                  sorted((wishes or {}).keys()), "; ".join(out.get("problems", []))[:800])          # sizes and rule messages only, never the rows
+        if out.get("ok") and out.get("answer"):
+            COMPOSED.remember(kind, out["answer"])
         return out
 
     register_all(mcp)

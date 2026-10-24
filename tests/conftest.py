@@ -21,4 +21,6 @@ def _reset_server_read_state(tmp_path, monkeypatch):
     import myt_mcp.sites as sites
     monkeypatch.setattr(sites, "PAUSE_FILE", tmp_path / "paused_sites.json")
     sites._CACHE.clear(); sites._READS.clear(); sites._PAUSED_UNTIL.clear(); sites._LAST_READ.clear()
+    from myt_mcp.composed import COMPOSED
+    COMPOSED.clear()
     yield
