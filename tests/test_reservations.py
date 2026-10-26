@@ -114,6 +114,23 @@ def test_reconcile_flags_a_date_difference():
     assert row["verdict"] == "MISMATCH" and "date differs" in row["notes"][0]
 
 
+def _ils(res):
+    res["currency"] = {"name": "ILS"}
+    return res
+
+
+def test_a_shekel_reservation_against_a_euro_line_is_not_a_mismatch():
+    """26 Oct 2026: all 19 shekel reservations of 13 real trips (lounges, guides) were flagged MISMATCH against euro lines: 1000 ILS at 3.53 is 283.28 EUR."""
+    v3 = _v3([_ils(_res(1, 10, "Lounge Co", "TLV lounge", 1000.0, 1, 1, "2026-10-15")), _ils(_res(2, 11, "Guide Co", "Guide day", 400.0, 1, 1, "2026-10-16"))], {1: "NotSent", 2: "NotSent"},
+             [_line(10, "Lounge Co", "TLV lounge", 283.28, 1, 1, "2026-10-15"), _line(11, "Guide Co", "Guide day", 128.06, 1, 1, "2026-10-16")])
+    plain = reconcile(v3, TODAY)
+    assert [r["verdict"] for r in plain["rows"]] == ["CURRENCY", "CURRENCY"] and plain["totals"]["rows_in_another_currency"] == 2
+    assert "3.53 at 0% profit" in plain["rows"][0]["notes"][0] and "eur_to_ils" in plain["rows"][0]["notes"][0] and plain["rows"][0]["reservation_currency"] == "ILS"
+    converted = reconcile(v3, TODAY, eur_to_ils=3.53)["rows"]
+    assert converted[1]["verdict"] == "ok" and "= 113.31 EUR at 3.53" in converted[1]["notes"][0]          # 400 ILS = 113.31 EUR, line = cost + 13%
+    assert converted[0]["verdict"] == "MISMATCH" and "implied profit 0.0%" in converted[0]["notes"][-1]    # no profit on the lounge line: a real difference to ask about
+
+
 def test_reconcile_lists_what_has_no_partner():
     result = reconcile(V3, TODAY)
     assert any("Far Away" in x for x in result["reservations_without_quote_line"])

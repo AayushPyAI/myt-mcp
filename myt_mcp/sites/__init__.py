@@ -180,13 +180,23 @@ async def read_in_server_browser(site: str, origin: str, url: str, out: dict[str
     return finish(raw)
 
 
+# Pages whose security policy blocks a post to another address (seen: ingest received nothing from them): their scripts return the answer in parts, with no address to post to
+NO_POST = {"getyourguide_find", "getyourguide_activity", "viator_find", "viator_activity", "ratehawk_hotels"}
+
+
 def embed_wishes(out: Any, site: str | None = None) -> Any:
     """The operator's wishes for THIS script (and the filters it was given) travel inside the script's own answer: the model passes ONE `wishes` to compose_answer for every source,
     so a source whose recipe had other wishes (checked bag, refundable) was judged by the wrong ones (seen 23 Oct 2026: a fare with no bag and no refund became 'Best fit')."""
     if isinstance(out, dict) and out.get("script"):
         head = "await (async () => {\n"
         base = public_base()
-        if base and site:       # the answer goes from the page straight to this server (myt_mcp/ingest.py); the wishes stay here
+        if base and site in NO_POST:     # the page's security policy stops the post, so the script gets no address to post to (claude.ai refused one: "sends page data to an unfamiliar outside web address", 26 Oct 2026)
+            STORE.new_run(site, out.get("wishes") or {}, out.get("filters_used"))      # kept only so compose_answer can tell a recipe was issued and not used
+            if out.get("wishes"):
+                carried = {"wishes": out.get("wishes") or {}, **({"filters_used": out["filters_used"]} if out.get("filters_used") else {})}
+                out["script"] = out["script"].replace(head, head + f"  const WISHES = {json.dumps(carried, ensure_ascii=False)};\n", 1)
+            out["how_the_answer_comes_back"] = "This page cannot send its answer to the server: the script returns it in parts (window.__mytParts). Pass each part to compose_answer exactly as it is, with the recipe's own `site` key."
+        elif base and site:       # the answer goes from the page straight to this server (myt_mcp/ingest.py); the wishes stay here
             token = STORE.new_run(site, out.get("wishes") or {}, out.get("filters_used"))
             out["script"] = out["script"].replace(head, head + f"  const INGEST = {json.dumps({'url': f'{base}/ingest/{token}', 'token': token})};\n", 1)
             out["ingest"] = token

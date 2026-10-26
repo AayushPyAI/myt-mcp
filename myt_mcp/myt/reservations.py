@@ -148,11 +148,19 @@ def _candidates(res: dict[str, Any], lines: list[dict[str, Any]], used: set[int]
     return same_supplier[0] if len(same_supplier) == 1 else None
 
 
-def reconcile(v3: dict[str, Any], today: date, soon_days: int = 7, profit_pcts: tuple[float, ...] = DEFAULT_PROFIT_PCTS) -> dict[str, Any]:
+def _quote_currency(v3: dict[str, Any]) -> str | None:
+    cur = (quotation_summary(v3) or {}).get("currency")
+    return (cur.get("name") if isinstance(cur, dict) else cur) or None
+
+
+def reconcile(v3: dict[str, Any], today: date, soon_days: int = 7, profit_pcts: tuple[float, ...] = DEFAULT_PROFIT_PCTS, eur_to_ils: float | None = None) -> dict[str, Any]:
     """Each supplier reservation against its quote line: the quote line price is cost plus the line profit, so the ratio
-    line total / reservation total should be 1 + one of the usual profit percentages."""
+    line total / reservation total should be 1 + one of the usual profit percentages. A reservation in another currency than the quote
+    (26 Oct 2026: all 19 shekel reservations of 13 trips were flagged MISMATCH against euro lines) is converted with `eur_to_ils` (shekels per euro) when
+    given; without it the row says CURRENCY and shows the rate each usual profit would imply."""
     summary = reservations_summary(v3, today, soon_days)
     lines, quote_label = _quote_lines(v3)
+    quote_cur = _quote_currency(v3)
     expected = [1 + p / 100 for p in profit_pcts]
     used: set[int] = set()
     rows, without_line = [], []
@@ -164,8 +172,21 @@ def reconcile(v3: dict[str, Any], today: date, soon_days: int = 7, profit_pcts: 
         index, line = found
         used.add(index)
         quote_total, notes = _line_total(line), []
-        ratio = round(quote_total / res["total_cost"], 4) if quote_total and res["total_cost"] else None
-        if ratio is None:
+        cost = res["total_cost"]
+        foreign = bool(res["currency"] and quote_cur and res["currency"] != quote_cur)
+        if foreign and res["currency"] == "ILS" and quote_cur == "EUR" and eur_to_ils and cost:
+            cost = round(cost / eur_to_ils, 2)
+            notes.append(f"reservation {res['total_cost']} ILS = {cost} EUR at {eur_to_ils} ILS per EUR")
+            foreign = False
+        ratio = round(quote_total / cost, 4) if quote_total and cost and not foreign else None
+        if foreign:
+            verdict = "CURRENCY"
+            if quote_total and cost:
+                implied = ", ".join(f"{round(cost / (quote_total / (1 + p / 100)), 3)} at {p:g}% profit" for p in (0.0, *profit_pcts))
+                notes.append(f"reservation is in {res['currency']} ({res['total_cost']}), the quote line in {quote_cur} ({quote_total}): the rate it implies is {implied}; pass eur_to_ils (MYT's current EUR to ILS rate) to compare")
+            else:
+                notes.append(f"reservation is in {res['currency']}, the quote line in {quote_cur}: pass eur_to_ils to compare")
+        elif ratio is None:
             verdict = "cannot compare"
         elif any(abs(ratio - e) / e <= RATIO_TOLERANCE for e in expected):
             verdict = "ok"
@@ -177,11 +198,12 @@ def reconcile(v3: dict[str, Any], today: date, soon_days: int = 7, profit_pcts: 
             verdict = "MISMATCH"
         rows.append({
             "order_id": res["order_id"], "supplier": res["supplier"], "product": res["product"], "status": res["status"],
-            "reservation_cost": res["total_cost"], "quote_line": line.get("product"), "quote_line_total": quote_total,
+            "reservation_cost": res["total_cost"], "reservation_currency": res["currency"], "quote_currency": quote_cur, "quote_line": line.get("product"), "quote_line_total": quote_total,
             "ratio": ratio, "implied_profit_pct": round((ratio - 1) * 100, 1) if ratio else None, "verdict": verdict, "notes": notes,
         })
     lines_without_reservation = [f"{ln.get('supplier')} / {ln.get('product')} ({ln.get('package')})" for i, ln in enumerate(lines) if i not in used]
     bad = sum(1 for r in rows if r["verdict"] != "ok")
+    currency_rows = sum(1 for r in rows if r["verdict"] == "CURRENCY")
     return {
         "quotation": quote_label,
         "profit_pcts_accepted": list(profit_pcts),
@@ -191,7 +213,7 @@ def reconcile(v3: dict[str, Any], today: date, soon_days: int = 7, profit_pcts: 
         "quote_lines_without_reservation": lines_without_reservation,
         "voucher_flags": summary["voucher_flags"],
         "by_status": summary["by_status"],
-        "totals": {"reservations_cost": summary["total_cost"], "rows_ok": len(rows) - bad, "rows_to_check": bad},
+        "totals": {"reservations_cost": summary["total_cost"], "rows_ok": len(rows) - bad, "rows_to_check": bad, "rows_in_another_currency": currency_rows},
         "not_in_api": NOT_IN_API,
     }
 

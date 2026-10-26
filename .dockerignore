@@ -1,0 +1,15 @@
+.git
+.venv
+.env
+.env.*
+.pytest_cache
+__pycache__
+*.pyc
+*.log
+tests
+docs
+deploy
+data
+.DS_Store
+PROJECT_STATUS.md
+README.md

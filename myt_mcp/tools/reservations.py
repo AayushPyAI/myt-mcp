@@ -109,15 +109,20 @@ def register(mcp: MCPServer, services: Services) -> None:
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     @with_checked_at
-    async def reconcile_trip(trip_id: int, soon_days: int = 7, fresh: bool = False) -> Any:
+    async def reconcile_trip(trip_id: int, soon_days: int = 7, fresh: bool = False, eur_to_ils: float | None = None) -> Any:
         """Reconciliation of a trip (התאמה): each supplier reservation against its line in the selected quotation. Shows
         per reservation: cost, quote line total, the profit the quote adds (3%, 13% or 15% is normal), and a verdict
         (ok / MISMATCH, also when the dates differ); reservations with no quote line, quote lines with no reservation,
         and voucher flags. Pass fresh=true right after a quote-line or reservation change made via Claude in Chrome, to
-        force a live read instead of one that may still show the pre-change data (the cache lasts 60 seconds). Read only:
-        it changes nothing in MYT. Report mismatches; do not fix them without the operator's approval."""
+        force a live read instead of one that may still show the pre-change data (the cache lasts 60 seconds). A reservation in
+        shekels (Aspire lounges, Hadas, Arbitrip...) against a euro quote line is NOT comparable as it stands: the row says CURRENCY and shows
+        the rate each usual profit would imply; pass `eur_to_ils` (shekels per euro, MYT's current rate from Accounting settings, or the Bank of
+        Israel rate from daily_exchange_rate) to convert it and get an ok or a MISMATCH. Read only: it changes nothing in MYT. Report mismatches;
+        do not fix them without the operator's approval."""
         check_days(soon_days)
-        return reconcile(await trip_v3(trip_id, fresh), date.today(), soon_days)
+        if eur_to_ils is not None and not 0.5 < eur_to_ils < 20:
+            raise ToolError("eur_to_ils is the number of shekels per euro (about 3 to 5).")
+        return reconcile(await trip_v3(trip_id, fresh), date.today(), soon_days, eur_to_ils=eur_to_ils)
 
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors

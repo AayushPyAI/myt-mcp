@@ -1,0 +1,12 @@
+# HTTPS in front of the server. {$DOMAIN} comes from .env (a name you own, or <ip-with-dashes>.sslip.io); Caddy gets and renews its certificate by itself.
+{$DOMAIN} {
+	# only what the connector and the Chrome scripts use is passed on; everything else is a 404
+	@mcp path /mcp/* /ingest/* /health
+	handle @mcp {
+		# flush_interval -1: MCP answers are streamed (server-sent events), do not buffer them
+		reverse_proxy app:8000 {
+			flush_interval -1
+		}
+	}
+	respond 404
+}

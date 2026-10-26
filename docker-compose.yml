@@ -1,0 +1,60 @@
+# Three containers: app (the MCP server), chrome (the automation browser) and caddy (HTTPS, the only one facing the internet).
+# Needs a .env next to this file (deploy/make_env.sh makes it from your local .env). Guide: docs/Deploy_VPS.md
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0                              # inside the Docker network only: nothing publishes this port
+      PORT: "8000"
+      BROWSER_CDP_URL: http://172.28.0.10:9333   # an IP, not a name: Chrome's DevTools port refuses a Host header that is a name
+      MYT_PAUSE_FILE: /data/paused_sites.json
+    volumes:
+      - app-data:/data
+    depends_on:
+      - chrome
+    networks:
+      appnet: {}
+
+  chrome:
+    build: ./deploy/chrome
+    restart: unless-stopped
+    shm_size: 1gb                                # Chrome crashes on pages with the default 64 MB
+    volumes:
+      - chrome-profile:/data
+    ports:
+      - "127.0.0.1:6080:6080"                    # noVNC, only through an SSH tunnel (docs/Deploy_VPS.md, step 8)
+    networks:
+      appnet:
+        ipv4_address: 172.28.0.10
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    networks:
+      appnet: {}
+
+networks:
+  appnet:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  app-data:
+  chrome-profile:
+  caddy-data:
+  caddy-config:

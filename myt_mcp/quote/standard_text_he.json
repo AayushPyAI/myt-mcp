@@ -1,0 +1,119 @@
+{
+ "source": "Tally's quotation 351-3 (Hebrew, copied unchanged) plus the three lines the newest quotations (354-2, 355-1) added; read 26 Oct 2026",
+ "includes": [
+  {
+   "id": "hotels",
+   "status": "confirmed",
+   "rule": "hotels",
+   "text": "לינה במלונות בדרגת {stars} כוכבים, כולל ארוחת בוקר.",
+   "stars_default": "4/5",
+   "question": "Hotel stars: MYT does not give them; 4/5 was written in 4 of 8 quotations (5/4, 5 and 4 in the others): which stars for this trip?"
+  },
+  {
+   "id": "car",
+   "status": "confirmed",
+   "rule": "rental_car",
+   "text": "השכרת רכב בהתאם לסוג הרכב המפורט בהצעה, כולל ביטוח להרחבת כיסוי ההשתתפות העצמית."
+  },
+  {
+   "id": "activities",
+   "status": "draft",
+   "rule": "always",
+   "text": "פעילויות במסגרת שירות פרטי ו/או הצטרפות לקבוצה, בהתאם למסלול הטיול.",
+   "question": "Written in 8 of 8 quotations: always, or only when the itinerary has activities?"
+  },
+  {
+   "id": "transfers",
+   "status": "draft",
+   "rule": "always",
+   "text": "הסעות פרטיות, במידת הצורך ובהתאם למסלול הטיול.",
+   "question": "Written in 8 of 8 quotations (the text itself says 'where needed'): always, or only with a transfer line?"
+  },
+  {
+   "id": "domestic_flights",
+   "status": "confirmed",
+   "rule": "domestic_flight",
+   "text": "טיסות פנים בהתאם למסלול הטיול, כולל מזוודה רשומה אחת במשקל של עד 20 ק\"ג לכל משתתף."
+  },
+  {
+   "id": "lounge",
+   "status": "draft",
+   "rule": "lounge",
+   "text": "גישה לטרקלין בשדה התעופה בן גוריון (TLV).",
+   "question": "Written in 8 of 8 quotations, each with a lounge line: only when the quotation or itinerary has the Ben Gurion lounge?"
+  },
+  {
+   "id": "dinner",
+   "status": "draft",
+   "rule": "always",
+   "text": "ארוחת ערב אחת.",
+   "question": "Written in 8 of 8 quotations: every trip, or only some?"
+  }
+ ],
+ "not_includes": [
+  {
+   "id": "one_way_fee",
+   "status": "draft",
+   "rule": "rental_car",
+   "text": "דמי החזרת הרכב בנקודת החזרה שונה ממקום האיסוף (One-Way Rental Fee), במידת הצורך.",
+   "question": "Written in 6 of 8 quotations that all have a rental car: only when the car is returned elsewhere?"
+  },
+  {
+   "id": "fuel_tolls",
+   "status": "confirmed",
+   "rule": "rental_car",
+   "text": "דלק, אגרות כבישים, חניה וביטוח אישי."
+  },
+  {
+   "id": "city_tax",
+   "status": "confirmed",
+   "rule": "hotels",
+   "text": "מיסים עירוניים מקומיים (City Tax), אשר ישולמו ישירות למלון, במידה וקיימים."
+  },
+  {
+   "id": "driving_permit",
+   "status": "confirmed",
+   "rule": "rental_car",
+   "text": "רישיון נהיגה בינלאומי, בנוסף לרישיון הנהיגה הישראלי התקף."
+  },
+  {
+   "id": "not_in_itinerary",
+   "status": "open",
+   "rule": "never",
+   "text": "פעילויות או שירותים שאינם מצוינים במסלול הטיול.",
+   "question": "Written in 5 of 8 quotations, with no pattern in the itinerary: add to every new quotation?"
+  },
+  {
+   "id": "extra_meals",
+   "status": "open",
+   "rule": "never",
+   "text": "ארוחות נוספות שאינן מצוינות בהצעה.",
+   "question": "Written in 3 of 8 quotations (the ones with an international flight in the itinerary): add to every new quotation?"
+  },
+  {
+   "id": "international_flights",
+   "status": "open",
+   "rule": "never",
+   "text": "המחיר אינו כולל טיסות בינלאומיות.",
+   "question": "Written in 2 of 8 quotations (both with an international flight in the itinerary, a third such trip has none): when?"
+  },
+  {
+   "id": "closing_framework",
+   "status": "confirmed",
+   "rule": "always",
+   "text": "זוהי תוכנית המסגרת לטיולכם. התוכנית ניתנת לשינויים וכוללת עד שלושה סבבי תיקונים. כל סבב תיקונים נוסף מעבר לכך יחויב בתשלום של 100 אירו."
+  },
+  {
+   "id": "closing_no_bookings",
+   "status": "confirmed",
+   "rule": "always",
+   "text": "טרם בוצעו הזמנות, ולכן הזמינות והמחירים עשויים להשתנות בכל עת ללא הודעה מוקדמת."
+  },
+  {
+   "id": "closing_passport",
+   "status": "confirmed",
+   "rule": "always",
+   "text": "אנא ודאו כי הדרכון שלכם בתוקף וכי השם המופיע בכרטיס האשראי תואם לשם המופיע בדרכון."
+  }
+ ]
+}

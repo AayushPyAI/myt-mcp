@@ -1,0 +1,218 @@
+{
+ "277718": {
+  "facts": {
+   "hotels": true,
+   "rental_car": true,
+   "domestic_flight": true,
+   "lounge": true
+  },
+  "manual": {
+   "hotels": true,
+   "car": true,
+   "activities": true,
+   "transfers": true,
+   "domestic_flights": true,
+   "lounge": true,
+   "dinner": true,
+   "one_way_fee": true,
+   "fuel_tolls": true,
+   "city_tax": true,
+   "driving_permit": true,
+   "not_in_itinerary": true,
+   "extra_meals": true,
+   "international_flights": true,
+   "closing_framework": true,
+   "closing_no_bookings": true,
+   "closing_passport": true
+  }
+ },
+ "277715": {
+  "facts": {
+   "hotels": true,
+   "rental_car": true,
+   "domestic_flight": false,
+   "lounge": true
+  },
+  "manual": {
+   "hotels": true,
+   "car": true,
+   "activities": true,
+   "transfers": true,
+   "domestic_flights": false,
+   "lounge": true,
+   "dinner": true,
+   "one_way_fee": true,
+   "fuel_tolls": true,
+   "city_tax": true,
+   "driving_permit": true,
+   "not_in_itinerary": true,
+   "extra_meals": true,
+   "international_flights": true,
+   "closing_framework": true,
+   "closing_no_bookings": true,
+   "closing_passport": true
+  }
+ },
+ "276946": {
+  "facts": {
+   "hotels": true,
+   "rental_car": true,
+   "domestic_flight": true,
+   "lounge": true
+  },
+  "manual": {
+   "hotels": true,
+   "car": true,
+   "activities": true,
+   "transfers": true,
+   "domestic_flights": true,
+   "lounge": true,
+   "dinner": true,
+   "one_way_fee": true,
+   "fuel_tolls": true,
+   "city_tax": true,
+   "driving_permit": true,
+   "not_in_itinerary": true,
+   "extra_meals": false,
+   "international_flights": false,
+   "closing_framework": true,
+   "closing_no_bookings": true,
+   "closing_passport": true
+  }
+ },
+ "272997": {
+  "facts": {
+   "hotels": true,
+   "rental_car": true,
+   "domestic_flight": true,
+   "lounge": true
+  },
+  "manual": {
+   "hotels": true,
+   "car": true,
+   "activities": true,
+   "transfers": true,
+   "domestic_flights": true,
+   "lounge": true,
+   "dinner": true,
+   "one_way_fee": true,
+   "fuel_tolls": true,
+   "city_tax": true,
+   "driving_permit": true,
+   "not_in_itinerary": false,
+   "extra_meals": false,
+   "international_flights": false,
+   "closing_framework": true,
+   "closing_no_bookings": true,
+   "closing_passport": true
+  }
+ },
+ "269362": {
+  "facts": {
+   "hotels": true,
+   "rental_car": true,
+   "domestic_flight": true,
+   "lounge": true
+  },
+  "manual": {
+   "hotels": true,
+   "car": true,
+   "activities": true,
+   "transfers": true,
+   "domestic_flights": false,
+   "lounge": true,
+   "dinner": true,
+   "one_way_fee": false,
+   "fuel_tolls": true,
+   "city_tax": true,
+   "driving_permit": true,
+   "not_in_itinerary": false,
+   "extra_meals": true,
+   "international_flights": false,
+   "closing_framework": true,
+   "closing_no_bookings": true,
+   "closing_passport": true
+  }
+ },
+ "261650": {
+  "facts": {
+   "hotels": true,
+   "rental_car": true,
+   "domestic_flight": true,
+   "lounge": true
+  },
+  "manual": {
+   "hotels": true,
+   "car": true,
+   "activities": true,
+   "transfers": true,
+   "domestic_flights": true,
+   "lounge": true,
+   "dinner": true,
+   "one_way_fee": true,
+   "fuel_tolls": true,
+   "city_tax": true,
+   "driving_permit": true,
+   "not_in_itinerary": false,
+   "extra_meals": false,
+   "international_flights": false,
+   "closing_framework": true,
+   "closing_no_bookings": true,
+   "closing_passport": true
+  }
+ },
+ "260842": {
+  "facts": {
+   "hotels": true,
+   "rental_car": true,
+   "domestic_flight": false,
+   "lounge": true
+  },
+  "manual": {
+   "hotels": true,
+   "car": true,
+   "activities": true,
+   "transfers": true,
+   "domestic_flights": false,
+   "lounge": true,
+   "dinner": true,
+   "one_way_fee": true,
+   "fuel_tolls": true,
+   "city_tax": true,
+   "driving_permit": true,
+   "not_in_itinerary": true,
+   "extra_meals": false,
+   "international_flights": false,
+   "closing_framework": true,
+   "closing_no_bookings": true,
+   "closing_passport": true
+  }
+ },
+ "260808": {
+  "facts": {
+   "hotels": true,
+   "rental_car": true,
+   "domestic_flight": true,
+   "lounge": true
+  },
+  "manual": {
+   "hotels": true,
+   "car": true,
+   "activities": true,
+   "transfers": true,
+   "domestic_flights": true,
+   "lounge": true,
+   "dinner": true,
+   "one_way_fee": false,
+   "fuel_tolls": true,
+   "city_tax": true,
+   "driving_permit": true,
+   "not_in_itinerary": true,
+   "extra_meals": false,
+   "international_flights": false,
+   "closing_framework": true,
+   "closing_no_bookings": true,
+   "closing_passport": true
+  }
+ }
+}

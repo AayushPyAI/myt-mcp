@@ -462,3 +462,16 @@ async def test_a_block_page_pauses_the_site_for_every_process_and_for_a_restart(
     assert again["ok"] is False and "paused" in again["error"] and sites.paused_minutes("getyourguide_find") > 0 and len(calls) == 1
     other = await sites.read_in_server_browser("cp_trains", "https://www.cp.pt", "https://www.cp.pt/x", {**out})
     assert "paused" not in str(other.get("error", ""))                              # the pause is per site
+
+
+def test_a_page_that_blocks_posts_gets_a_script_with_no_post_address_but_the_recipe_is_still_tracked(monkeypatch):
+    import myt_mcp.sites as sites
+    from myt_mcp.ingest import STORE
+    monkeypatch.setattr(sites, "public_base", lambda: "https://example.trycloudflare.com")
+    head = "await (async () => {\n"
+    for site in ("getyourguide_find", "viator_activity", "ratehawk_hotels"):
+        out = sites.embed_wishes({"script": head + "return 1;", "wishes": {"free_cancellation": True}, "filters_used": ["x"]}, site)
+        assert "INGEST" not in out["script"] and "trycloudflare" not in out["script"] and "const WISHES" in out["script"] and "ingest" not in out and "parts" in out["how_the_answer_comes_back"]
+    assert {r.site for r in STORE.issued(0)} == {"getyourguide_find", "viator_activity", "ratehawk_hotels"}
+    posting = sites.embed_wishes({"script": head + "return 1;", "wishes": {}}, "arbitrip_hotels")
+    assert "const INGEST" in posting["script"] and posting["ingest"]
