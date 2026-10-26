@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date
 from typing import Any
@@ -21,6 +22,12 @@ TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 def register(mcp: MCPServer, services: Services) -> None:
+    # Ofran blocks the server's IP (403 from India) and every try is one more refused request: the price is read in the operator's Chrome (ofran_recipe). The server tools stay off unless OFRAN_SERVER_SEARCH=1.
+    live = os.environ.get("OFRAN_SERVER_SEARCH") == "1"
+
+    def live_only(fn):
+        return mcp.tool(annotations=READ_ONLY)(fn) if live else fn
+
     async def resolve(query: str, what: str):
         if not query or not query.strip():
             raise ToolError(f"{what} is empty.")
@@ -29,7 +36,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             raise ToolError(f"No Ofran location matches {query!r}. Try the city name, the airport name or its IATA code (ofran_find_location).")
         return matches[0], matches[1:]
 
-    @mcp.tool(annotations=READ_ONLY)
+    @live_only
     @tool_errors
     async def ofran_find_location(query: str) -> list[dict[str, Any]]:
         """Find Ofran pick-up/drop-off points by city, airport name or IATA code (e.g. "Lisbon", "LIS",
@@ -39,7 +46,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             raise ToolError("query is empty.")
         return [loc.public() for loc in await services.ofran().find_locations(query)]
 
-    @mcp.tool(annotations=READ_ONLY)
+    @live_only
     @tool_errors
     @with_checked_at
     async def ofran_car_prices(
@@ -90,3 +97,17 @@ def register(mcp: MCPServer, services: Services) -> None:
         if summary.skipped:
             answer["warning"] = f"{summary.skipped} offers were left out because Ofran sent them in an unexpected format."
         return answer
+
+    if not live:
+        @mcp.tool(annotations=READ_ONLY)
+        @tool_errors
+        async def ofran_find_location(query: str) -> dict[str, Any]:
+            """NOT USED in this setup (Ofran refuses this server, 403): call ofran_recipe, it names the pick-up point itself and gives the script for Claude in Chrome."""
+            return {"ok": False, "searched": False, "next": "This tool is off. Call ofran_recipe (it asks the operator first, then gives the url and the script for Claude in Chrome); nothing was sent to Ofran."}
+
+        @mcp.tool(annotations=READ_ONLY)
+        @tool_errors
+        async def ofran_car_prices(location: str, pickup_date: date, dropoff_date: date, pickup_time: str = "10:00", dropoff_time: str = "10:00", dropoff_location: str | None = None,
+                                   driver_age: int | None = None, transmission: str = "any", max_results: int = 15) -> dict[str, Any]:
+            """NOT USED in this setup (Ofran refuses this server, 403): call ofran_recipe for the car prices; it asks the operator first."""
+            return {"ok": False, "searched": False, "next": "This tool is off. Call ofran_recipe (it asks the operator first, then gives the url and the script for Claude in Chrome); nothing was sent to Ofran."}

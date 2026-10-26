@@ -292,3 +292,13 @@ async def test_trip_pauses_a_site_for_thirty_minutes_and_then_lets_calls_through
         await lim.acquire()
     now[0] += 2 * 60
     await lim.acquire()                                                # the pause is over
+
+
+async def test_the_ofran_server_tools_are_off_by_default_and_send_nothing(monkeypatch):
+    monkeypatch.delenv("OFRAN_SERVER_SEARCH")
+    transport = FakeOfranTransport()
+    srv = server(transport=transport)
+    for name, args in (("ofran_find_location", {"query": "Ponta Delgada"}), ("ofran_car_prices", {"location": "PDL", "pickup_date": SOON.isoformat(), "dropoff_date": (SOON + timedelta(days=2)).isoformat()})):
+        r = (await call(srv, name, args)).structured_content
+        assert r["ok"] is False and r["searched"] is False and "ofran_recipe" in r["next"]
+    assert not transport.calls if hasattr(transport, "calls") else True

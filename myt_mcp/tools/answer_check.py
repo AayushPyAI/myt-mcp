@@ -14,7 +14,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp.composed import row_problems
+from myt_mcp.composed import amount_problems, row_problems, source_warnings
 from myt_mcp.errors import tool_errors
 
 Kind = Literal["flights", "hotels", "cars", "transfers", "trains", "activities", "lounges", "general"]
@@ -129,6 +129,11 @@ def register(mcp: MCPServer) -> None:
         It reads no site and changes nothing. Fix what it lists, then send. `kind` is the kind of answer ("general" for the rest)."""
         out = check_answer_text(draft, kind)
         typed = row_problems(draft, kind)
+        amounts, amount_warnings = amount_problems(draft)
+        amount_warnings += source_warnings(draft)
+        typed = [*typed, *amounts]
+        if amount_warnings:
+            out = {**out, "warnings": [*out.get("warnings", []), *amount_warnings]}
         if typed:
             out = {**out, "ok": False, "missing": [*out.get("missing", []), *typed]}
         log.info("CHECK check_answer kind=%s ok=%s missing=%s", kind, out.get("ok"), "; ".join(out.get("missing", []))[:600])      # rule messages only, never the draft

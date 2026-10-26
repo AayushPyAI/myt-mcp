@@ -33,6 +33,8 @@ ANSWER_SHAPE = [
 
 COMMON_ASK = "Ask ONCE, in one message, for what MYT does not hold; never answer for the operator and never guess."
 
+NEVER_BY_HAND = "read or type a price off a page by hand: compose_answer refuses it and check_answer reports it; if a script cannot send its answer, use its parts mode, or write that the source was not read"
+
 PLANS: dict[str, dict[str, Any]] = {
     "flights": {
         "ask_once": ["adults and children with their ages (MYT has only the number of travellers)", "direct only or connections allowed", "checked bag needed"],
@@ -151,7 +153,7 @@ def build_plan(kind: str, trip: dict[str, Any] | None = None) -> dict[str, Any]:
         "kind": kind, "follow_this": "This plan is part of the rules: do every step. Details of each rule: quote_guide(...) topics named below.",
         "ask_once": {"rule": COMMON_ASK, "questions": plan["ask_once"]},
         "sources_to_read": plan["sources"], "filters": plan["filters"], "fields_to_read_for_every_option": plan["fields"],
-        "never": plan["never"], "answer_shape": ANSWER_SHAPE,
+        "never": plan["never"] + [NEVER_BY_HAND], "answer_shape": ANSWER_SHAPE,
         "more": ["quote_guide('answer_format')", "quote_guide('source_data')", f"quote_guide('{ {'flights': 'flights', 'hotels': 'hotels', 'cars': 'cars', 'transfers': 'transfers', 'trains': 'trains', 'activities': 'activities', 'lounges': 'lounges'}[kind] }')"],
         "final_step": f'check_answer(draft, kind="{kind}") until ok is true',
     }

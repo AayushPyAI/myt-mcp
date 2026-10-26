@@ -6,6 +6,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from myt_mcp.composed import COMPOSED
 from myt_mcp.errors import tool_errors
 from myt_mcp.quote.calc import CostLine, QuoteTotals, calculate
 from myt_mcp.quote.compare import QuoteComparison, QuoteSnapshot, compare
@@ -34,9 +35,12 @@ def register(mcp: MCPServer) -> None:
         if free_pax < 0 or not 0 <= conversion_pct <= 100:
             raise ToolError("free_pax must be 0 or more and conversion_pct between 0 and 100.")
         try:
-            return calculate(lines, paying_pax, free_pax, conversion_pct, fixed_markups_pp, percent_markups)
+            totals = calculate(lines, paying_pax, free_pax, conversion_pct, fixed_markups_pp, percent_markups)
         except ValueError as e:
             raise ToolError(str(e)) from e
+        # only the totals are remembered for check_answer: the line prices were passed in by the assistant, so they must prove themselves against the compose_answer texts
+        COMPOSED.remember("quote", " ".join(f"{x:,.2f}" for x in (totals.net_pp, totals.net_pg, totals.margin_pp, totals.gross_pp, totals.gross_pg, totals.publish_pp, totals.publish_pg)))
+        return totals
 
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors

@@ -8,11 +8,12 @@ def anyio_backend():
 
 @pytest.fixture(autouse=True)
 def server_browser_tools_on(monkeypatch):
-    """The TAP, SATA, Viator and GetYourGuide server-browser tools are off in production (Chrome recipes replace them); the tests of those tools turn them on."""
+    """The TAP, SATA, Viator, GetYourGuide and Ofran server tools are off in production (Chrome recipes replace them); the tests of those tools turn them on."""
     monkeypatch.setenv("TAP_SERVER_BROWSER", "1")
     monkeypatch.setenv("SATA_SERVER_BROWSER", "1")
     monkeypatch.setenv("VIATOR_SERVER_BROWSER", "1")
     monkeypatch.setenv("GYG_SERVER_BROWSER", "1")
+    monkeypatch.setenv("OFRAN_SERVER_SEARCH", "1")
 
 
 @pytest.fixture(autouse=True)

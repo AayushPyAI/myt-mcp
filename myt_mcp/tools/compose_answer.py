@@ -19,6 +19,14 @@ log = logging.getLogger("myt_mcp")
 
 Kind = Literal["flights", "hotels", "cars", "transfers", "trains", "activities", "lounges"]
 
+# Sites read only through a recipe script in the operator's Chrome (their own tools are off): a row from them can come from a script answer (runs / site_results), never from typed `offers`.
+# Found 24 Oct 2026: RateHawk hotel and tour prices were read off the pages by hand, passed as `offers`, and the answer went out with prices the server never received.
+CHROME_ONLY = ("ratehawk", "arbitrip", "skyscanner", "el al", "comboios", "cp (", "getyourguide", "viator")
+
+
+def typed_chrome_rows(offers: list[Offer]) -> list[str]:
+    return sorted({o.source for o in offers if any(w in o.source.lower() for w in CHROME_ONLY)})
+
 
 def _is_parts(item: dict[str, Any]) -> bool:
     try:
@@ -61,6 +69,12 @@ def register(mcp: MCPServer) -> None:
         shown", picks Cheapest, Best fit, Most flexible and Recommended by fixed rules (10% rule, one currency, quotable rows only), and writes the
         required lines and links. If something is missing it returns `problems`: fix them and call again. It reads no site and changes nothing."""
         offers = list(offers or [])
+        typed = typed_chrome_rows(offers)
+        if typed:
+            log.info("CHECK compose_answer typed rows refused: %s", ", ".join(typed))
+            return {"ok": False, "problems": [f"{', '.join(typed)}: rows from this site cannot be typed or passed as `offers`; only the recipe script's own answer is accepted (`runs` with its `ingest` id, or the parts of a long answer). "
+                                              "Run the site's recipe again (RateHawk hotels: in parts mode, about 7 minutes), or, if the script really cannot read the page, put the site in not_checked with the reason 'could not be read: <the script's own error>'. Never read a price off a page by hand."],
+                    "next": "Do not write these prices into the answer either: say the site was not read."}
         sources_read = list(sources_read or [])
         not_checked = list(not_checked or [])
         wishes = wishes or hotel_wishes

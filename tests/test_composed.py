@@ -4,7 +4,7 @@ import pytest
 from mcp import Client
 
 from myt_mcp.app import create_server
-from myt_mcp.composed import COMPOSED, ComposedStore, row_problems
+from myt_mcp.composed import COMPOSED, ComposedStore, amount_problems, row_problems, source_warnings
 from myt_mcp.config import Settings
 from myt_mcp.services import Services
 
@@ -101,3 +101,47 @@ def test_a_source_with_one_link_per_leg_passes_compose_and_a_home_page_link_does
     assert run(legs)["ok"] is True and run("https://booking.flytap.com/booking/flights?depDate=10.12.2026")["ok"] is True
     for bad in ("https://www.flytap.com/", "TLV to LIS: https://www.flytap.com/; LIS to TLV: https://booking.flytap.com/x?a=1", "no link at all", None):
         assert any("not a home page" in p for p in run(bad)["problems"]), bad
+
+
+async def test_compose_answer_refuses_typed_rows_from_a_chrome_only_site_but_takes_a_tools_rows():
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        hotel = {"group": "Rome 8-10 Feb", "source": "RateHawk", "name": "Hotel Ripa Roma - Standard Double room for 3 guests", "price_total": 205.0, "currency": "EUR", "link": "https://www.ratehawk.com/hotel/x"}
+        refused = (await c.call_tool("compose_answer", {"kind": "hotels", "offers": [hotel], "sources_read": [{"name": "RateHawk", "read": 1, "of": 1, "link": hotel["link"]}]})).structured_content
+        assert refused["ok"] is False and "RateHawk" in refused["problems"][0] and "cannot be typed" in refused["problems"][0] and "Never read a price off a page by hand" in refused["problems"][0]
+        assert not COMPOSED.recent("hotels")
+        tour = dict(hotel, group="Colosseum", source="GetYourGuide", name="Colosseum tour")
+        assert (await c.call_tool("compose_answer", {"kind": "activities", "offers": [tour]})).structured_content["ok"] is False
+        taxi = {"group": "Transfers", "source": "Kiwitaxi", "name": "Sedan", "price_total": 88.0, "currency": "EUR", "price_basis": "per vehicle", "link": "https://kiwitaxi.com/x"}
+        assert "cannot be typed" not in " ".join((await c.call_tool("compose_answer", {"kind": "transfers", "offers": [taxi]})).structured_content.get("problems", []))
+
+
+SUMMARY = ("| Part | Best choice | Net € (family) |\n|---|---|---|\n| Flight out | El Al LY-383 | 492.45 |\n| Lounge | Aspire TLV | 240.00 |\n| Transfer | Kiwitaxi sedan | 88.00 |\n"
+           "| Hotel | Hotel Ripa Roma | 205.00 |\n")
+
+
+def test_a_table_price_no_tool_answer_holds_is_refused_and_the_assistants_own_sum_is_not():
+    store = ComposedStore()
+    store.remember("flights", "| El Al | LY-383 | 492.45 EUR |")
+    store.remember("lounges", "| Aspire | 80.00 EUR | per person |")
+    store.remember("transfers", "| Kiwitaxi | Sedan | 88.00 EUR |")
+    problems, warnings = amount_problems(SUMMARY, store)
+    assert len(problems) == 1 and "205" in problems[0] and "492.45" not in problems[0] and "240" not in problems[0] and "88" not in problems[0]      # 240 = 80 x 3 persons
+    store.remember("hotels", "| Hotel Ripa Roma | 205.00 EUR |")
+    assert amount_problems(SUMMARY, store) == ([], [])
+    store.remember("quote", "2,065.52 2,389.62")
+    assert amount_problems(SUMMARY + "\nTotal 2,065.52 EUR, selling price 2,389.62 EUR.", store) == ([], [])
+    _, warnings = amount_problems("RateHawk Transfers has a minivan for €101 with a child seat.", store)
+    assert warnings and "101" in warnings[0]
+    assert amount_problems(SUMMARY, ComposedStore()) == ([], [])          # no composed answer at all is row_problems' message, not this one
+
+
+def test_a_source_the_composed_answers_read_but_the_draft_never_names_is_warned_about():
+    store = ComposedStore()
+    store.remember("flights", "Sources checked: TAP (7 of 7 read); El Al (2 of 2 read); SATA / Azores Airlines (3 of 3 read) | Not checked: Israir (not connected)\n| TAP | x |")
+    store.remember("hotels", "Sources checked: RateHawk (30 of 80 read); Arbitrip (30 of 40 read) | Not checked: none")
+    draft = "Sources: TAP flights, SATA, RateHawk hotels in Lisbon."
+    warnings = source_warnings(draft, store)
+    assert len(warnings) == 1 and "El Al" in warnings[0] and "Arbitrip" in warnings[0] and "TAP" not in warnings[0] and "SATA" not in warnings[0] and "Israir" not in warnings[0]
+    assert source_warnings(draft + " El Al, Arbitrip.", store) == []
+    assert source_warnings(draft, ComposedStore()) == []
