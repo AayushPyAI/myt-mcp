@@ -34,6 +34,13 @@ Written 26 Oct 2026. Not tested on a real VPS yet (no access from the Mac): foll
 
 So the VPS replaces `start_all.sh` (Chrome 9333 + tunnel + server). The operator still needs Claude in Chrome on her own machine.
 
+## Who reads which site (Claude in Chrome or Playwright on the VPS)
+| Where it runs | Sources | How to tell in the log |
+|---|---|---|
+| **Claude in Chrome**: the operator's own Chrome runs a script, which posts its answer to `PUBLIC_BASE_URL/ingest/<token>` (from the operator's IP) | TAP, RateHawk (air, cars, transfers, hotels), Skyscanner, El Al, Arbitrip, Ofran, GetYourGuide (list and tour), the page of one Viator tour | the recipe tool answers in 0.0 s and a `POST /ingest/...` line follows |
+| **Playwright on the VPS**: the server drives the `chrome` container over the DevTools protocol (from the VPS's datacenter IP); no browser extension involved | SATA, CP, the Viator list, Aspire | the recipe tool takes seconds (CP about 3 s, SATA about 9 s, Viator list 6 to 8 s) and there is no `POST /ingest` for it |
+Playwright is used only for pages whose security policy stops the operator's Chrome from sending the answer to the server, or that need no login. Example, the SATA test of 26 Oct 2026: 4 sources, 3 `POST /ingest` lines (TAP, RateHawk Air, Skyscanner), SATA read by the server in 8.8 s.
+
 ## Why a VPS also helps
 - A fixed URL: the connector in claude.ai is added once and no longer has to be removed and added when the tunnel changes (a tool change still does).
 - Ofran refuses Indian IPs (403). A server outside India can read Ofran by itself.

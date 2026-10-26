@@ -376,8 +376,13 @@ def bag_unconfirmed(offers: list[Offer]) -> str | None:
     if not unsure:
         return None
     best = min((o for o in unsure if o.price_total is not None), key=lambda o: o.price_total, default=None)
-    return (f"A checked bag was asked, but {', '.join(sorted({o.source for o in unsure}))} do not show whether one is included, so their rows are not picks"
-            + (f" (the cheapest, {best.source} {best.price_total:,.2f} {best.currency}, needs its fare rules checked on the airline's page before quoting)." if best else "."))
+    quotable = [o for o in offers if o.quotable]
+    parts = []
+    for source in sorted({o.source for o in unsure}):         # a source may show the bag on some fares and not on others: say how many rows, not the whole source (26 Oct 2026: RateHawk Air was named as a whole)
+        n, total = sum(1 for o in unsure if o.source == source), sum(1 for o in quotable if o.source == source)
+        parts.append(f"{source} ({'all its rows' if n == total else f'{n} of its {total} rows'})")
+    return (f"A checked bag was asked, but some rows do not show whether one is included: {', '.join(parts)}; those rows are not picks"
+            + (f" (the cheapest of them, {best.source} {best.price_total:,.2f} {best.currency}, needs its fare rules checked on the airline's page before quoting)." if best else "."))
 
 
 def apply_wishes(offers: list[Offer], wishes: dict | None) -> None:

@@ -72,6 +72,25 @@ def unused_recipes(kind: str, used: set[str], not_checked: list[NotChecked]) -> 
     return [f"{site} (the recipe was issued at {time.strftime('%H:%M', time.localtime(at))})" for site, at in found.items()]
 
 
+def split_problems(carried: dict[tuple[str, str], dict[str, Any]]) -> list[str]:
+    """Flight sources searched with different travellers (3 adults + 1 child on one, 2 adults + 2 children on another) give prices that cannot be compared, and a
+    cheaper row of the odd one then becomes the 'Cheapest' pick (26 Oct 2026: Skyscanner counted the 12-year-old as a child, the airlines as an adult)."""
+    by_day: dict[str, dict[tuple[int, int, int], list[str]]] = {}
+    for (site, _run), c in carried.items():
+        exp = ((c.get("wishes") or {}).get("expect")) or {}
+        if exp.get("adults") is None or not exp.get("day"):
+            continue
+        split = (int(exp["adults"]) + int(exp.get("seniors") or 0), int(exp.get("children") or 0), int(exp.get("infants") or 0))
+        by_day.setdefault(str(exp["day"]), {}).setdefault(split, []).append(site)
+    out = []
+    for day, splits in by_day.items():
+        if len(splits) > 1:
+            shown = "; ".join(f"{', '.join(sorted(set(sites)))}: {a} adult(s) + {c} child(ren)" + (f" + {i} infant(s)" if i else "") for (a, c, i), sites in splits.items())
+            out.append(f"{day}: the sources were searched with different travellers ({shown}), so their prices cannot be compared. Run the odd one again with the same split as the others "
+                       "(the operator's age rule decides who counts as a child; ask if it is not known).")
+    return out
+
+
 def register(mcp: MCPServer) -> None:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
@@ -114,6 +133,10 @@ def register(mcp: MCPServer) -> None:
         for raw, url in zip(ratehawk_results or [], list(ratehawk_urls or []) + [""] * len(ratehawk_results or [])):     # the first version's parameters
             items.append({"site": "ratehawk_hotels", "result": raw, "url": url})
         carried = carried_wishes(items)
+        mixed = split_problems(carried) if kind == "flights" else []
+        if mixed:
+            log.info("CHECK compose_answer travellers differ: %s", "; ".join(mixed)[:400])
+            return {"ok": False, "problems": mixed, "next": "Fix this (search the odd source again with the same adults and children) and call compose_answer again. Do not write the answer yourself."}
         if not filters_used:          # each recipe handed over the filters it was given, inside its own script answer
             filters_used = list(dict.fromkeys(f for c in carried.values() for f in c["filters_used"]))
         if items:

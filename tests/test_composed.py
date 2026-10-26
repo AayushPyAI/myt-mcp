@@ -181,3 +181,24 @@ def test_a_display_name_for_a_site_is_refused_with_the_keys_it_could_mean():
     gyg = unknown_site("GetYourGuide", mods)
     assert "'getyourguide_activity'" in gyg and "'getyourguide_find'" in gyg and "Did you mean" in gyg
     assert "'ratehawk_hotels'" in unknown_site("Ratehawk", mods) and "Did you mean" not in unknown_site("Nowhere", mods)
+
+
+def test_sources_searched_with_different_travellers_are_named_and_refused_but_equal_ones_and_other_days_are_not():
+    from myt_mcp.tools.compose_answer import split_problems
+    wish = lambda adults, children, day="2027-03-09", **kw: {"wishes": {"expect": {"adults": adults, "children": children, "day": day, **kw}}}
+    same = {("tap", "r1"): wish(3, 1), ("sata", "r2"): wish(3, 1), ("ratehawk_air", "r3"): wish(3, 1, infants=0)}
+    assert split_problems(same) == []
+    mixed = {**same, ("skyscanner", "r4"): wish(2, 2)}
+    out = split_problems(mixed)
+    assert len(out) == 1 and "2027-03-09" in out[0] and "skyscanner: 2 adult(s) + 2 child(ren)" in out[0] and "ratehawk_air, sata, tap: 3 adult(s) + 1 child(ren)" in out[0] and "cannot be compared" in out[0]
+    assert split_problems({("tap", "r1"): wish(3, 1, "2027-03-09"), ("tap", "r2"): wish(2, 2, "2027-03-16")}) == []          # two legs on two days are judged separately
+    assert split_problems({("elal", "r1"): wish(2, 1, seniors=1), ("tap", "r2"): wish(3, 1)}) == []          # El Al's seniors count as adults
+    assert split_problems({("cp_trains", "r1"): {"wishes": {"expect": {"passengers": 2, "day": "2027-03-09"}}}}) == []      # a source with no split is left out
+
+
+def test_the_bag_note_says_how_many_rows_of_a_source_do_not_show_a_bag():
+    from myt_mcp.compose import Offer, bag_unconfirmed
+    mk = lambda src, price, bag: Offer(group="g", source=src, name="x", price_total=price, currency="EUR", price_basis="b", fits=True, details={"checked_bag": bag})
+    rows = [mk("RateHawk Air", 343.72, "23 kg checked bag included"), mk("RateHawk Air", 516.76, "not shown on the list"), mk("RateHawk Air", 400.0, "not shown on the list"), mk("El Al", 846.0, "not shown")]
+    note = bag_unconfirmed(rows)
+    assert "RateHawk Air (2 of its 3 rows)" in note and "El Al (all its rows)" in note and "RateHawk Air 400.00 EUR" in note and "some rows" in note
