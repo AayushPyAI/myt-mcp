@@ -1,5 +1,5 @@
 // CP (Comboios de Portugal) results reader. Run it on the RESULTS page https://www.cp.pt/en/resultado-pesquisa?... (the stations, the date, the passengers and the class are in the address).
-// Read only: it reads the journey cards the page drew (departure, arrival, duration, service, price, promo flag). The price on the card is for ALL the passengers ("3x"). Nothing is bought or reserved.
+// Read only: it reads the journey cards the page drew (departure, arrival, duration, the services, the number of changes, price, promo flag). The price on the card is for ALL the passengers ("3x"). Nothing is bought or reserved.
 await (async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const text = () => (document.body && document.body.innerText) || '';
@@ -18,8 +18,12 @@ await (async () => {
   const rows = cards.map((c) => {
     const lines = c.innerText.split('\n').map((x) => x.trim()).filter(Boolean);
     const promo = after(lines, 'Promo price');
+    // a card with a change shows a lone number (the changes) before the duration and one "Service" line per train: "1 | 03h03 | ... Service Regional | R | Service Alfa Pendular | AP" (read on cp.pt 26 Oct 2026); a direct train has neither
+    const di = lines.findIndex((l) => /^\d{2}h\d{2}$/.test(l));
+    const changesN = di > 0 && /^\d+$/.test(lines[di - 1]) ? Number(lines[di - 1]) : 0;
+    const services = lines.filter((l) => /^Service\b/.test(l)).map((l) => l.replace(/^Service\s*/, '')).filter(Boolean);
     return { pax: (lines.find((l) => /^\d+x$/.test(l)) || '').replace('x', '') || null, dur: lines.find((l) => /^\d{2}h\d{2}$/.test(l)) || null, cls: lines.find((l) => /Class/.test(l)) || null,
-      dep: after(lines, 'Departure at'), arr: after(lines, 'Arrival at'), service: (lines.find((l) => /^Service\b/.test(l)) || '').replace(/^Service\s*/, '') || null, code: lines[lines.findIndex((l) => /^Service\b/.test(l)) + 1] || null,
+      dep: after(lines, 'Departure at'), arr: after(lines, 'Arrival at'), service: services[0] || null, services, changes_n: changesN, code: lines[lines.findIndex((l) => /^Service\b/.test(l)) + 1] || null,
       price: euro(promo || after(lines, 'Price')), promo: promo != null, was: euro(after(lines, 'Price without promotion')), note: lines.find((l) => /^Promo ticket/i.test(l)) || null,
       changes: lines.find((l) => /change|transfer|connection/i.test(l) && !/^See detail/.test(l)) || null };
   });

@@ -93,3 +93,30 @@ def test_a_station_given_as_cps_own_id_is_checked_by_the_address_not_by_name():
     assert not by_id[2]
     wrong = convert_all([{"site": "cp_trains", "result": _answer([AP], route=route), "url": "u"}], _expect(origin="Faro", destination="Coimbra-B"))[2]
     assert any("not Faro to Coimbra-B" in p for p in wrong)          # a station given by name is still compared with the page
+
+
+def test_a_latest_departure_keeps_only_the_morning_trains_and_a_missing_time_cannot_fit():
+    morning, evening, night = dict(AP, dep="07:09"), dict(AP, dep="15:30", arr="18:00"), dict(IC, dep="22:30", arr="01:43")
+    offers = convert_all([{"site": "cp_trains", "result": _answer([morning, evening, night]), "url": "u"}], _expect(latest="12:00"))[0]
+    assert [o.fits for o in offers] == [True, False, False]
+    nodep = convert_all([{"site": "cp_trains", "result": _answer([dict(AP, dep=None)]), "url": "u"}], _expect(latest="12:00"))[0]
+    assert nodep[0].fits is False
+    window = convert_all([{"site": "cp_trains", "result": _answer([dict(AP, dep="06:00"), morning]), "url": "u"}], _expect(earliest="07:00", latest="12:00"))[0]
+    assert [o.fits for o in window] == [False, True]
+    with pytest.raises(ValueError, match="latest"):
+        cp_trains_recipe("Lisboa Oriente", "Coimbra-B", date(2026, 11, 3), 3, latest="noon")
+
+
+def test_the_cards_own_number_of_changes_decides_direct_not_the_journey_time():
+    """26 Oct 2026: a Regional + Alfa Pendular train of 3h03 looked direct by its journey time; the card shows '1' and two Service lines."""
+    direct = dict(AP, changes_n=0, services=["Alfa Pendular"])
+    change = dict(AP, dep="09:45", arr="12:48", dur="03h03", changes_n=1, services=["Regional", "Alfa Pendular"])
+    offers, _, problems, _, notes = convert_all([{"site": "cp_trains", "result": _answer([direct, change]), "url": "u"}], _expect(direct_only=True))
+    assert not problems and [o.fits for o in offers] == [True, False]
+    assert offers[0].details["changes"] == "direct (the card shows no change)"
+    assert offers[1].details["changes"] == "1 change: Regional + Alfa Pendular" and offers[1].name.startswith("Regional + Alfa Pendular 09:45-12:48")
+    assert not any("only LOOK direct" in n for n in notes)          # nothing is guessed when the cards carry the changes
+    old = convert_all([{"site": "cp_trains", "result": _answer([AP]), "url": "u"}], _expect(direct_only=True))              # an older script answer has no changes_n: the journey-time guess stays
+    assert any("only LOOK direct" in n for n in old[4]) and old[0][0].details["changes"].startswith("not shown")
+    anything = convert_all([{"site": "cp_trains", "result": _answer([change]), "url": "u"}], _expect())[0]
+    assert anything[0].fits is True          # changes are fine when direct was not asked

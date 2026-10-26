@@ -84,15 +84,15 @@ PLANS: dict[str, dict[str, Any]] = {
         "never": ["let Mozio's default 12:00 decide the time", "type '3 adults' for '3 passengers'", "say 'roomier' when the capacities are equal", "keep a time the operator guessed once the flights show the real one: when the flight you found lands or leaves at another time, search again with the real time and say so"],
     },
     "trains": {
-        "ask_once": ["adults and children's ages", "earliest departure time", "class"],
+        "ask_once": ["adults and children's ages", "departure time window (earliest and latest: 'in the morning' means latest 12:00)", "class"],
         "sources": [
             {"name": "Trenitalia", "how": "train_prices (use the city station, e.g. Roma Termini)", "use": "Italy"},
-            {"name": "CP Comboios de Portugal", "how": "cp_trains_recipe, one call per leg (it asks class, earliest time and refundable first; you open its url and run its script in Claude in Chrome; CP's own prices for all passengers; a far date shows no trains: CP sells only some weeks ahead, then put CP in not_checked with the reason 'not available'), compose_answer with runs=[its ingest id]", "use": "Portugal (Lisbon, Porto, Coimbra...)"},
+            {"name": "CP Comboios de Portugal", "how": "cp_trains_recipe, one call per leg (it asks class, the departure time window (earliest and latest) and refundable first; you open its url and run its script in Claude in Chrome; CP's own prices for all passengers; a far date shows no trains: CP sells only some weeks ahead, then put CP in not_checked with the reason 'not available'), compose_answer with runs=[its ingest id]", "use": "Portugal (Lisbon, Porto, Coimbra...)"},
             {"name": "RateHawk Train tickets", "how": "ratehawk_trains_recipe, one call per leg (it asks changes, class and budget first; you open its url and run its script in Claude in Chrome: 30 trains a batch, offset for more), compose_answer with its wishes and filters_used", "use": "always"},
         ],
         "fields": ["train numbers and times", "class and fare", "change and refund terms", "seats left", "group total with the child rule", "link"],
         "filters": "direct first; the leg's day and cities from the itinerary.",
-        "never": ["treat a 400 as 'too far ahead' (it can be the station pair)"],
+        "never": ["treat a 400 as 'too far ahead' (it can be the station pair)", "leave a source of this plan out without a word: if you did not read it, put it in Not checked with the real reason (RateHawk Train tickets has no Lisbon or Porto station: its recipe answers 'route not served' without opening a page); 'you asked for CP only' is not a reason"],
     },
     "activities": {
         "ask_once": ["adults and children's ages", "time of day or duration wish"],
