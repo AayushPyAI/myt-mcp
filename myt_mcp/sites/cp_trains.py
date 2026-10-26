@@ -28,7 +28,9 @@ SOURCE = "CP (Comboios de Portugal)"
 GROUP = "Trains"
 NEEDS_WIDE_WINDOW = False
 HERE = Path(__file__).parent
-STATIONS = {"lisboa oriente": "94-31039", "coimbra b": "94-36004", "coimbra": "94-36004", "porto campanha": "94-2006", "porto": "94-2006"}      # ids read from the address after a search, 23 Oct 2026
+STATIONS = {"lisboa oriente": "94-31039", "lisbon oriente": "94-31039", "lisboa santa apolonia": "94-30007", "lisbon santa apolonia": "94-30007", "santa apolonia": "94-30007",
+            "coimbra b": "94-36004", "coimbra": "94-36004", "porto campanha": "94-2006", "porto": "94-2006"}      # ids read from the address after a search, 23 Oct 2026 (Santa Apolonia 26 Oct: its id gave the Lisboa Santa Apolonia to Porto Campanha list on cp.pt)
+CODE = re.compile(r"94-\d{3,6}")
 ASK = {"class": "Class: 2nd (tourist) or 1st?", "time": "Earliest departure time on that day (or any)?", "refundable": "Refundable tickets only (CP's promo fares are non-refundable), or any fare?",
        "direct": "Direct trains only, or is a change fine?"}
 RESULTS = "https://www.cp.pt/en/resultado-pesquisa"
@@ -40,6 +42,9 @@ def _key(name: str) -> str:
 
 
 def station_id(name: str) -> str | None:
+    """A station by name, or CP's own id ("94-30007") given as it is: the lookup steps below end with an id, and passing it must work (26 Oct 2026: the id was refused as an unknown station)."""
+    if CODE.fullmatch((name or "").strip()):
+        return name.strip()
     return STATIONS.get(_key(name))
 
 
@@ -54,11 +59,16 @@ def cp_trains_recipe(origin: str, destination: str, day: date, passengers: int =
         return {"needs_station_ids": missing, "known_stations": sorted(STATIONS), "steps": [
             "Open https://www.cp.pt/en in the operator's Chrome. In 'From' type the station and click the suggestion with the same name (the same for 'To'), then press Search (nothing is bought).",
             "On the results page run with the javascript tool: (() => new URLSearchParams(location.search).get('departureStation') + ' ' + new URLSearchParams(location.search).get('arrivalStation'))()  and tell the operator the ids "
-            "so that they are added; for now open the results address with those two ids by hand: " + RESULTS + "?passageiros=<n>&selectedClass=<1|2>&startDate=<yyyy-mm-dd>&departureStation=<id>&arrivalStation=<id>"]}
+            "then call this tool again giving each id (such as 94-30007) as the station name: an id is accepted as it is. Tell the operator the ids too, so that they are added to the tool. Without the tool, the results address is: " + RESULTS + "?passageiros=<n>&selectedClass=<1|2>&startDate=<yyyy-mm-dd>&departureStation=<id>&arrivalStation=<id>"]}
     url = f"{RESULTS}?passageiros={passengers}&selectedClass={1 if first_class else 2}&startDate={day.isoformat()}&departureStation={a}&arrivalStation={b}"
     expect = {"origin": origin, "destination": destination, "day": day.isoformat(), "passengers": passengers, "class": "1st" if first_class else "2nd", "earliest": earliest, "refundable": refundable, "direct_only": direct_only,
               "leg": f"{origin} to {destination}, {day:%d %b %Y}"}
     return {"url": url, "script": with_emit((HERE / "cp_trains.js").read_text(encoding="utf-8")), "expect": expect}
+
+
+def _same_place(expected: str, page: str) -> bool:
+    """The page's station is the one asked for: by the first word of its name; a station given as CP's own id has no name to compare (the id is in the address the page was opened with)."""
+    return bool(CODE.fullmatch((expected or "").strip())) or _key(expected).split(" ")[0] in _key(page)
 
 
 def _minutes(text: str | None) -> int | None:
@@ -93,7 +103,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         if d and not re.search(rf"{month}\s+{want.day},\s+{want.year}", d):
             problems.append(f"the page is for '{d}', not {want:%B} {want.day}, {want.year}: open the url again (the date is in the address)")
         sides = re.split(r"\s*[›>]\s*", data.get("route") or "")
-        if len(sides) == 2 and not (_key(exp["origin"]).split(" ")[0] in _key(sides[0]) and _key(exp["destination"]).split(" ")[0] in _key(sides[1])):
+        if len(sides) == 2 and not (_same_place(exp["origin"], sides[0]) and _same_place(exp["destination"], sides[1])):
             problems.append(f"the page is for '{data.get('route')}', not {exp['origin']} to {exp['destination']}: open the url again")
         if data.get("class_text") and exp.get("class") and not str(data["class_text"]).lower().startswith(exp["class"]):
             problems.append(f"the page shows '{data['class_text']}', not the {exp['class']} class: open the url again")

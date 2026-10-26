@@ -40,6 +40,12 @@ def test_the_address_carries_stations_date_passengers_and_class():
     assert unknown["needs_station_ids"] == ["Faro"] and "departureStation" in " ".join(unknown["steps"])
     with pytest.raises(ValueError):
         cp_trains_recipe("Lisboa Oriente", "Coimbra-B", date(2026, 11, 3), 0)
+    # 26 Oct 2026: Lisboa Santa Apolonia was missing, and an id given as the station was refused
+    sa = cp_trains_recipe("Lisboa Santa Apolónia", "Porto Campanhã", date(2026, 11, 20), 2)
+    assert sa["url"].endswith("startDate=2026-11-20&departureStation=94-30007&arrivalStation=94-2006")
+    by_id = cp_trains_recipe("94-30007", "94-2006", date(2026, 11, 20), 2)
+    assert by_id["url"] == sa["url"] and "needs_station_ids" not in by_id
+    assert "94-30007" in " ".join(cp_trains_recipe("Faro", "Porto", date(2026, 11, 20))["steps"]) or "id" in " ".join(cp_trains_recipe("Faro", "Porto", date(2026, 11, 20))["steps"])
 
 
 def test_group_prices_promo_and_non_refundable_are_read_from_the_cards():
@@ -79,3 +85,11 @@ async def test_the_tool_asks_first_then_returns_the_address(monkeypatch):
         assert first["ok"] is False and len(first["ask_operator"]) == 4 and first["searched"] is False
         out = json.loads((await c.call_tool("cp_trains_recipe", {"origin": "Lisboa Oriente", "destination": "Coimbra-B", "day": "2026-11-03", "passengers": 3, "first_class": False, "earliest": "07:00", "refundable": False, "direct_only": False})).content[0].text)
     assert out["url"].startswith("https://www.cp.pt/en/resultado-pesquisa?passageiros=3") and out["ingest"] and "Departing after 07:00 (operator)" in out["filters_used"]
+
+
+def test_a_station_given_as_cps_own_id_is_checked_by_the_address_not_by_name():
+    route = "Lisboa Santa Apolónia › Porto Campanhã"
+    by_id = convert_all([{"site": "cp_trains", "result": _answer([AP], route=route), "url": "u"}], _expect(origin="94-30007", destination="94-2006"))
+    assert not by_id[2]
+    wrong = convert_all([{"site": "cp_trains", "result": _answer([AP], route=route), "url": "u"}], _expect(origin="Faro", destination="Coimbra-B"))[2]
+    assert any("not Faro to Coimbra-B" in p for p in wrong)          # a station given by name is still compared with the page
