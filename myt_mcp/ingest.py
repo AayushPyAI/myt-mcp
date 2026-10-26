@@ -51,6 +51,14 @@ class IngestStore:
         self._runs[token] = Run(site, wishes or {}, list(filters_used or []))
         return token
 
+    def clear(self) -> None:
+        self._runs.clear()
+
+    def issued(self, since: float) -> list[Run]:
+        """Runs a recipe call issued after `since` (wall-clock seconds), oldest first."""
+        self._sweep()
+        return sorted((r for r in self._runs.values() if r.created > since), key=lambda r: r.created)
+
     def accept(self, token: str, body: bytes) -> tuple[int, dict[str, Any]]:
         """-> (http status, receipt). The body is the script's whole answer as JSON text."""
         self._sweep()

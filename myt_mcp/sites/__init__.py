@@ -283,7 +283,7 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
         site = item.get("site", "")
         mod = mods.get(site)
         if mod is None:
-            problems.append(f"unknown site '{site}': known sites are {sorted(mods)}")
+            problems.append(unknown_site(site, mods))
             continue
         narrow = narrow_window(mod, item)
         if narrow:
@@ -355,6 +355,14 @@ def checksum_problem(raw: str) -> str | None:
         return "has no checksum (it was cut or rewritten)"
     expected = format(zlib.crc32((text[:cut] + "}").encode("utf-8")), "08x")
     return None if text[cut + 8:-2] == expected else "does not match its checksum (a character was changed while it was passed on)"
+
+
+def unknown_site(site: str, mods: dict[str, Any]) -> str:
+    """The site name is the recipe's own key ('getyourguide_find'): a display name ('GetYourGuide', 'Ratehawk') is refused with the keys it could mean (24-26 Oct 2026: both were sent and the rows were dropped)."""
+    flat = re.sub(r"[^a-z0-9]", "", str(site).lower())
+    near = sorted(k for k in mods if flat and (flat in k.replace("_", "") or k.replace("_", "") in flat))
+    hint = f" Did you mean {' or '.join(repr(k) for k in near)}? Use the exact key, the same as the recipe tool you ran (the list of tours or hotels and the page of one tour or room are different keys)." if near else ""
+    return f"unknown site '{site}': known sites are {sorted(mods)}.{hint}"
 
 
 def check_parts(site_results: list[dict[str, Any]]) -> list[str]:

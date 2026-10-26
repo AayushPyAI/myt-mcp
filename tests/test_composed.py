@@ -145,3 +145,39 @@ def test_a_source_the_composed_answers_read_but_the_draft_never_names_is_warned_
     assert len(warnings) == 1 and "El Al" in warnings[0] and "Arbitrip" in warnings[0] and "TAP" not in warnings[0] and "SATA" not in warnings[0] and "Israir" not in warnings[0]
     assert source_warnings(draft + " El Al, Arbitrip.", store) == []
     assert source_warnings(draft, ComposedStore()) == []
+
+
+def test_a_recipe_issued_but_missing_from_the_answer_is_named_unless_it_is_in_not_checked_or_was_composed_since():
+    import time
+    from myt_mcp.compose import NotChecked
+    from myt_mcp.ingest import STORE
+    from myt_mcp.tools.compose_answer import unused_recipes
+    STORE.new_run("getyourguide_find", {}, [])
+    STORE.new_run("viator_find", {}, [])
+    STORE.new_run("viator_activity", {}, [])          # the page of one tour: not a missing source
+    STORE.new_run("ratehawk_hotels", {}, [])          # another kind
+    found = unused_recipes("activities", {"viator_find"}, [])
+    assert len(found) == 1 and found[0].startswith("getyourguide_find (the recipe was issued at ")
+    assert unused_recipes("activities", {"viator_find", "getyourguide_find"}, []) == []
+    assert unused_recipes("activities", {"viator_find"}, [NotChecked(name="GetYourGuide", reason="could not be read: blocked")]) == []
+    assert [f.split(" ")[0] for f in unused_recipes("activities", set(), [])] == ["getyourguide_find", "viator_find"]
+    COMPOSED.remember("activities", "answer")          # an answer of the kind was built after the recipe: it was weighed then
+    time.sleep(0.01)
+    assert unused_recipes("activities", {"viator_find"}, []) == []
+
+
+async def test_compose_answer_refuses_an_answer_that_leaves_an_issued_recipe_out():
+    from myt_mcp.ingest import STORE
+    STORE.new_run("getyourguide_find", {}, [])
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        r = (await c.call_tool("compose_answer", {"kind": "activities", "not_checked": []})).structured_content
+        assert r["ok"] is False and any("getyourguide_find" in p and "never dropped without a word" in p for p in r["problems"])
+
+
+def test_a_display_name_for_a_site_is_refused_with_the_keys_it_could_mean():
+    from myt_mcp.sites import modules, unknown_site
+    mods = modules()
+    gyg = unknown_site("GetYourGuide", mods)
+    assert "'getyourguide_activity'" in gyg and "'getyourguide_find'" in gyg and "Did you mean" in gyg
+    assert "'ratehawk_hotels'" in unknown_site("Ratehawk", mods) and "Did you mean" not in unknown_site("Nowhere", mods)

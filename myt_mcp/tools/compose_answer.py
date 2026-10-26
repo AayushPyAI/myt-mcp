@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, Literal
 
 from mcp.server.mcpserver import MCPServer
@@ -47,6 +48,28 @@ def merge_default_group(offers: list[Offer], items: list[dict[str, Any]]) -> Non
         for o in offers:
             if o.group in generic:
                 o.group = target
+
+
+WINDOW_SECONDS = 45 * 60          # a recipe call counts for this long (RateHawk hotels in parts mode take about 10 minutes)
+DRILL_DOWNS = ("_rooms", "_activity")     # the page of one room or one tour: asking for it and not using it is not a missing source
+
+
+def unused_recipes(kind: str, used: set[str], not_checked: list[NotChecked]) -> list[str]:
+    """Recipe calls of this kind, issued since the last successful compose_answer of the kind, whose site has no result in this answer and is not in not_checked.
+    26 Oct 2026: the GetYourGuide list was run in Chrome, its rows were refused once for a wrong site name, and the answer went out without them and without a word."""
+    from myt_mcp.sites import modules
+    mods = modules()
+    skipped = " ".join(n.name.lower() for n in not_checked)
+    since = max(time.time() - WINDOW_SECONDS, COMPOSED.last_time(kind))
+    found: dict[str, float] = {}
+    for run in STORE.issued(since):
+        mod = mods.get(run.site)
+        if mod is None or run.site in used or run.site.endswith(DRILL_DOWNS) or str(getattr(mod, "GROUP", "")).lower() != kind:
+            continue
+        if str(getattr(mod, "SOURCE", run.site)).lower().split(" (")[0] in skipped:
+            continue
+        found.setdefault(run.site, run.created)
+    return [f"{site} (the recipe was issued at {time.strftime('%H:%M', time.localtime(at))})" for site, at in found.items()]
 
 
 def register(mcp: MCPServer) -> None:
@@ -108,6 +131,12 @@ def register(mcp: MCPServer) -> None:
             sorted_by_price = by_price
             if site_notes:
                 notes = (notes + " " + " ".join(site_notes)).strip()
+        unused = unused_recipes(kind, {str(i.get("site")) for i in items}, not_checked)
+        if unused:
+            log.info("CHECK compose_answer recipes issued but missing: %s", "; ".join(unused))
+            return {"ok": False, "problems": [f"recipe(s) were issued for this answer but have no result in it: {', '.join(unused)}. Pass the result (runs=[its ingest id], or its parts with the recipe's own site key) or put the source in not_checked with the real reason "
+                                              "(block, could not be read: <the script's error>, route not served). A source is never dropped without a word."],
+                    "next": "Fix this and call compose_answer again. Do not write the answer without these sources."}
         merge_default_group(offers, items)
         apply_wishes(offers, wishes or hotel_wishes)
         if any((c["wishes"].get("expect") or {}).get("checked_bag") for c in carried.values()):

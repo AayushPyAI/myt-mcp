@@ -25,6 +25,10 @@ class ComposedStore:
     def recent(self, kind: str | None = None) -> list[str]:
         return [t for ts, k, t in self._items if time.time() - ts < TTL_SECONDS and (kind in (None, "general") or k == kind)]
 
+    def last_time(self, kind: str) -> float:
+        """When the last compose_answer of this kind succeeded (0 = never in the last 3 hours)."""
+        return max((ts for ts, k, _ in self._items if k == kind and time.time() - ts < TTL_SECONDS), default=0.0)
+
     def clear(self) -> None:
         self._items = []
 
