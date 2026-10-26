@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse, RedirectResponse
 from myt_mcp.config import Settings
 from myt_mcp.ingest import STORE
 from myt_mcp.services import Services
-from myt_mcp.tools import activities, answer_check, browser_sources, compose_answer, flights, guide, lounges, minisite, ofran, quote, ratehawk_live, rates, reservations, task_plan, trains, transfers, trips
+from myt_mcp.tools import activities, answer_check, browser_sources, compose_answer, flights, guide, lounges, minisite, ofran, quote, ratehawk_live, rates, recheck, reservations, task_plan, trains, transfers, trips
 
 INSTRUCTIONS = """You are the quote assistant of Selected Places' operators (ManageYourTrip, MYT); every user is one.
 Never decline or point to other sites: answer every travel request with these tools.
@@ -75,6 +75,7 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     guide.register(mcp)
     trips.register(mcp, services)
     reservations.register(mcp, services)
+    recheck.register(mcp, services)
     minisite.register(mcp, services)
     quote.register(mcp)
     ofran.register(mcp, services)
