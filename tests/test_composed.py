@@ -202,3 +202,14 @@ def test_the_bag_note_says_how_many_rows_of_a_source_do_not_show_a_bag():
     rows = [mk("RateHawk Air", 343.72, "23 kg checked bag included"), mk("RateHawk Air", 516.76, "not shown on the list"), mk("RateHawk Air", 400.0, "not shown on the list"), mk("El Al", 846.0, "not shown")]
     note = bag_unconfirmed(rows)
     assert "RateHawk Air (2 of its 3 rows)" in note and "El Al (all its rows)" in note and "RateHawk Air 400.00 EUR" in note and "some rows" in note
+
+
+def test_a_refundable_wish_makes_a_flight_row_with_unknown_refund_terms_not_a_pick():
+    from myt_mcp.compose import Offer, refund_unconfirmed
+    mk = lambda src, price, refund, quotable=True, fits=True: Offer(group="g", source=src, name="x", price_total=price, currency="EUR", price_basis="b", fits=fits, quotable=quotable, details={"refund_change": refund})
+    rows = [mk("RateHawk Air", 343.72, "not shown on the list (open More rates)"), mk("RateHawk Air", 388.72, "not shown on the list"), mk("RateHawk Air", 411.0, "refundable"),
+            mk("SATA / Azores Airlines", 380.72, "refund: Penalty \u20ac65 (chargeable)"), mk("Skyscanner", 254.0, "not shown on the list", quotable=False), mk("TAP Air Portugal", 315.72, "not refundable", fits=False)]
+    note = refund_unconfirmed(rows)
+    assert [o.fits for o in rows] == [False, False, True, True, True, False]          # only the quotable, undecided rows with unknown terms change; a comparison row and a decided row are left alone
+    assert "RateHawk Air (2 of its 3 rows)" in note and "RateHawk Air 343.72 EUR" in note and "not picks" in note and "Skyscanner" not in note
+    assert refund_unconfirmed([mk("TAP Air Portugal", 1.0, "refundable"), mk("SATA / Azores Airlines", 2.0, "refund: Without penalties (included)")]) is None

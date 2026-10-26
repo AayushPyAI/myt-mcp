@@ -385,6 +385,24 @@ def bag_unconfirmed(offers: list[Offer]) -> str | None:
             + (f" (the cheapest of them, {best.source} {best.price_total:,.2f} {best.currency}, needs its fare rules checked on the airline's page before quoting)." if best else "."))
 
 
+def refund_unconfirmed(offers: list[Offer]) -> str | None:
+    """The operator asked for refundable fares: a quotable flight row whose list does not show its refund terms does not meet that wish (never assumed), like the checked bag above
+    (26 Oct 2026: a RateHawk fare with 'not shown on the list (open More rates)' became the Best fit of a 'refundable only' search)."""
+    unsure = [o for o in offers if o.quotable and o.fits is not False and str((o.details or {}).get("refund_change") or "").lower().startswith("not shown")]
+    for o in unsure:
+        o.fits = False
+    if not unsure:
+        return None
+    best = min((o for o in unsure if o.price_total is not None), key=lambda o: o.price_total, default=None)
+    quotable = [o for o in offers if o.quotable]
+    parts = []
+    for source in sorted({o.source for o in unsure}):
+        n, total = sum(1 for o in unsure if o.source == source), sum(1 for o in quotable if o.source == source)
+        parts.append(f"{source} ({'all its rows' if n == total else f'{n} of its {total} rows'})")
+    return (f"Refundable fares were asked, but some rows do not show their refund terms: {', '.join(parts)}; those rows are not picks"
+            + (f" (the cheapest of them, {best.source} {best.price_total:,.2f} {best.currency}, needs its refund terms checked on the airline's page before quoting)." if best else "."))
+
+
 def apply_wishes(offers: list[Offer], wishes: dict | None) -> None:
     """A row typed in by hand has no `fits` yet. With the operator's wishes, a wish the row cannot show it meets counts as NOT met (never assumed)."""
     if not wishes:
