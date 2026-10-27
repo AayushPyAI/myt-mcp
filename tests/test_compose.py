@@ -1637,3 +1637,15 @@ def test_a_big_price_gap_between_sources_is_named_for_transfers_and_cars_only():
     note = price_gap_notes("transfers", rows)
     assert len(note) == 1 and "13.00 EUR" in note[0] and "40.00 EUR" in note[0] and "compare them row by row" in note[0]
     assert not price_gap_notes("transfers", [mk("RateHawk Transfers", 13.0), mk("Kiwitaxi", 20.0)]) and not price_gap_notes("flights", rows)
+
+
+def test_a_source_the_operator_excluded_and_a_filter_the_server_wrote_are_accepted():
+    rows = [Offer(group="Terra Nostra", source="Bensaude", name="Cosy Art Deco FLEX", price_total=322, currency="EUR")]
+    r = compose(kind="hotels", filters_used=["breakfast (operator)", "prices converted to EUR by the server at the Bank of Israel representative rates of 2026-10-26"],
+                sources_read=[SourceRead(name="Bensaude", read=1, of=1, link="https://bensaude.e-gds.com/webfrontendcorporate/shoppingcart/availability.aspx?hotelid=29")],
+                not_checked=[NotChecked(name="RateHawk", reason="operator excluded this source"), NotChecked(name="Arbitrip", reason="operator excluded this source")],
+                offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert r["ok"] is True and "RateHawk (operator excluded this source)" in r["answer"], r
+    lazy = compose(kind="hotels", filters_used=["breakfast (operator)"], sources_read=[SourceRead(name="Bensaude", read=1, of=1, link="https://bensaude.e-gds.com/webfrontendcorporate/shoppingcart/availability.aspx?hotelid=29")],
+                   not_checked=[NotChecked(name="RateHawk", reason="for time")], offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert lazy["ok"] is False        # the laziness reasons stay refused

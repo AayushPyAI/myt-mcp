@@ -45,6 +45,7 @@ PLANS: dict[str, dict[str, Any]] = {
             {"name": "ITA Airways", "how": "Claude in Chrome (via RateHawk Air or Skyscanner)", "use": "legs touching Italy"},
             {"name": "RateHawk Air tickets", "how": "ratehawk_air_recipe, one call per leg (it asks stops, checked bag and cabin first; you open its url and run its script in Claude in Chrome), compose_answer with its wishes", "use": "EVERY leg"},
             {"name": "Skyscanner", "how": "skyscanner_recipe, one call per leg (it asks direct only and cabin first; you open its url and run its script in Claude in Chrome), comparison only", "use": "EVERY leg: Best and Cheapest tabs are read together; price to quote comes from the airline's page"},
+            {"name": "Booking.com flights", "how": "booking_flights_recipe, one call per leg (it asks direct only and cabin first; you open its url and run its script in Claude in Chrome; one way, adults only), comparison only", "use": "EVERY leg: the Best and the Cheapest sorts are read together, 2 pages (30 flights) of each; the price to quote comes from the airline's page"},
         ],
         "fields": ["flight number and operating airline", "times and stops", "the whole fare ladder (code and name)", "cabin bag and checked bag", "change and refund terms (only if the tool or page shows them)",
                    "price per adult and per child", "group total", "link"],
@@ -101,6 +102,7 @@ PLANS: dict[str, dict[str, Any]] = {
         "sources": [
             {"name": "GetYourGuide", "how": "getyourguide_find_recipe (it asks free cancellation, budget and duration first; you open its url and run its script in Claude in Chrome: the list with 'from' prices), then getyourguide_activity_recipe for the best two or three (exact price of the group on the date)", "use": "always"},
             {"name": "Viator", "how": "viator_find_recipe (it asks free cancellation, budget and duration first; you open its url and run its script in Claude in Chrome: the list with 'from' prices), then viator_activity_recipe for the best two or three (exact price of the group on the date)", "use": "always"},
+            {"name": "Booking.com attractions", "how": "booking_attractions_recipe (Lisbon is known; open its url and run its script in Claude in Chrome: the list with the lowest starting price per person; comparison only)", "use": "next to GetYourGuide and Viator; the price for the date and group comes from the activity's own page"},
         ],
         "fields": ["title", "duration", "start times for the date", "private or group", "language", "meeting point", "inclusions", "cancellation", "price by age for the group", "link"],
         "filters": "the activity named in the itinerary; free cancellation and rating only if the operator or the trip says so.",

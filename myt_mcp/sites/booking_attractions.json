@@ -1,0 +1,4 @@
+{
+  "_note": "Booking.com attractions places: the <country>/<city> part of the results address (booking.com/attractions/searchresults/<country>/<city>.html), read 27 Oct 2026. Learn another place by searching it once on the site and reading it from the address.",
+  "lisbon": {"path": "pt/lisbon", "name": "Lisbon"}
+}

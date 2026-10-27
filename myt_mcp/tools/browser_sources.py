@@ -22,11 +22,11 @@ MEALS = {"RO": "room only", "BB": "breakfast included", "HB": "half board", "FB"
 NO_BROWSER = 'If no browser tool is available in this chat, say exactly: "Please turn on Claude in Chrome for this chat." Do not offer other sites.'
 
 # site or topic keyword -> (what it is, the connected source to offer instead)
-CONNECTED = ("tap", "kiwitaxi", "europcar", "bensaude", "rentalcars")   # these have their own tool: say so instead of "not connected"
+CONNECTED = ("tap", "kiwitaxi", "europcar", "bensaude", "rentalcars", "booking.com")   # these have their own tool: say so instead of "not connected"
 BROWSER_READ = ("skyscanner", "el al", "elal")   # no tool, but read in the operator's Chrome (quote_guide("flights")): not "not connected"
 OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "tripadvisor": ("activities and reviews", "Viator and GetYourGuide tools (viator_search_activities, getyourguide_find_activities)"),
-    "booking.com": ("hotels", "RateHawk and Arbitrip via the hotel_prices tool"),
+    "booking.com": ("flights and attractions (comparison only) and hotels", "booking_flights_recipe and booking_attractions_recipe (Claude in Chrome; public prices, comparison only) next to skyscanner_recipe, the airlines, GetYourGuide and Viator; Booking.com hotels are not connected: RateHawk and Arbitrip via the hotel_prices tool"),
     "airbnb": ("hotels and rentals", "RateHawk and Arbitrip via the hotel_prices tool"),
     "agoda": ("hotels", "RateHawk and Arbitrip via the hotel_prices tool"),
     "marriott": ("hotels (a hotel's own website)", "RateHawk and Arbitrip via the hotel_prices tool"),

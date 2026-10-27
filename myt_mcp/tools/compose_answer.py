@@ -22,7 +22,7 @@ Kind = Literal["flights", "hotels", "cars", "transfers", "trains", "activities",
 
 # Sites read only through a recipe script in the operator's Chrome (their own tools are off): a row from them can come from a script answer (runs / site_results), never from typed `offers`.
 # Found 24 Oct 2026: RateHawk hotel and tour prices were read off the pages by hand, passed as `offers`, and the answer went out with prices the server never received.
-CHROME_ONLY = ("ratehawk", "arbitrip", "skyscanner", "el al", "comboios", "cp (", "getyourguide", "viator", "bensaude (", "europcar (", "rentalcars")
+CHROME_ONLY = ("ratehawk", "arbitrip", "skyscanner", "el al", "comboios", "cp (", "getyourguide", "viator", "bensaude (", "europcar (", "rentalcars", "booking.com flights", "booking.com attractions")
 
 
 def typed_chrome_rows(offers: list[Offer]) -> list[str]:
