@@ -1,0 +1,4 @@
+{
+  "_note": "Europcar station codes (the pickupLocation value of europcar.com/en-us/reservation/vehicles). Learn one by searching the place on europcar.com once and reading pickupLocation from the results address.",
+  "lisbon airport": "LIST01"
+}

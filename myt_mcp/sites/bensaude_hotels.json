@@ -1,0 +1,14 @@
+{
+  "_note": "Bensaude Hotels group: the hotel ids of the booking engine (bensaude.e-gds.com ... hotelid=), read from the booking bar of www.bensaudehotels.com on 27 Oct 2026.",
+  "grand hotel acores atlantico": [33, "Grand Hotel Açores Atlântico"],
+  "terra nostra garden hotel": [29, "Terra Nostra Garden Hotel"],
+  "botania hall by terra nostra": [36, "Botania Hall by Terra Nostra"],
+  "hotel marina atlantico": [34, "Hotel Marina Atlântico"],
+  "caloura hotel resort": [9880610, "Caloura Hotel Resort"],
+  "sao miguel park hotel": [28, "São Miguel Park Hotel"],
+  "neat hotel avenida": [31, "NEAT Hotel Avenida"],
+  "terceira mar hotel": [32, "Terceira Mar Hotel"],
+  "caracol hotel": [9880609, "Caracol Hotel"],
+  "canal hotel": [35, "Canal Hotel"],
+  "hotel acores lisboa": [30, "Hotel Açores Lisboa"]
+}

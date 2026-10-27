@@ -22,7 +22,7 @@ MEALS = {"RO": "room only", "BB": "breakfast included", "HB": "half board", "FB"
 NO_BROWSER = 'If no browser tool is available in this chat, say exactly: "Please turn on Claude in Chrome for this chat." Do not offer other sites.'
 
 # site or topic keyword -> (what it is, the connected source to offer instead)
-CONNECTED = ("tap", "kiwitaxi")   # these have their own tool: say so instead of "not connected"
+CONNECTED = ("tap", "kiwitaxi", "europcar", "bensaude", "rentalcars")   # these have their own tool: say so instead of "not connected"
 BROWSER_READ = ("skyscanner", "el al", "elal")   # no tool, but read in the operator's Chrome (quote_guide("flights")): not "not connected"
 OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "tripadvisor": ("activities and reviews", "Viator and GetYourGuide tools (viator_search_activities, getyourguide_find_activities)"),
@@ -32,7 +32,7 @@ OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "marriott": ("hotels (a hotel's own website)", "RateHawk and Arbitrip via the hotel_prices tool"),
     "hilton": ("hotels (a hotel's own website)", "RateHawk and Arbitrip via the hotel_prices tool"),
     "pestana": ("hotels (a hotel's own website)", "RateHawk and Arbitrip via the hotel_prices tool"),
-    "bensaude": ("hotels (a hotel's own website)", "RateHawk and Arbitrip via the hotel_prices tool"),
+    "bensaude": ("hotels (the Bensaude group's own website)", "bensaude_hotels_recipe (Claude in Chrome) next to RateHawk and Arbitrip"),
     "skyscanner": ("flights (comparison only, read in the operator's Chrome)", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal); other airlines are not connected yet"),
     "tap": ("flights (connected)", "tap_flight_prices and tap_fare_calendar"),
     "el al": ("flights (read in the operator's Chrome)", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal); other airlines are not connected yet"),
@@ -41,8 +41,8 @@ OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "easyjet": ("flights", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal); other airlines are not connected yet"),
     "ita airways": ("flights", "sata_flight_prices (Azores), tap_flight_prices (TAP Air Portugal); other airlines are not connected yet"),
     "sixt": ("car rental (needs login)", "ofran_car_prices"),
-    "europcar": ("car rental", "ofran_car_prices"),
-    "rentalcars": ("car rental", "ofran_car_prices"),
+    "europcar": ("car rental", "europcar_cars_recipe (Claude in Chrome; public prices, comparison only) next to ofran_recipe and ratehawk_cars_recipe"),
+    "rentalcars": ("car rental", "rentalcars_cars_recipe (Claude in Chrome; the broker's public prices, comparison only) next to ofran_recipe, europcar_cars_recipe and ratehawk_cars_recipe"),
     "hertz": ("car rental", "ofran_car_prices"),
     "sicilybycar": ("car rental", "ofran_car_prices"),
     "priority pass": ("airport lounges", "lounge_prices (Aspire)"),

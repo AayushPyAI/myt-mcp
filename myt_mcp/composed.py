@@ -124,6 +124,21 @@ def amount_problems(draft: str, store: ComposedStore = COMPOSED) -> tuple[list[s
     return problems, warnings
 
 
+_FOREIGN_IN_CELL = re.compile(r"[$£₪₹]\s?\d|\d\s?(?:USD|GBP|ILS|INR|CHF)\b")
+
+
+def currency_problems(draft: str, store: ComposedStore = COMPOSED) -> list[str]:
+    """The server converts a price shown in another currency to euro and says so in the row ("converted from USD 86.50 at 1 USD = 0.8885 EUR"): a table cell of the draft in the OTHER currency
+    shows the unconverted price next to euro rows (27 Oct 2026: Europcar prices Israeli drivers in dollars). Only the text of the server's own table is shown."""
+    if not any("converted from" in t for t in store.recent(None)):
+        return []
+    cells = [c.strip() for line in draft.splitlines() if line.lstrip().startswith("|") for c in line.strip().strip("|").split("|") if "converted from" not in c and _FOREIGN_IN_CELL.search(c)]
+    if not cells:
+        return []
+    return [f"a table cell shows a price in another currency ({'; '.join(c[:40] for c in cells[:3])}) although the server converted that source to euro: show compose_answer's euro price and its price basis exactly, never the "
+            "original or your own conversion"]
+
+
 _SOURCES_LINE = re.compile(r"Sources checked:\s*(.*?)(?:\s*\|\s*Not checked:|$)", re.I | re.M)
 
 

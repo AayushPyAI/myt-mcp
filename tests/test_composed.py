@@ -239,3 +239,16 @@ async def test_compose_answer_reads_the_display_name_of_the_one_recipe_that_was_
     async with Client(create_server(settings, Services(settings))) as c:
         r = (await c.call_tool("compose_answer", {"kind": "activities", "site_results": [{"site": "GetYourGuide", "result": "{}"}], "not_checked": []})).structured_content
     assert not any("unknown site" in p for p in r.get("problems", []))
+
+
+# ---------- a source the server converted to euro is never shown in its own currency in the table (27 Oct 2026, Europcar) ----------
+
+def test_a_table_cell_in_another_currency_is_refused_when_the_server_converted_that_source():
+    from myt_mcp.composed import COMPOSED, currency_problems
+    draft = "| Car | Price |\n|---|---|\n| CITROEN C4 | $86.50 |\n| FIAT 500 | 76.85 EUR |"
+    assert currency_problems(draft) == []                                    # nothing was converted: not this check's business
+    COMPOSED.remember("cars", "| CITROEN C4 | 76.85 EUR | whole rental, converted from USD 86.50 at 1 USD = 0.8885 EUR (Bank of Israel representative rates, 2026-10-26) |")
+    problems = currency_problems(draft)
+    assert len(problems) == 1 and "$86.50" in problems[0] and "never the original or your own conversion" in problems[0]
+    assert currency_problems("| CITROEN C4 | 76.85 EUR |") == [] and currency_problems("The dollar price was $86.50 before the conversion.") == []       # euro cells and prose are fine
+    assert currency_problems("| CITROEN C4 | 76.85 EUR | whole rental, converted from USD 86.50 at 1 USD = 0.8885 EUR |") == []   # the server's own basis text may name the original

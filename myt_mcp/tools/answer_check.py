@@ -14,7 +14,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp.composed import amount_problems, row_problems, source_warnings
+from myt_mcp.composed import amount_problems, currency_problems, row_problems, source_warnings
 from myt_mcp.errors import tool_errors
 
 Kind = Literal["flights", "hotels", "cars", "transfers", "trains", "activities", "lounges", "general"]
@@ -131,7 +131,7 @@ def register(mcp: MCPServer) -> None:
         typed = row_problems(draft, kind)
         amounts, amount_warnings = amount_problems(draft)
         amount_warnings += source_warnings(draft)
-        typed = [*typed, *amounts]
+        typed = [*typed, *amounts, *currency_problems(draft)]
         if amount_warnings:
             out = {**out, "warnings": [*out.get("warnings", []), *amount_warnings]}
         if typed:

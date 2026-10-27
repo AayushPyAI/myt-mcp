@@ -1,0 +1,4 @@
+{
+  "_note": "Rentalcars.com places: the locationName, locationIata, coordinates and ftsType of the results address after one search on the site (read 27 Oct 2026). Learn another place by searching it once and reading them from the address.",
+  "lisbon airport": {"name": "Humberto Delgado Airport", "iata": "LIS", "coordinates": "38.769901275634766,-9.129509925842285", "fts_type": "A"}
+}
