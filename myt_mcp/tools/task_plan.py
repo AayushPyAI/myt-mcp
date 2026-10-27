@@ -81,6 +81,7 @@ PLANS: dict[str, dict[str, Any]] = {
         "sources": [
             {"name": "RateHawk Transfers", "how": "ratehawk_transfers_recipe (it asks the operator first: bags, flight tracking, vehicle, budget; you fill RateHawk's form once, then run its script in Claude in Chrome), compose_answer with its wishes, filters_used and pickup_time", "use": "always"},
             {"name": "Kiwitaxi", "how": "kiwitaxi_transfer_prices", "use": "always; check matched_from and matched_to"},
+            {"name": "iWay", "how": "iway_transfers_recipe, one call per leg (open its url or fill iWay's From and To boxes in the operator's own logged-in Chrome, run its script in Claude in Chrome; the list price per vehicle in the account's currency, converted to euro by the server), comparison only", "use": "always, next to RateHawk Transfers and Kiwitaxi"},
         ],
         "fields": ["vehicle and capacity (people, bags)", "price per vehicle", "waiting time", "cancellation", "provider", "meeting point", "pick-up time used"],
         "filters": "vehicles that fit the whole group and its bags; the same pick-up time on every source.",

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.anyio
 LEGACY = {"tap_flight_prices", "sata_flight_prices", "viator_search_activities", "viator_activity_details", "getyourguide_find_activities", "getyourguide_activity_details", "ofran_find_location",
           "ofran_car_prices", "ratehawk_hotels"}
 SWITCHES = ("TAP_SERVER_BROWSER", "SATA_SERVER_BROWSER", "VIATOR_SERVER_BROWSER", "GYG_SERVER_BROWSER", "OFRAN_SERVER_SEARCH", "RATEHAWK_SERVER_BROWSER", "LEGACY_TOOL_POINTERS")
-BUDGET_TOKENS = 28_000      # descriptions + parameter schemas, characters / 4: lower it when descriptions get shorter, never raise it without a reason
+BUDGET_TOKENS = 29_000      # descriptions + parameter schemas, characters / 4 (raised from 28,000 for iWay, 27 Oct 2026, one more recipe): lower it when descriptions get shorter, never raise it without a reason
 MAX_TOOLS = 58
 
 
@@ -43,7 +43,7 @@ async def test_every_recipe_has_its_kind_words_in_front_and_every_kind_entry_is_
     assert recipes == set(KIND_OF), f"recipes without a kind or a kind for no recipe: {recipes ^ set(KIND_OF)} (add the new recipe to myt_mcp/tool_tags.py)"
     for name in recipes:
         assert tools[name].description.startswith("[" + KINDS[KIND_OF[name]] + "] FOR "), name
-    assert len(recipes) == 23
+    assert len(recipes) == 24
 
 
 async def test_task_plan_is_the_one_tool_that_says_call_me_first_and_no_description_points_to_a_tool_that_is_not_listed(monkeypatch):

@@ -1,0 +1,5 @@
+{
+  "_note": "iWay places: the Google place id that iway.io writes in its address (iway.io/booking?from=<id>&to=<id>) after a place is chosen in its From / To box (read 27 Oct 2026). To learn another place: choose it once in iWay's box and read the id from the address (the script returns it as place_ids).",
+  "lisbon airport": {"name": "Airport Lisbon Portela (LIS)", "id": "ChIJgwHZFkYyGQ0RRm0DWD6lZgo", "aliases": ["lis", "portela", "humberto delgado", "lisbon portela", "lisboa airport", "aeroporto de lisboa"]},
+  "praca do comercio": {"name": "Praça do Comércio, Lisbon", "id": "ChIJY0ulMHo0GQ0RROAoa18vUzA", "aliases": ["terreiro do paco", "comercio square", "praça do comércio"]}
+}

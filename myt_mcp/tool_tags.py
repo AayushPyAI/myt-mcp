@@ -22,7 +22,7 @@ KIND_OF: dict[str, str] = {
     **dict.fromkeys(("europcar_cars_recipe", "ofran_recipe", "ratehawk_cars_recipe", "rentalcars_cars_recipe"), "cars"),
     **dict.fromkeys(("booking_attractions_recipe", "booking_attraction_recipe", "getyourguide_find_recipe", "getyourguide_activity_recipe", "viator_find_recipe", "viator_activity_recipe"), "activities"),
     **dict.fromkeys(("cp_trains_recipe", "ratehawk_trains_recipe"), "trains"),
-    "ratehawk_transfers_recipe": "transfers",
+    **dict.fromkeys(("ratehawk_transfers_recipe", "iway_transfers_recipe"), "transfers"),
 }
 
 

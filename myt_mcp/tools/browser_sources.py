@@ -22,7 +22,7 @@ MEALS = {"RO": "room only", "BB": "breakfast included", "HB": "half board", "FB"
 NO_BROWSER = 'If no browser tool is available in this chat, say exactly: "Please turn on Claude in Chrome for this chat." Do not offer other sites.'
 
 # site or topic keyword -> (what it is, the connected source to offer instead)
-CONNECTED = ("tap", "kiwitaxi", "europcar", "bensaude", "rentalcars", "booking.com")   # these have their own tool: say so instead of "not connected"
+CONNECTED = ("tap", "kiwitaxi", "europcar", "bensaude", "rentalcars", "booking.com", "iway")   # these have their own tool: say so instead of "not connected"
 BROWSER_READ = ("skyscanner", "el al", "elal")   # no tool, but read in the operator's Chrome (quote_guide("flights")): not "not connected"
 OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "tripadvisor": ("activities and reviews", "Viator and GetYourGuide tools (viator_search_activities, getyourguide_find_activities)"),
@@ -48,7 +48,7 @@ OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "priority pass": ("airport lounges", "lounge_prices (Aspire)"),
     "loungereview": ("airport lounges", "lounge_prices (Aspire)"),
     "kiwitaxi": ("transfers (connected)", "kiwitaxi_transfer_prices"),
-    "iway": ("transfers (needs login)", "kiwitaxi_transfer_prices (the connected transfer source) and ratehawk_transfers_recipe; iway needs the operator's login and is not connected yet"),
+    "iway": ("transfers (the agency's logged-in iWay account)", "iway_transfers_recipe (Claude in Chrome only, in the operator's own logged-in Chrome; list price per vehicle) next to ratehawk_transfers_recipe and kiwitaxi_transfer_prices"),
 }
 
 
