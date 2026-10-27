@@ -208,7 +208,7 @@ def test_a_long_flights_table_keeps_every_source_and_the_picks_but_not_all_rows(
 def test_generic_group_rows_join_the_only_named_group():
     from myt_mcp.compose import Offer
     from myt_mcp.tools.compose_answer import merge_default_group
-    named = Offer(group="LIS airport -> central Lisbon, 01 Mar 2027", source="Mozio", name="Sedan", price_total=24.79, currency="EUR")
+    named = Offer(group="LIS airport -> central Lisbon, 01 Mar 2027", source="Kiwitaxi", name="Sedan", price_total=24.79, currency="EUR")
     generic = Offer(group="Transfers", source="RateHawk Transfers", name="Economy", price_total=19.0, currency="EUR")
     merge_default_group([named, generic], [])
     assert generic.group == named.group

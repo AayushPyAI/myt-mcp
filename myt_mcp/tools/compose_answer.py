@@ -13,7 +13,7 @@ from mcp.types import ToolAnnotations
 from myt_mcp.composed import COMPOSED
 from myt_mcp.ingest import STORE
 from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, bag_unconfirmed, compose, refund_unconfirmed
-from myt_mcp.sites import carried_wishes, convert_all, register_all
+from myt_mcp.sites import carried_wishes, convert_all, register_all, resolve_site_names
 from myt_mcp.errors import tool_errors
 
 log = logging.getLogger("myt_mcp")
@@ -52,6 +52,13 @@ def merge_default_group(offers: list[Offer], items: list[dict[str, Any]]) -> Non
 
 WINDOW_SECONDS = 45 * 60          # a recipe call counts for this long (RateHawk hotels in parts mode take about 10 minutes)
 DRILL_DOWNS = ("_rooms", "_activity")     # the page of one room or one tour: asking for it and not using it is not a missing source
+
+
+def issued_sites(kind: str) -> set[str]:
+    """The recipe keys of this kind of answer that a recipe call issued in the last 45 minutes (drill-downs too): they tell which site a display name means."""
+    from myt_mcp.sites import modules
+    mods = modules()
+    return {run.site for run in STORE.issued(time.time() - WINDOW_SECONDS) if str(getattr(mods.get(run.site), "GROUP", "")).lower() == kind}
 
 
 def unused_recipes(kind: str, used: set[str], not_checked: list[NotChecked]) -> list[str]:
@@ -130,6 +137,10 @@ def register(mcp: MCPServer) -> None:
             log.info("CHECK compose_answer runs refused: %s", "; ".join(ingest_problems)[:600])
             return {"ok": False, "problems": ingest_problems, "next": "Fix this (run the script again in the same Chrome tab) and call compose_answer again. Do not type any row yourself."}
         items += ingested
+        from myt_mcp.sites import modules
+        items, renamed = resolve_site_names(items, modules(), issued_sites(kind))
+        if renamed:
+            log.info("CHECK compose_answer site names read as keys: %s", renamed)
         for raw, url in zip(ratehawk_results or [], list(ratehawk_urls or []) + [""] * len(ratehawk_results or [])):     # the first version's parameters
             items.append({"site": "ratehawk_hotels", "result": raw, "url": url})
         carried = carried_wishes(items)
@@ -143,8 +154,10 @@ def register(mcp: MCPServer) -> None:
             extra, srcs, problems, by_price, site_notes = convert_all(items, wishes or hotel_wishes)
             if problems:
                 log.info("CHECK compose_answer site_results refused: %s", "; ".join(dict.fromkeys(problems))[:800])
+                stop = any(": STOP," in p for p in problems)
                 return {"ok": False, "problems": list(dict.fromkeys(problems)),
-                        "next": "Fix these (run the recipe again as the problem says) and call compose_answer again. Do not write the answer yourself."}
+                        "next": ("Do not run that source again: put it in not_checked with the reason the STOP line gives and call compose_answer again. Do not write the answer yourself." if stop
+                                 else "Fix these (run the recipe again as the problem says) and call compose_answer again. Do not write the answer yourself.")}
             offers += extra
             via_model = sorted({str(i.get("site")) for i in items if _is_parts(i)})
             if via_model:       # the page refused to send these to the server: the rows went through the assistant (their checksums matched); the answer says so itself
@@ -177,6 +190,8 @@ def register(mcp: MCPServer) -> None:
                  sorted((wishes or {}).keys()), "; ".join(out.get("problems", []))[:800])          # sizes and rule messages only, never the rows
         if out.get("ok") and out.get("answer"):
             COMPOSED.remember(kind, out["answer"])
+            if renamed:
+                out["site_names_fixed"] = renamed
         return out
 
     register_all(mcp)

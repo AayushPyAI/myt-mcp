@@ -15,6 +15,7 @@ import json
 import os
 import pkgutil
 import re
+import time
 import zlib
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -190,7 +191,7 @@ def embed_wishes(out: Any, site: str | None = None) -> Any:
     if isinstance(out, dict) and out.get("script"):
         head = "await (async () => {\n"
         base = public_base()
-        if base and site in NO_POST:     # the page's security policy stops the post, so the script gets no address to post to (claude.ai refused one: "sends page data to an unfamiliar outside web address", 26 Oct 2026)
+        if base and site in NO_POST:     # the page's security policy stops the post, so the script gets no address to post to (once the chat's Claude declined to run a GetYourGuide script that posts to this server: "sends page data to an unfamiliar outside web address", 26 Oct 2026; a model's choice, not a block)
             STORE.new_run(site, out.get("wishes") or {}, out.get("filters_used"))      # kept only so compose_answer can tell a recipe was issued and not used
             if out.get("wishes"):
                 carried = {"wishes": out.get("wishes") or {}, **({"filters_used": out["filters_used"]} if out.get("filters_used") else {})}
@@ -357,6 +358,19 @@ def expand(raw: str) -> str:
     return json.dumps(data)
 
 
+MAX_PART_TRIES = 2                      # failed passes of one site's parts before the server says stop (26 Oct 2026: the assistant kept re-running RateHawk in a loop)
+PART_FAIL_WINDOW = 45 * 60
+_PART_FAILS: dict[str, list[float]] = {}
+
+
+def note_part_failure(site: str) -> int:
+    """Counts this failed pass of `site`'s parts (the last 45 minutes) and returns how many there were."""
+    now = time.time()
+    tries = [t for t in _PART_FAILS.get(site, []) if now - t < PART_FAIL_WINDOW] + [now]
+    _PART_FAILS[site] = tries
+    return len(tries)
+
+
 def checksum_problem(raw: str) -> str | None:
     """Each part ends with `,"crc":"<crc32 of the text before it>"}` (emit.js). None when it matches; else what is wrong."""
     text = raw.strip()
@@ -367,10 +381,39 @@ def checksum_problem(raw: str) -> str | None:
     return None if text[cut + 8:-2] == expected else "does not match its checksum (a character was changed while it was passed on)"
 
 
+def _flat(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+
+def near_sites(site: str, mods: dict[str, Any]) -> list[str]:
+    """The recipe keys a display name could mean ('GetYourGuide' -> the find and the activity keys; 'RateHawk Hotels' -> ratehawk_hotels)."""
+    flat = _flat(site)
+    return sorted(k for k in mods if flat and (flat in _flat(k) or _flat(k) in flat))
+
+
+def resolve_site_names(items: list[dict[str, Any]], mods: dict[str, Any], issued: set[str]) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """The assistant sometimes names a site by its display name ('GetYourGuide', 'RateHawk'; seen 24 and 26 Oct 2026) and the whole answer was refused. A name that means exactly ONE recipe key
+    is read as that key; a name that fits several is read as the one key whose recipe this chat issued for this kind of answer (`issued`); anything else stays unknown and is refused as before."""
+    out, fixed = [], {}
+    for item in items:
+        site = str(item.get("site", ""))
+        if not site or site in mods:
+            out.append(item)
+            continue
+        near = near_sites(site, mods)
+        live = [k for k in near if k in issued]
+        pick = near[0] if len(near) == 1 else live[0] if len(live) == 1 else None
+        if pick:
+            fixed[site] = pick
+            out.append({**item, "site": pick})
+        else:
+            out.append(item)
+    return out, fixed
+
+
 def unknown_site(site: str, mods: dict[str, Any]) -> str:
     """The site name is the recipe's own key ('getyourguide_find'): a display name ('GetYourGuide', 'Ratehawk') is refused with the keys it could mean (24-26 Oct 2026: both were sent and the rows were dropped)."""
-    flat = re.sub(r"[^a-z0-9]", "", str(site).lower())
-    near = sorted(k for k in mods if flat and (flat in k.replace("_", "") or k.replace("_", "") in flat))
+    near = near_sites(site, mods)
     hint = f" Did you mean {' or '.join(repr(k) for k in near)}? Use the exact key, the same as the recipe tool you ran (the list of tours or hotels and the page of one tour or room are different keys)." if near else ""
     return f"unknown site '{site}': known sites are {sorted(mods)}.{hint}"
 
@@ -388,7 +431,7 @@ def check_parts(site_results: list[dict[str, Any]]) -> list[str]:
         if isinstance(data, dict) and data.get("parts") and data.get("run"):
             why = checksum_problem(str(item.get("result", "")))
             if why:
-                bad.append(f"{item.get('site')}: part {data.get('part')} of {data.get('parts')} {why}: run window.__mytParts[{int(data.get('part', 1)) - 1}] again in the same Chrome tab and pass it exactly as it is")
+                bad.append(f"{item.get('site')}: part {data.get('part')} of {data.get('parts')} {why} (the server received {len(str(item.get('result', '')))} characters): run window.__mytParts[{int(data.get('part', 1)) - 1}] again in the same Chrome tab and pass it exactly as it is")
             key = (str(item.get("site", "")), str(data["run"]))
             runs.setdefault(key, {})[int(data.get("part", 0))] = len(data.get("rows") or [])
             meta[key] = (int(data["parts"]), int(data.get("rows_read") or 0))
@@ -400,6 +443,13 @@ def check_parts(site_results: list[dict[str, Any]]) -> list[str]:
             problems.append(f"{key[0]}: part(s) {', '.join(map(str, missing))} of {parts} are missing: run window.__mytParts[<number minus 1>] in the same Chrome tab (the answer's `more` line) and pass each part unchanged as its own item of site_results")
         elif sum(got.values()) != rows_read:
             problems.append(f"{key[0]}: the parts hold {sum(got.values())} rows but the script read {rows_read}: run the script again and pass every part unchanged")
+    failing = {p.split(":", 1)[0] for p in problems}
+    for site in {k[0] for k in runs} - failing:
+        _PART_FAILS.pop(site, None)         # this site's parts arrived whole: the count starts again
+    for site in sorted(failing):
+        tries = note_part_failure(site)
+        if tries >= MAX_PART_TRIES:
+            problems.append(f"{site}: STOP, its parts failed {tries} times. Do not run it again. Put {site} in not_checked with the reason 'could not be read: its parts did not reach the server intact' and call compose_answer again; the answer then says so.")
     return problems
 
 

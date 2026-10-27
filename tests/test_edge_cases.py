@@ -282,7 +282,7 @@ async def test_trip_pauses_a_site_for_thirty_minutes_and_then_lets_calls_through
     async def fake_sleep(s):
         now[0] += s
 
-    lim = SiteLimiter("Mozio", min_interval=0, max_per_hour=10, clock=lambda: now[0], sleep=fake_sleep)
+    lim = SiteLimiter("X", min_interval=0, max_per_hour=10, clock=lambda: now[0], sleep=fake_sleep)
     await lim.acquire()
     lim.trip()
     with pytest.raises(RateLimitError, match="paused for about 30 more minutes"):

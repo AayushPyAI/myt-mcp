@@ -22,7 +22,7 @@ MEALS = {"RO": "room only", "BB": "breakfast included", "HB": "half board", "FB"
 NO_BROWSER = 'If no browser tool is available in this chat, say exactly: "Please turn on Claude in Chrome for this chat." Do not offer other sites.'
 
 # site or topic keyword -> (what it is, the connected source to offer instead)
-CONNECTED = ("tap", "mozio", "kiwitaxi")   # these have their own tool: say so instead of "not connected"
+CONNECTED = ("tap", "kiwitaxi")   # these have their own tool: say so instead of "not connected"
 BROWSER_READ = ("skyscanner", "el al", "elal")   # no tool, but read in the operator's Chrome (quote_guide("flights")): not "not connected"
 OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "tripadvisor": ("activities and reviews", "Viator and GetYourGuide tools (viator_search_activities, getyourguide_find_activities)"),
@@ -47,9 +47,8 @@ OTHER_SOURCES: dict[str, tuple[str, str]] = {
     "sicilybycar": ("car rental", "ofran_car_prices"),
     "priority pass": ("airport lounges", "lounge_prices (Aspire)"),
     "loungereview": ("airport lounges", "lounge_prices (Aspire)"),
-    "mozio": ("transfers (connected)", "mozio_transfer_prices"),
     "kiwitaxi": ("transfers (connected)", "kiwitaxi_transfer_prices"),
-    "iway": ("transfers (needs login)", "kiwitaxi_transfer_prices or mozio_transfer_prices (the connected transfer sources; iway needs the operator's login)"),
+    "iway": ("transfers (needs login)", "kiwitaxi_transfer_prices (the connected transfer source) and ratehawk_transfers_recipe; iway needs the operator's login and is not connected yet"),
 }
 
 
@@ -147,10 +146,10 @@ def register(mcp: MCPServer) -> None:
     @tool_errors
     async def transfer_prices(from_place: str, to_place: str, transfer_date: date, passengers: int = 2) -> dict[str, Any]:
         """Private transfer, airport transfer, taxi or shuttle price question (call task_plan('transfers') first; for example
-        "airport to hotel"). It returns NO price: it returns the playbook and points to kiwitaxi_transfer_prices and mozio_transfer_prices, the live
-        price tools (Kiwitaxi first, Mozio where Kiwitaxi has no transfer or as a second price). Never estimate a transfer price or use web search."""
+        "airport to hotel"). It returns NO price: it returns the playbook and points to kiwitaxi_transfer_prices and ratehawk_transfers_recipe, the live
+        price tools. Never estimate a transfer price or use web search."""
         return {
-            "no_prices_here": "This returns no price. Call kiwitaxi_transfer_prices for live Kiwitaxi prices and mozio_transfer_prices for Mozio (use it where Kiwitaxi has no transfer). Never estimate a price and never use web search.",
+            "no_prices_here": "This returns no price. Call kiwitaxi_transfer_prices for live Kiwitaxi prices and ratehawk_transfers_recipe for RateHawk Transfers. Never estimate a price and never use web search.",
             "request": {"from": _clean_text(from_place, "from_place"), "to": _clean_text(to_place, "to_place"),
                         "date": transfer_date.isoformat(), "passengers": passengers},
             "playbook": sections().get("transfers", ""),
@@ -161,7 +160,7 @@ def register(mcp: MCPServer) -> None:
     async def other_source_prices(site_or_topic: str) -> dict[str, Any]:
         """USE THIS FIRST when the operator names a website or provider that has no tool here (Tripadvisor,
         Booking.com, Airbnb, Agoda, Skyscanner, El Al, Ryanair, easyJet, Sixt, Europcar, Rentalcars, Priority Pass,
-        a hotel's own site, and similar; TAP, Mozio and Kiwitaxi have their own tools; Skyscanner and El Al are read in the operator's Chrome) or asks you to check "the web". It tells you what is not
+        a hotel's own site, and similar; TAP and Kiwitaxi have their own tools; Skyscanner and El Al are read in the operator's Chrome) or asks you to check "the web". It tells you what is not
         connected and which connected source to offer instead. It returns no prices. Never use web search or
         another connector to get a price."""
         wanted = _clean_text(site_or_topic, "site_or_topic").lower()

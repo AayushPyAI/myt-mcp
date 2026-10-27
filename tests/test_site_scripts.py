@@ -132,3 +132,24 @@ def test_the_parts_the_script_makes_match_the_servers_checksum_and_a_changed_dig
     cut = parts[0][:-3]
     assert "no checksum" in (checksum_problem(cut) or "")
     assert "no checksum" in (checksum_problem(re.sub(r',"crc":"[0-9a-f]{8}"', "", parts[0])) or "")
+
+
+# ---------- a source whose parts keep failing is stopped, not re-run in a loop ----------
+
+def _whole_part(site_run: str) -> str:
+    import zlib
+    text = json.dumps({"ok": True, "run": site_run, "rows_read": 0, "part": 1, "parts": 1, "cols": [], "common": {}, "path_base": "", "rows": []})
+    return text[:-1] + ',"crc":"' + format(zlib.crc32(text.encode("utf-8")), "08x") + '"}'
+
+
+def test_parts_that_fail_twice_make_the_server_say_stop_and_a_whole_pass_starts_the_count_again():
+    from myt_mcp.sites import check_parts
+    broken = [{"site": "ratehawk_hotels", "result": '{"run":"a","part":1,"parts":2,"rows":[]}'}]
+    first = check_parts(broken)
+    assert first and not any("STOP" in p for p in first) and "received" in first[0] and "characters" in first[0]
+    second = check_parts(broken)
+    assert any("STOP" in p and "not_checked" in p and "ratehawk_hotels" in p for p in second)
+    assert check_parts([{"site": "ratehawk_hotels", "result": _whole_part("b")}]) == []         # whole: the count is cleared
+    assert not any("STOP" in p for p in check_parts(broken))
+    other = check_parts([{"site": "getyourguide_find", "result": '{"run":"c","part":1,"parts":2,"rows":[]}'}])
+    assert not any("STOP" in p for p in other)               # another site has its own count

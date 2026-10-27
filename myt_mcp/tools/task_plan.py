@@ -77,11 +77,10 @@ PLANS: dict[str, dict[str, Any]] = {
         "sources": [
             {"name": "RateHawk Transfers", "how": "ratehawk_transfers_recipe (it asks the operator first: bags, flight tracking, vehicle, budget; you fill RateHawk's form once, then run its script in Claude in Chrome), compose_answer with its wishes, filters_used and pickup_time", "use": "always"},
             {"name": "Kiwitaxi", "how": "kiwitaxi_transfer_prices", "use": "always; check matched_from and matched_to"},
-            {"name": "Mozio", "how": "mozio_transfer_prices (pass pickup_time)", "use": "always"},
         ],
         "fields": ["vehicle and capacity (people, bags)", "price per vehicle", "waiting time", "cancellation", "provider", "meeting point", "pick-up time used"],
         "filters": "vehicles that fit the whole group and its bags; the same pick-up time on every source.",
-        "never": ["let Mozio's default 12:00 decide the time", "type '3 adults' for '3 passengers'", "say 'roomier' when the capacities are equal", "keep a time the operator guessed once the flights show the real one: when the flight you found lands or leaves at another time, search again with the real time and say so"],
+        "never": ["let a default time (such as 12:00) decide the pick-up time", "type '3 adults' for '3 passengers'", "say 'roomier' when the capacities are equal", "keep a time the operator guessed once the flights show the real one: when the flight you found lands or leaves at another time, search again with the real time and say so"],
     },
     "trains": {
         "ask_once": ["adults and children's ages", "departure time window (earliest and latest: 'in the morning' means latest 12:00)", "class"],

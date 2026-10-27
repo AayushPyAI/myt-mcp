@@ -284,7 +284,7 @@ def test_transfer_rules_and_source_data_are_pointed_to_from_the_core_instruction
 
     assert '("source_data")' in INSTRUCTIONS and len(INSTRUCTIONS) < 3700
     text = sections()["transfers"]
-    for rule in ("Rules for every transfer answer", "SAME time on RateHawk, Mozio and Kiwitaxi", "pickup_time_was_default",
+    for rule in ("Rules for every transfer answer", "SAME time on RateHawk and Kiwitaxi", "pickup_time_was_default",
                  "not \"N adults\"", "same capacity", "showing the cheapest N of M read", "known pattern"):
         assert rule in text, rule
 
@@ -387,7 +387,7 @@ def test_every_price_tool_with_a_known_gap_lists_it():
     from myt_mcp.checks import NOT_PROVIDED
 
     for tool in ("tap_flight_prices", "tap_fare_calendar", "lounge_prices", "train_prices",
-                 "kiwitaxi_transfer_prices", "mozio_transfer_prices", "loungepair_lounges", "airline_lounges"):
+                 "kiwitaxi_transfer_prices", "loungepair_lounges", "airline_lounges"):
         assert NOT_PROVIDED[tool], tool
     assert "waiting time" in NOT_PROVIDED["kiwitaxi_transfer_prices"] and "platform" in NOT_PROVIDED["train_prices"]
 

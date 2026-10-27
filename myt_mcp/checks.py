@@ -72,7 +72,6 @@ NOT_PROVIDED = {
     "airline_lounges": ["the price for a TAP ticket at Azores Airlines' lounges (theirs is sold with an Azores flight)", "the exact TAP lounge price for this trip (only the lowest 'from' price)", "who gets free access with a fare, status or card (TAP's page lists it, this tool does not read it)"],
     "loungepair_lounges": ["the price for this flight date, time and group (only the lowest 'from' price per person)", "booking conditions beyond the FlexiPass fee", "menu or food and drink beyond what the lounge page says"],
     "kiwitaxi_transfer_prices": ["waiting time", "meeting point", "provider or company name", "flight tracking", "vehicle make and model beyond the description"],
-    "mozio_transfer_prices": ["meeting point instructions", "vehicle make and model (only type and class)", "driver details"],
 }
 
 _SOURCES = {
@@ -80,7 +79,7 @@ _SOURCES = {
     "get_trip_participants": "MYT (ManageYourTrip)", "get_supplier_reservations": "MYT (ManageYourTrip)", "reconcile_trip": "MYT (ManageYourTrip)", "check_reservation_paperwork": "MYT (ManageYourTrip)", "train_prices": "Trenitalia (lefrecce.it)",
     "sata_flight_prices": "SATA (azoresairlines.pt)", "lounge_prices": "Aspire Lounges", "loungepair_lounges": "LoungePair (loungepair.com)", "airline_lounges": "Azores Airlines and TAP Air Portugal (their lounge pages)", "viator_search_activities": "Viator",
     "viator_activity_details": "Viator", "getyourguide_activity_details": "GetYourGuide", "getyourguide_find_activities": "GetYourGuide",
-    "ofran_car_prices": "Ofran", "kiwitaxi_transfer_prices": "Kiwitaxi (kiwitaxi.com)", "mozio_transfer_prices": "Mozio (mozio.com)", "tap_flight_prices": "TAP Air Portugal (flytap.com)", "tap_fare_calendar": "TAP Air Portugal fare calendar (flytap.com)",
+    "ofran_car_prices": "Ofran", "kiwitaxi_transfer_prices": "Kiwitaxi (kiwitaxi.com)", "tap_flight_prices": "TAP Air Portugal (flytap.com)", "tap_fare_calendar": "TAP Air Portugal fare calendar (flytap.com)",
 }
 
 

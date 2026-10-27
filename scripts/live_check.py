@@ -6,7 +6,7 @@ Run it before a demo, after a site may have changed, or daily:
 
 PASS = the source answered, the answer matched the search, and it has real prices.
 FAIL = the reason (blocked, site changed, answer didn't match...). Nothing is booked; one search per source.
-Needs the automation Chrome (BROWSER_CDP_URL) for SATA, Viator, GetYourGuide, Mozio, Aspire, TAP and Israir.
+Needs the automation Chrome (BROWSER_CDP_URL) for SATA, Viator, GetYourGuide, Aspire and TAP.
 Kiwitaxi is checked on its place matching too: "Florence Airport" must never be answered with another town's airport.
 """
 
@@ -95,9 +95,6 @@ CHECKS = [
      if d["cars"] else "no cars"),
     ("Kiwitaxi", "kiwitaxi_transfer_prices", lambda: {"from_place": "Florence Airport", "to_place": "Hotel Berchielli Florence", "travel_date": DAY.isoformat(), "passengers": 2},
      lambda d: _kiwitaxi(d)),
-    ("Mozio", "mozio_transfer_prices", lambda: {"from_place": "FCO", "to_place": "Room Mate Collection Mia, Rome, Italy", "travel_date": DAY.isoformat(), "passengers": 2, "max_results": 1},
-     lambda d: f"{_first(d['offers'], 'vehicle_type')} {_first(d['offers'], 'price_total')} EUR ({d['coverage']['offers_read']} offers read, pick-up {d['pickup_time']})"
-     if d["offers"] else "no offers"),
     ("TAP", "tap_flight_prices", lambda: {"from_airport": "FLR", "to_airport": "LIS", "departure_date": DAY.isoformat(), "adults": 2, "max_results": 1},
      lambda d: f"{d['at_a_glance']['cheapest']['flights']} {d['at_a_glance']['cheapest']['departure']}: €{d['at_a_glance']['cheapest']['price_total']} for 2"
      if d.get("at_a_glance", {}).get("cheapest") else "no flights that day"),

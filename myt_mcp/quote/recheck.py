@@ -35,7 +35,7 @@ def classify(line: dict[str, Any]) -> dict[str, Any]:
         return {"kind": "trains", "tools": [first], "needs": "the train's time and class"}
     if transport == "Car":
         if TRANSFER_WORDS.search(product):
-            return {"kind": "transfers", "tools": ["ratehawk_transfers_recipe", "kiwitaxi_transfer_prices", "mozio_transfer_prices"], "needs": "the real flight time and the number of bags"}
+            return {"kind": "transfers", "tools": ["ratehawk_transfers_recipe", "kiwitaxi_transfer_prices"], "needs": "the real flight time and the number of bags"}
         return {"kind": "cars", "tools": ["ratehawk_cars_recipe", "ofran_recipe"], "needs": "pick-up and return times and the driver's age"}
     if category == "Attraction":
         tool = "getyourguide_activity_recipe" if "guide" in s else "viator_activity_recipe" if "viator" in s else None

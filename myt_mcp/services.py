@@ -13,7 +13,6 @@ from myt_mcp.lounges import aspire as aspire_api
 from myt_mcp.lounges import airlines as airline_lounges_api
 from myt_mcp.lounges import loungepair as loungepair_api
 from myt_mcp.minisite.client import MinisiteClient
-from myt_mcp.mozio.client import MozioClient
 from myt_mcp.myt.client import MYTClient
 from myt_mcp.ofran.client import OfranClient
 from myt_mcp.ofran.transport import BrowserTransport, HttpTransport
@@ -29,7 +28,7 @@ class Services:
                  trenitalia: TrenitaliaClient | None = None, viator: ViatorClient | None = None,
                  sata: SataClient | None = None, aspire: aspire_api.AspireClient | None = None, loungepair: loungepair_api.LoungePairClient | None = None, airline_lounges: airline_lounges_api.AirlineLoungesClient | None = None,
                  gyg: GygClient | None = None, kiwitaxi: KiwitaxiClient | None = None, tap: TapClient | None = None,
-                 mozio: MozioClient | None = None, boi: BoiClient | None = None, minisite: MinisiteClient | None = None):
+                 boi: BoiClient | None = None, minisite: MinisiteClient | None = None):
         self.settings = settings
         self._myt = myt
         self._ofran = ofran
@@ -43,7 +42,6 @@ class Services:
         self._kiwitaxi = kiwitaxi
         self._tap = tap
         self._boi = boi
-        self._mozio = mozio
         self._minisite = minisite
         self._browser: BrowserSession | None = None
 
@@ -149,15 +147,6 @@ class Services:
             self._tap = TapClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes)
         return self._tap
 
-    def mozio(self) -> MozioClient:
-        s = self.settings
-        if not s.mozio_enabled:
-            raise IntegrationError("Mozio transfer checks are switched off on the server (MOZIO_ENABLED=false). Ask the operator for the transfer price.")
-        if self._mozio is None:
-            limiter = SiteLimiter("Mozio", max(s.scrape_min_interval_seconds, 5.0), min(s.scrape_max_per_hour, 30))
-            self._mozio = MozioClient(self.browser(), limiter=limiter, cache_minutes=s.scrape_cache_minutes)
-        return self._mozio
-
     def minisite(self) -> MinisiteClient:
         if self._minisite is None:
             self._minisite = MinisiteClient(self.settings.minisite_auth_code, url=self.settings.minisite_webhook_url)
@@ -173,6 +162,6 @@ class Services:
                                    "call find_trip with that number first and use the trip_id it returns.".replace("{trip_id}", str(trip_id)))
 
     async def aclose(self) -> None:
-        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._loungepair, self._airline_lounges, self._gyg, self._kiwitaxi, self._tap, self._mozio, self._boi, self._minisite, self._browser):
+        for client in (self._myt, self._ofran, self._trenitalia, self._viator, self._sata, self._aspire, self._loungepair, self._airline_lounges, self._gyg, self._kiwitaxi, self._tap, self._boi, self._minisite, self._browser):
             if client is not None:
                 await client.aclose()

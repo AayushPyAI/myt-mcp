@@ -133,7 +133,7 @@ def register(mcp: MCPServer) -> None:
         """FOR TRANSFERS ON RATEHAWK (the agency's first choice; read in the operator's own Chrome with Claude in Chrome). ASK FIRST: without `bags`, `flight_tracking` (true/false),
         `vehicle` ('cheapest' / 'comfortable' / 'spacious') and `max_total` (EUR) it opens nothing and returns `ask_operator`: ask those questions in ONE message, wait, call again with the
         answers (`operator_answered`=true for "no preference", only after the operator replied). The pick-up time is required (the trip's flight or the operator; never your own) and must be
-        the same on Kiwitaxi and Mozio. Then it returns the steps to fill RateHawk's Transfers form once and a read-only SCRIPT for the results page. The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row, with the returned `wishes`, `filters_used` and `pickup_time`."""
+        the same on RateHawk and Kiwitaxi. Then it returns the steps to fill RateHawk's Transfers form once and a read-only SCRIPT for the results page. The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row, with the returned `wishes`, `filters_used` and `pickup_time`."""
         asked = transfers_ask_gate(bags, flight_tracking, vehicle, max_total, operator_answered)
         if asked:
             return asked

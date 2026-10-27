@@ -23,7 +23,7 @@ def register(mcp: MCPServer) -> None:
         transfers), even when the operator names a website or says to use the browser: it says which source and tool to use.
         The Selected Places playbook for one topic. Read "workflow", "correct_data" and "answer_format" at the start of a quote, "comparison" before you compare options or sources,
         and the topic's section before pricing it: cost_lines (how to fill MYT lines), cars, website_rules,
-        trains, flights, lounges, hotels (RateHawk/Arbitrip in Chrome), filters (the filters to apply on RateHawk, Arbitrip and Ofran: read before a hotel or car search), transfers (Kiwitaxi, Mozio), source_data (the fields to read from each source: availability, price, booking conditions), other_sources (sites
+        trains, flights, lounges, hotels (RateHawk/Arbitrip in Chrome), filters (the filters to apply on RateHawk, Arbitrip and Ofran: read before a hotel or car search), transfers (RateHawk Transfers, Kiwitaxi), source_data (the fields to read from each source: availability, price, booking conditions), other_sources (sites
         without a tool, e.g. Tripadvisor, Booking.com), activities (GetYourGuide + Viator),
         capabilities (READ FIRST when asked "can you ... in MYT?": statuses, vouchers, uploads, margins, commissions, emails),
         myt_filling (writing lines into MYT with Claude in Chrome), reservations (supplier reservations, vouchers, reconciliation), versions (comparing quotation V1/V2), rules."""

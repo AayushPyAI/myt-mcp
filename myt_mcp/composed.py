@@ -128,7 +128,7 @@ _SOURCES_LINE = re.compile(r"Sources checked:\s*(.*?)(?:\s*\|\s*Not checked:|$)"
 
 
 def source_warnings(draft: str, store: ComposedStore = COMPOSED) -> list[str]:
-    """Sources a compose_answer of the last 3 hours says it read that the draft does not name at all (24 Oct 2026: El Al, Arbitrip, Ofran, Mozio and RateHawk Air were read and missing from the final Sources)."""
+    """Sources a compose_answer of the last 3 hours says it read that the draft does not name at all (24 Oct 2026: El Al, Arbitrip, Ofran and RateHawk Air were read and missing from the final Sources)."""
     low = draft.lower()
     missing: list[str] = []
     for text in store.recent(None):

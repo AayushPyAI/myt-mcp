@@ -1,5 +1,5 @@
 """Regression check for test trip 168 (quotation 82 V2): re-price the lines our tools can read and compare with the net prices in the quote.
-Read only. Run: .venv/bin/python scripts/regress_trip168.py   (needs the automation Chrome for TAP, SATA, GetYourGuide and Mozio)
+Read only. Run: .venv/bin/python scripts/regress_trip168.py   (needs the automation Chrome for TAP, SATA and GetYourGuide)
 Result of the first run (17 Oct 2026): docs/Regression_Trip168_2026-10-17.md
 """
 import asyncio, json, sys
@@ -37,14 +37,6 @@ async def main():
             leg = (o.get("legs") or [{}])[0]
             if any("125" in fl for fl in leg.get("flights", [])): print("6 SATA", leg.get("flights"), leg.get("departs"), o.get("total_price"), leg.get("fare"))
         if d.get("ERROR"): print("6 SATA", d["ERROR"])
-        # transfers: Mozio (all) + Kiwitaxi where it can
-        for name, a, b, day, hhmm, net in [("2 FCO>RoomMate (1 Mar)", "FCO", "Room Mate Collection Mia, Rome, Italy", "2027-03-01", "16:30", 81.0),
-                                           ("5 Berchielli>FLR (6 Mar)", "Hotel Berchielli, Florence, Italy", "FLR", "2027-03-06", "10:00", 99.0),
-                                           ("7 PDL>Terra Nostra (8 Mar)", "PDL", "Terra Nostra Garden Hotel, Furnas, Portugal", "2027-03-08", "16:00", 100.0),
-                                           ("8 TerraNostra>PDL (11 Mar)", "Terra Nostra Garden Hotel, Furnas, Portugal", "PDL", "2027-03-11", "09:30", 100.0)]:
-            d = await call(name + " mozio", "mozio_transfer_prices", {"from_place": a, "to_place": b, "travel_date": day, "passengers": 3, "pickup_time": hhmm, "max_results": 3})
-            offers = d.get("offers", [])
-            print(name, "| quote net", net, "| Mozio cheapest 3 pax:", [(o.get("price_total"), o.get("vehicle_type"), o.get("max_passengers")) for o in offers[:3]], d.get("ERROR"))
         # 13 / 14 activities
         d = await call("13 vatican", "getyourguide_activity_details", {"url": "https://www.getyourguide.com/rome-l33/rome-vatican-museums-sistine-chapel-basilica-tour-t429439/", "activity_date": "2027-03-03", "adults": 2, "child_ages": [8]})
         for o in d.get("options", []):

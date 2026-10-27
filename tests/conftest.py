@@ -26,4 +26,5 @@ def _reset_server_read_state(tmp_path, monkeypatch):
     from myt_mcp.ingest import STORE
     COMPOSED.clear()
     STORE.clear()
+    sites._PART_FAILS.clear()
     yield

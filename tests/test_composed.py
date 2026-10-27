@@ -213,3 +213,29 @@ def test_a_refundable_wish_makes_a_flight_row_with_unknown_refund_terms_not_a_pi
     assert [o.fits for o in rows] == [False, False, True, True, True, False]          # only the quotable, undecided rows with unknown terms change; a comparison row and a decided row are left alone
     assert "RateHawk Air (2 of its 3 rows)" in note and "RateHawk Air 343.72 EUR" in note and "not picks" in note and "Skyscanner" not in note
     assert refund_unconfirmed([mk("TAP Air Portugal", 1.0, "refundable"), mk("SATA / Azores Airlines", 2.0, "refund: Without penalties (included)")]) is None
+
+
+# ---------- a display name for a site is read as its key when only one recipe can be meant (26 Oct 2026: 'GetYourGuide' and 'RateHawk' got whole answers refused) ----------
+
+def test_a_site_name_that_means_one_recipe_is_read_as_its_key_and_an_unclear_one_is_still_refused():
+    from myt_mcp.sites import modules, resolve_site_names
+    mods = modules()
+    item = lambda site: [{"site": site, "result": "{}"}]
+    assert resolve_site_names(item("RateHawk Hotels"), mods, set())[0][0]["site"] == "ratehawk_hotels"        # fits exactly one key
+    assert resolve_site_names(item("Ratehawk"), mods, set())[0][0]["site"] == "Ratehawk"                      # five keys and nothing issued: unclear
+    assert resolve_site_names(item("Ratehawk"), mods, {"ratehawk_hotels"})[0][0]["site"] == "ratehawk_hotels"      # one of them was issued in this chat
+    assert resolve_site_names(item("GetYourGuide"), mods, {"getyourguide_find", "getyourguide_activity"})[0][0]["site"] == "GetYourGuide"      # both issued: still unclear
+    out, fixed = resolve_site_names(item("GetYourGuide"), mods, {"getyourguide_find"})
+    assert out[0]["site"] == "getyourguide_find" and fixed == {"GetYourGuide": "getyourguide_find"}
+    assert resolve_site_names(item("Nowhere"), mods, {"getyourguide_find"})[0][0]["site"] == "Nowhere"
+    assert resolve_site_names(item("tap"), mods, set())[0][0]["site"] == "tap"                                # an exact key stays as it is
+
+
+@pytest.mark.anyio
+async def test_compose_answer_reads_the_display_name_of_the_one_recipe_that_was_issued():
+    from myt_mcp.ingest import STORE
+    STORE.new_run("getyourguide_find", {}, [])
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        r = (await c.call_tool("compose_answer", {"kind": "activities", "site_results": [{"site": "GetYourGuide", "result": "{}"}], "not_checked": []})).structured_content
+    assert not any("unknown site" in p for p in r.get("problems", []))
