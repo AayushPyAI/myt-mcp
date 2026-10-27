@@ -296,6 +296,7 @@ async def test_trip_pauses_a_site_for_thirty_minutes_and_then_lets_calls_through
 
 async def test_the_ofran_server_tools_are_off_by_default_and_send_nothing(monkeypatch):
     monkeypatch.delenv("OFRAN_SERVER_SEARCH")
+    monkeypatch.setenv("LEGACY_TOOL_POINTERS", "1")      # the pointers are not listed unless asked for (myt_mcp/legacy.py)
     transport = FakeOfranTransport()
     srv = server(transport=transport)
     for name, args in (("ofran_find_location", {"query": "Ponta Delgada"}), ("ofran_car_prices", {"location": "PDL", "pickup_date": SOON.isoformat(), "dropoff_date": (SOON + timedelta(days=2)).isoformat()})):

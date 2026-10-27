@@ -491,6 +491,7 @@ async def test_a_block_page_stops_the_read_and_the_same_search_is_reused_for_ten
 
 @pytest.mark.anyio
 async def test_the_server_browser_tool_is_off_by_default_and_the_chrome_recipe_asks_first_and_reads_a_window(monkeypatch):
+    monkeypatch.setenv("LEGACY_TOOL_POINTERS", "1")      # the pointers are not listed unless asked for (myt_mcp/legacy.py)
     import json as _json
 
     from mcp import Client
@@ -1222,6 +1223,7 @@ async def test_sata_tool_asks_first_then_returns_the_url_script_wishes_and_filte
 
 @pytest.mark.anyio
 async def test_tap_and_sata_server_tools_are_pointers_to_the_recipes_unless_switched_on(monkeypatch):
+    monkeypatch.setenv("LEGACY_TOOL_POINTERS", "1")      # the pointers are not listed unless asked for (myt_mcp/legacy.py)
     from mcp import Client
     from myt_mcp.app import create_server
     from myt_mcp.config import Settings
@@ -1491,6 +1493,7 @@ async def test_viator_activity_tool_returns_steps_script_and_wishes():
 
 @pytest.mark.anyio
 async def test_viator_and_gyg_server_tools_are_pointers_to_the_recipes_unless_switched_on(monkeypatch):
+    monkeypatch.setenv("LEGACY_TOOL_POINTERS", "1")      # the pointers are not listed unless asked for (myt_mcp/legacy.py)
     from mcp import Client
     from myt_mcp.app import create_server
     from myt_mcp.config import Settings

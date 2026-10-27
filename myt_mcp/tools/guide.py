@@ -19,9 +19,8 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
     async def quote_guide(topic: Topic) -> str:
-        """CALL THIS FIRST for any travel price or availability request (hotels, cars, trains, flights, lounges, activities,
-        transfers), even when the operator names a website or says to use the browser: it says which source and tool to use.
-        The Selected Places playbook for one topic. Read "workflow", "correct_data" and "answer_format" at the start of a quote, "comparison" before you compare options or sources,
+        """THE WRITTEN PLAYBOOK for one topic (hotels, cars, trains, flights, lounges, activities, transfers), read AFTER task_plan when you need the rules:
+        task_plan chooses the sources and tools, this holds the Selected Places rules behind them. Read "workflow", "correct_data" and "answer_format" at the start of a quote, "comparison" before you compare options or sources,
         and the topic's section before pricing it: cost_lines (how to fill MYT lines), cars, website_rules,
         trains, flights, lounges, hotels (RateHawk/Arbitrip in Chrome), filters (the filters to apply on RateHawk, Arbitrip and Ofran: read before a hotel or car search), transfers (RateHawk Transfers, Kiwitaxi), source_data (the fields to read from each source: availability, price, booking conditions), other_sources (sites
         without a tool, e.g. Tripadvisor, Booking.com), activities (GetYourGuide + Viator),
@@ -35,7 +34,7 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
     async def connector_capabilities() -> str:
-        """CALL THIS FIRST when the operator asks what this connector or MYT can or cannot do: "can you change a status,
+        """FOR A QUESTION ABOUT WHAT THIS CONNECTOR OR MYT CAN OR CANNOT DO (never for prices): when the operator asks "can you change a status,
         upload a voucher or file, edit margins or commissions, delete, send an email, change the trip status?". It returns the
         exact list: what a tool does, what only Claude in Chrome does on the MYT screen, what was never tested and what is never
         done. Answer such questions only from it, never from the other tools' names (for example update_supplier_reservation

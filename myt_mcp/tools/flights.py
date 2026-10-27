@@ -11,6 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from myt_mcp.legacy import legacy_pointers
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
 from myt_mcp.labels import flights_glance
@@ -205,7 +206,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             answer["note"] = "TAP's calendar shows no price for this route and month; the route may not be flown, or TAP has no fares loaded yet."
         return answer
 
-    if not tap_live:
+    if not tap_live and legacy_pointers():
         @mcp.tool(annotations=READ_ONLY)
         @tool_errors
         async def tap_flight_prices(from_airport: str, to_airport: str, departure_date: date, adults: int = 2, child_ages: list[int] | None = None, max_results: int = 8,
@@ -215,7 +216,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             return {"ok": False, "searched": False, "next": "This tool is off. Call tap_recipe with the same airports, date and travellers (it asks direct only, checked bag and refundable first, "
                                                              "then gives the url and the script for Claude in Chrome). tap_fare_calendar still works for the cheapest days."}
 
-    if not sata_live:
+    if not sata_live and legacy_pointers():
         @mcp.tool(annotations=READ_ONLY)
         @tool_errors
         async def sata_flight_prices(from_airport: str, to_airport: str, departure_date: date, return_date: date | None = None, adults: int = 2, children: int = 0,

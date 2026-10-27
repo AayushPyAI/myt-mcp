@@ -11,6 +11,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
 
+from myt_mcp.legacy import legacy_pointers
+from myt_mcp.tool_tags import tag_tools
 from myt_mcp.config import Settings
 from myt_mcp.ingest import STORE
 from myt_mcp.services import Services
@@ -91,7 +93,7 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
     task_plan.register(mcp, services)
     if os.environ.get("RATEHAWK_SERVER_BROWSER") == "1":      # off by default: RateHawk is read with Claude in Chrome (the operator's own browser); this reads it in the server's browser
         ratehawk_live.register(mcp, services)
-    else:
+    elif legacy_pointers():
         ratehawk_live.register_redirect(mcp)      # claude.ai remembers the old tool list: keep the old name answering with the way to the right tool
 
     @mcp.custom_route("/health", methods=["GET"])
@@ -113,6 +115,7 @@ def create_server(settings: Settings, services: Services | None = None) -> MCPSe
         # claude.ai took the connector's icon from the host's favicon (a Cloudflare cloud for *.trycloudflare.com), not from `icons`
         return RedirectResponse(SERVER_ICONS[0].src, status_code=302)
 
+    tag_tools(mcp)      # the kind words in front of every recipe's description (myt_mcp/tool_tags.py)
     return mcp
 
 

@@ -10,6 +10,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from myt_mcp.legacy import legacy_pointers
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import IntegrationError, tool_errors
 from myt_mcp.labels import activity_glance, free_cancellation
@@ -406,7 +407,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             answer["warning"] = " ".join(warnings)
         return answer
 
-    if not viator_live:
+    if not viator_live and legacy_pointers():
         @mcp.tool(annotations=READ_ONLY)
         @tool_errors
         async def viator_search_activities(query: str, max_results: int = 12, pages: int = 2, sort_by: str = "featured", max_price: float | None = None, free_cancellation_only: bool = False,
@@ -421,7 +422,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             """NOT USED in this setup (Viator is read with Claude in Chrome): call viator_activity_recipe with the same link, date and group."""
             return {"ok": False, "searched": False, "next": "This tool is off. Call viator_activity_recipe with the activity link, the date, the adults and the children's ages (it gives the steps and the script for Claude in Chrome)."}
 
-    if not gyg_live:
+    if not gyg_live and legacy_pointers():
         @mcp.tool(annotations=READ_ONLY)
         @tool_errors
         async def getyourguide_find_activities(query: str, activity_date: date | None = None, max_results: int = 12, pages: int = 2, sort_by: str = "popularity", min_price: float | None = None,

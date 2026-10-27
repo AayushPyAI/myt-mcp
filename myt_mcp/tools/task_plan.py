@@ -175,7 +175,7 @@ def register(mcp: MCPServer, services: Services) -> None:
     @mcp.tool(annotations=READ_ONLY)
     @tool_errors
     async def task_plan(kind: Kind, trip_id: int | None = None) -> dict[str, Any]:
-        """CALL THIS FIRST for any price request (flights, hotels, cars, transfers, trains, activities, lounges) and follow it step by step.
+        """THE ONE TOOL TO CALL FIRST for any price request (flights, hotels, cars, transfers, trains, activities, lounges) and follow it step by step.
         It returns, for that kind of request: what to ask the operator once, EVERY source to read (tools and Chrome sites), the filters,
         the fields to collect for each option, what never to do, the shape of the answer, and the final step (check_answer). With
         `trip_id` (from find_trip) it also fills in the trip's dates, travellers and, for flights, each leg with the sources that can and

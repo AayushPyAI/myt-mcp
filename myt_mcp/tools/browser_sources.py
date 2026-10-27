@@ -89,7 +89,7 @@ def register(mcp: MCPServer) -> None:
         rooms: int = 1,
         meal_plan: Literal["BB", "RO", "HB", "FB", "AI"] = "BB",
     ) -> dict[str, Any]:
-        """Hotel or room question: call task_plan('hotels') FIRST, then call ratehawk_hotels (RateHawk, one call, finished answer): find a hotel, room price, hotel availability, breakfast,
+        """Hotel or room question: call task_plan('hotels') FIRST and follow it (RateHawk and Arbitrip are read with ratehawk_hotels_recipe and arbitrip_hotels_recipe, a Bensaude hotel with bensaude_hotels_recipe): find a hotel, room price, hotel availability, breakfast,
         cancellation terms, "find hotel X for these dates" (מלון). Hotel prices come from RateHawk and Arbitrip, which
         are websites read in the operator's Chrome with Claude in Chrome (never Booking.com, web search or other
         connectors). This tool returns NO prices: it checks the search and returns the exact search values for both
@@ -158,9 +158,8 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool(annotations=PLAN_ONLY)
     @tool_errors
     async def other_source_prices(site_or_topic: str) -> dict[str, Any]:
-        """USE THIS FIRST when the operator names a website or provider that has no tool here (Tripadvisor,
-        Booking.com, Airbnb, Agoda, Skyscanner, El Al, Ryanair, easyJet, Sixt, Europcar, Rentalcars, Priority Pass,
-        a hotel's own site, and similar; TAP and Kiwitaxi have their own tools; Skyscanner and El Al are read in the operator's Chrome) or asks you to check "the web". It tells you what is not
+        """FOR A WEBSITE OR PROVIDER THAT HAS NO TOOL HERE (Tripadvisor, Airbnb, Agoda, Booking.com Stays and Airport taxis, Ryanair, easyJet, Sixt, Priority Pass, LoungeReview,
+        a hotel's own site other than Bensaude, and similar) or when asked to check "the web". Sites that have a tool (TAP, SATA, El Al, Skyscanner, Kiwitaxi, Europcar, Rentalcars.com, Bensaude, Booking.com flights and attractions, RateHawk, Arbitrip, GetYourGuide, Viator, Ofran) are found by task_plan. It tells you what is not
         connected and which connected source to offer instead. It returns no prices. Never use web search or
         another connector to get a price."""
         wanted = _clean_text(site_or_topic, "site_or_topic").lower()

@@ -195,7 +195,7 @@ async def test_connector_capabilities_tool_answers_the_can_you_questions():
 
     async with Client(create_server(Settings())) as c:
         tools = {t.name: t for t in (await c.list_tools()).tools}
-        assert "connector_capabilities" in tools and "CALL THIS FIRST" in tools["connector_capabilities"].description
+        assert "connector_capabilities" in tools and "WHAT THIS CONNECTOR OR MYT CAN OR CANNOT DO" in tools["connector_capabilities"].description
         assert tools["connector_capabilities"].annotations.read_only_hint
         text = (await c.call_tool("connector_capabilities", {})).content[0].text
     assert "Screen only" in text and "Not tested. Do not offer it" in text and "ChangeTripStatus" in text

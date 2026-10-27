@@ -11,6 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
+from myt_mcp.legacy import legacy_pointers
 from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
 from myt_mcp.labels import cars_glance
@@ -98,7 +99,7 @@ def register(mcp: MCPServer, services: Services) -> None:
             answer["warning"] = f"{summary.skipped} offers were left out because Ofran sent them in an unexpected format."
         return answer
 
-    if not live:
+    if not live and legacy_pointers():
         @mcp.tool(annotations=READ_ONLY)
         @tool_errors
         async def ofran_find_location(query: str) -> dict[str, Any]:
