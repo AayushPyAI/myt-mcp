@@ -243,6 +243,8 @@ def embed_wishes(out: Any, site: str | None = None) -> Any:
     """The operator's wishes for THIS script (and the filters it was given) travel inside the script's own answer: the model passes ONE `wishes` to compose_answer for every source,
     so a source whose recipe had other wishes (checked bag, refundable) was judged by the wrong ones (seen 23 Oct 2026: a fare with no bag and no refund became 'Best fit')."""
     if isinstance(out, dict) and out.get("script"):
+        out["tab"] = ("Open the url in a NEW tab (tabs_create_mcp), never in the operator's current tab: their own work is open there (27 Oct 2026: a search replaced the operator's Booking.com flight search). "
+                      "Close that tab when you have the receipt.")
         head = "await (async () => {\n"
         base = public_base()
         if base and site in NO_POST:     # the page's security policy stops the post, so the script gets no address to post to (once the chat's Claude declined to run a GetYourGuide script that posts to this server: "sends page data to an unfamiliar outside web address", 26 Oct 2026; a model's choice, not a block)
@@ -510,9 +512,33 @@ def check_parts(site_results: list[dict[str, Any]]) -> list[str]:
 GENERIC_PLACE_WORDS = {"airport", "station", "railway", "terminal", "international", "intl", "city", "center", "centre", "downtown", "the", "of", "de", "da", "di", "and"}
 
 
+_ALIAS_GROUPS: list[set[str]] | None = None
+
+
+def alias_groups() -> list[set[str]]:
+    """The names one place goes by (myt_mcp/sites/place_aliases.json), read once."""
+    global _ALIAS_GROUPS
+    if _ALIAS_GROUPS is None:
+        try:
+            _ALIAS_GROUPS = [set(g) for g in json.loads((Path(__file__).parent / "place_aliases.json").read_text(encoding="utf-8")).get("groups", [])]
+        except (OSError, ValueError):
+            _ALIAS_GROUPS = []
+    return _ALIAS_GROUPS
+
+
+def place_words(text: str | None) -> set[str]:
+    """The distinctive words of a place (no accents, no 'airport', 'station'...), plus every other name of the same place from the alias table."""
+    import unicodedata
+    plain = "".join(c for c in unicodedata.normalize("NFKD", (text or "").lower()) if not unicodedata.combining(c))
+    words = {w for w in re.sub(r"[^a-z0-9]+", " ", plain).split() if w not in GENERIC_PLACE_WORDS}
+    for group in alias_groups():
+        if words & group:
+            words |= group
+    return words
+
+
 def place_matches(expected: str | None, got: str | None) -> bool:
-    """Is the place the page searched the place that was asked? Compared by the DISTINCTIVE words (not 'airport', 'station'...): 'Faro Airport' is 'Portugal, Faro Airport', never 'Spain, Malaga Airport'."""
-    def words(x: str | None) -> set[str]:
-        return {w for w in re.sub(r"[^a-z0-9]+", " ", (x or "").lower()).split() if w not in GENERIC_PLACE_WORDS}
-    want, have = words(expected), words(got)
+    """Is the place the page searched the place that was asked? Compared by the DISTINCTIVE words (not 'airport', 'station'...): 'Faro Airport' is 'Portugal, Faro Airport', never 'Spain, Malaga Airport'; a place's other names count
+    as the same word ('Lisbon Airport' is 'Humberto Delgado Airport (LIS)': place_aliases.json). An empty side is not a reason to refuse."""
+    want, have = place_words(expected), place_words(got)
     return not want or not have or bool(want & have)

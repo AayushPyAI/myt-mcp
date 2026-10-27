@@ -1,0 +1,24 @@
+{
+  "_note": "Names one place goes by (city, airport name, airport codes) so that 'Lisbon Airport' and 'Humberto Delgado Airport (LIS)' are the same place for place_matches (27 Oct 2026: RateHawk Transfers' page said 'Humberto Delgado Airport (LIS)' and the check refused it twice). Lower case, no accents; only distinctive words, no generic ones (airport, station), no short words that other places use. Add a group for an airport when a page writes it another way; an airport of a city that has two (Rome: Fiumicino and Ciampino, Milan: Malpensa and Linate) is its own group, never the whole city.",
+  "groups": [
+    ["lisbon", "lisboa", "lis", "lppt", "humberto", "delgado", "portela"],
+    ["porto", "oporto", "opo", "lppr", "carneiro"],
+    ["faro", "fao", "lpfr"],
+    ["ponta", "delgada", "pdl", "lppd"],
+    ["funchal", "fnc", "lpma", "madeira", "cristiano", "ronaldo"],
+    ["florence", "firenze", "flr", "lirq", "peretola", "vespucci"],
+    ["fco", "lirf", "fiumicino", "leonardo", "vinci"],
+    ["cia", "lirc", "ciampino"],
+    ["mxp", "limc", "malpensa"],
+    ["lin", "liml", "linate"],
+    ["venice", "venezia", "vce", "marco", "polo"],
+    ["naples", "napoli", "nap", "capodichino"],
+    ["pisa", "psa", "galilei"],
+    ["bologna", "blq", "marconi"],
+    ["tel", "aviv", "tlv", "gurion"],
+    ["madrid", "mad", "barajas"],
+    ["barcelona", "bcn", "prat"],
+    ["malaga", "agp"],
+    ["athens", "athina", "ath", "venizelos"]
+  ]
+}

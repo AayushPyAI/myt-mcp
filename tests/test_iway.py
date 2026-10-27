@@ -93,8 +93,9 @@ def test_the_place_id_in_the_address_decides_not_the_name_iway_writes_for_it():
     live = answer([{**r, "symbol": "€"} for r in ROWS], form={**FORM, "from_name": "Humberto Delgado Airport", "to_name": "Praca do Comercio", "header_currency": "EUR"})      # the same places, written differently, on the euro page of 27 Oct 2026
     rows = convert(live, wishes(), "Transfers")
     assert rows.problems == [] and len(rows.offers) == 4 and rows.offers[0].price_total == 28.41
-    unknown = {"expect": {**EXPECT, "from_id": None, "to_id": None}, "fx": FX}      # places iWay's table does not know: only the name can say it is the right place
-    assert any("searched from 'Humberto Delgado Airport'" in p for p in convert(live, unknown, "Transfers").problems)
+    unknown = {"expect": {**EXPECT, "from": "Faro Airport", "from_id": None, "to_id": None}, "fx": FX}      # places iWay's table does not know: only the name can say it is the right place
+    assert any("searched from 'Humberto Delgado Airport', not 'Faro Airport'" in p for p in convert(live, unknown, "Transfers").problems)
+    assert convert(live, {"expect": {**EXPECT, "from_id": None, "to_id": None}, "fx": FX}, "Transfers").problems == []      # 'Lisbon Airport' and 'Humberto Delgado Airport' are one place (place_aliases.json)
     assert convert(answer(form={**FORM, "from_id": "ChIJother", "from_name": "Faro Airport"}), wishes(), "Transfers").problems[0].startswith("the page searched from 'Faro Airport'")      # another id: the name is checked again
 
 
