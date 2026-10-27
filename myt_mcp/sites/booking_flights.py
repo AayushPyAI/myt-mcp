@@ -26,7 +26,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, clock24, day_month, server_first, with_emit
 
 NAME = "booking_flights"
 SOURCE = "Booking.com flights (public website price)"
@@ -109,16 +109,16 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         if r.get("cur") != "€":
             problems.append(f"a Booking.com price is in '{r.get('cur')}', not euro: open the url again (the address asks currency=EUR)")
             continue
-        leg = legs[0]
+        leg = {**legs[0], "dep": clock24(legs[0].get("dep")), "arr": clock24(legs[0].get("arr")), "dep_date": day_month(legs[0].get("dep_date")), "arr_date": day_month(legs[0].get("arr_date"))}      # the same clock and date order whichever Chrome read it
         key = (r.get("carriers"), leg.get("dep"), leg.get("arr"), leg.get("dep_date"), leg.get("arr_date"), r.get("total"))
         if key in merged:      # the same flight in the Best list and in the Cheapest list is one row with both labels
             if r.get("sort") not in merged[key]["tabs"]:
                 merged[key]["tabs"].append(r.get("sort"))
             continue
-        merged[key] = {"row": r, "tabs": [r.get("sort")]}
+        merged[key] = {"row": r, "leg": leg, "tabs": [r.get("sort")]}
     offers: list[Offer] = []
     for item in merged.values():
-        r, leg = item["row"], item["row"]["legs"][0]
+        r, leg = item["row"], item["leg"]
         direct = _direct(leg.get("stops"))
         arrives = f" (arrives {leg['arr_date']})" if leg.get("arr_date") and leg.get("dep_date") and leg["arr_date"] != leg["dep_date"] else ""
         name = f"{r.get('carriers') or 'airline not shown'} {leg.get('dep')}-{leg.get('arr')}{arrives} ({leg.get('duration')})"
@@ -157,7 +157,7 @@ def register(mcp: MCPServer) -> None:
         in the page's own Sort menu and reads the first `pages` pages of that (Best and Cheapest are read together, the agency's rule), sends its whole answer from the page to the server by itself and returns a
         short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. `origin` / `destination` are 3-letter AIRPORT
         codes. Children are not supported: search the adults and say so. Booking.com rows are comparison only: the price to quote comes from the airline's page. A human check (captcha) is never worked
-        around: stop and tell the operator. One call per leg."""
+        around: stop and tell the operator. One call per leg. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
         if children_ages:
             raise ToolError("Booking.com's address takes no child ages that were tested: search with adults only, say so, and put the children in not_checked for this source (reason: could not be read: children not supported by the recipe)")
         missing = [q for q, given in ((ASK["stops"], direct_only is not None), (ASK["cabin"], cabin is not None)) if not given]
@@ -172,4 +172,4 @@ def register(mcp: MCPServer) -> None:
         out["wishes"] = {"expect": out["expect"]}
         out["filters_used"] = [("Direct flights only (operator; the site's own stops filter)" if direct_only else "Connections allowed (" + ("operator" if direct_only is not None else "default: no preference") + ")"),
                                f"{out['expect']['cabin_name']} cabin (" + ("operator" if cabin else "default") + ")", "Best and Cheapest sorts read together (agency rule)", "Prices in EUR (server default)"]
-        return out
+        return await server_first(NAME, "BOOKING_FLIGHTS_READ_IN_SERVER", "https://flights.booking.com", out)

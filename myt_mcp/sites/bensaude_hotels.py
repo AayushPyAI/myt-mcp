@@ -27,7 +27,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, server_first, with_emit
 from myt_mcp.sites.ratehawk_hotels import limits
 
 NAME = "bensaude_hotels"
@@ -181,7 +181,7 @@ def register(mcp: MCPServer) -> None:
         name (an unclear name returns the list: ask the operator). Then it returns the url and a read-only SCRIPT: open the url in Claude in Chrome, run the script with the javascript tool; it reads every room
         and rate plan with its meal, price of the whole stay and cancellation policy, sends them to the server by itself and returns a short receipt (the `ingest` id): then call compose_answer with `runs`=[that id]
         and the `wishes` and `filters_used` of this tool. Never type a row. The page shows no stars or review score. Children are not supported yet (their ages are not in the address): search adults only
-        and say so. `budget_per_night` is per night; the price is per room for the stay."""
+        and say so. `budget_per_night` is per night; the price is per room for the stay. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
         if children_ages:
             raise ToolError("Bensaude's page takes a child's age in its form, not in the address, and that is not tested: search with adults only, say so, and put the children in not_checked for this source (reason: could not be read: children are not supported yet)")
         found = find_hotel(hotel)
@@ -196,4 +196,4 @@ def register(mcp: MCPServer) -> None:
         wishes, filters = limits(None, budget_per_night, None, breakfast, free_cancellation, (check_out - check_in).days)
         wishes["expect"] = out.pop("expect")
         out.update({"hotel": hotel_name, "wishes": wishes, "filters_used": filters + [f"Guests: {adults} adults (operator)"], "nights": (check_out - check_in).days})
-        return out
+        return await server_first(NAME, "BENSAUDE_READ_IN_SERVER", "https://bensaude.e-gds.com", out)

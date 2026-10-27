@@ -28,7 +28,7 @@ from mcp.types import ToolAnnotations
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
 from myt_mcp.fx import basis_note, eur_factors, to_eur
-from myt_mcp.sites import SiteRows, place_matches, with_emit
+from myt_mcp.sites import SiteRows, server_first, place_matches, with_emit
 from myt_mcp.sites.ratehawk_cars import cars_ask_gate
 
 NAME = "europcar_cars"
@@ -180,7 +180,7 @@ def register(mcp: MCPServer) -> None:
         `pickup` is the place as typed on europcar.com ('Lisbon Airport'); a place without a known station code returns `needs_station_code` with steps to learn it once. `residency` is the driver's country (IL):
         Europcar's price CURRENCY follows it (Israel is priced in dollars): the rows keep their currency and are never converted. Then it returns the results url (every value in it) and a read-only SCRIPT: open the
         url, run the script with the javascript tool; it scrolls the whole list, reads every car and sends its answer to the server by itself, then returns a short receipt (the `ingest` id): call compose_answer
-        with `runs`=[that id] and this tool's `wishes` and `filters_used`. Never press Select or type a row. A check page or block is never worked around: stop and tell the operator."""
+        with `runs`=[that id] and this tool's `wishes` and `filters_used`. Never press Select or type a row. A check page or block is never worked around: stop and tell the operator. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
         asked = cars_ask_gate(gearbox, min_seats, zero_excess, max_total, operator_answered)
         if asked:
             return asked
@@ -208,4 +208,4 @@ def register(mcp: MCPServer) -> None:
                                + ([f"prices in other currencies converted to EUR by the server at the {fx['source']} of {fx['date']} (USD 1 = EUR {fx['factors']['USD']:.4f})"] if fx and "USD" in fx["factors"]
                                   else ["no euro exchange rate was available: Europcar rows in another currency stay unconverted (the server never guesses a rate)"] if not fx else []))
         out["pickup_time"] = pickup_time
-        return out
+        return await server_first(NAME, "EUROPCAR_READ_IN_SERVER", "https://www.europcar.com", out)

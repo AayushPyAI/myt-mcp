@@ -70,7 +70,8 @@ _PAUSED_UNTIL: dict[str, float] = {}
 PAUSE_FILE = Path(os.environ.get("MYT_PAUSE_FILE", "/tmp/myt-mcp/paused_sites.json"))     # wall-clock times: a pause survives a restart of the server and is seen by every process
 SITE_MIN_SECONDS = {"viator_find": 15.0, "viator_activity": 15.0}      # Viator flagged the server's IP once (15 Oct 2026): slower and fewer reads there
 SITE_MAX_PER_HOUR = {"viator_find": 20, "viator_activity": 20}
-BLOCK_WORDS = re.compile(r"human check|refuses|block page|captcha|access denied|unusual traffic|blocked by", re.I)
+SITE_PAUSE_SECONDS = {"rentalcars_cars": 6 * 3600}      # Rentalcars.com showed "Human Verification" to the server's IP on 27 Oct 2026: it is tried again only every 6 hours, the operator's Chrome reads it meanwhile
+BLOCK_WORDS = re.compile(r"human check|human verification|confirm you are human|verify you are human|refuses|block page|captcha|access denied|unusual traffic|blocked by", re.I)
 
 
 def _load_pauses() -> dict[str, float]:
@@ -90,10 +91,11 @@ def paused_minutes(site: str) -> int:
 
 def pause_site(site: str) -> None:
     import time
-    _PAUSED_UNTIL[site] = time.monotonic() + PAUSE_SECONDS
+    seconds = SITE_PAUSE_SECONDS.get(site, PAUSE_SECONDS)
+    _PAUSED_UNTIL[site] = time.monotonic() + seconds
     try:
         PAUSE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        data = _load_pauses(); data[site] = time.time() + PAUSE_SECONDS
+        data = _load_pauses(); data[site] = time.time() + seconds
         PAUSE_FILE.write_text(json.dumps(data))
     except OSError:
         pass
@@ -160,7 +162,7 @@ async def read_in_server_browser(site: str, origin: str, url: str, out: dict[str
                 await page.wait_for_url(f"**{ready_path}*", timeout=25000)
             except Exception:
                 pass               # the script says what is on the page
-        blocked = await page.evaluate("() => /Ray ID|Access denied|Pardon Our Interruption|unusual traffic|An error occurred\\.\\s+We.ll be right back|Request blocked|403 Forbidden/i.test((document.title + ' ' + document.body.innerText).slice(0, 900))")
+        blocked = await page.evaluate("() => /Ray ID|Access denied|Pardon Our Interruption|unusual traffic|An error occurred\\.\\s+We.ll be right back|Request blocked|403 Forbidden|Human Verification|confirm you are human|verify you are human/i.test((document.title + ' ' + document.body.innerText).slice(0, 900))")
         if blocked is True:
             return json.dumps({"ok": False, "error": f"{site} shows a block page (it refuses the server's browser). Stop: do not retry and do not work around it."})
         return await page.evaluate("async () => (" + script + ")")
@@ -179,6 +181,43 @@ async def read_in_server_browser(site: str, origin: str, url: str, out: dict[str
     elif data.get("ok"):
         _CACHE[(site, url)] = (time.monotonic(), raw)
     return finish(raw)
+
+
+async def server_first(site: str, flag: str, origin: str, out: dict[str, Any], ready_path: str | None = None) -> dict[str, Any]:
+    """The server's own automation Chrome reads the page FIRST (the same script, the whole answer stays here: the model gets a short receipt and calls compose_answer(runs=[...]));
+    when it cannot (no automation Chrome, the site paused after a block, a human check or block page, a timeout, a script error, the answer not accepted) the recipe comes back unchanged for the operator's Claude in Chrome,
+    with the reason in `server_read`. Nothing is ever worked around: a block only means the other way is used."""
+    if not server_reads(flag):
+        return out
+    try:
+        result = await read_in_server_browser(site, origin, out["url"], out, ready_path)
+    except Exception as e:      # whatever went wrong in the server's browser, the operator's Chrome is still there
+        result = {"ok": False, "error": f"the server's browser failed ({type(e).__name__})"}
+    if result.get("ok"):
+        return result
+    out["server_read"] = {"tried": True, "ok": False, "why": str(result.get("error") or "the server's browser could not read the page")[:300]}
+    out["how_to_read"] = ("The server's own browser could not read this page (see server_read.why). Read it in Claude in Chrome instead: open the url, run the script with the javascript tool, then call compose_answer with the receipt as the other recipes do. "
+                          "Do not retry the server's read and never type a row.")
+    return out
+
+
+def clock24(text: Any) -> str | None:
+    """'5:30 AM' -> '05:30', '1:00 PM' -> '13:00', '23:30' -> '23:30' (the server's Chrome speaks US English, the operator's does not): the same clock for every reader."""
+    m = re.fullmatch(r"\s*(\d{1,2}):(\d{2})\s*([AaPp][Mm])?\s*", str(text or ""))
+    if not m:
+        return None if text in (None, "") else str(text)
+    h, mi, ap = int(m.group(1)), m.group(2), (m.group(3) or "").lower()
+    if ap == "pm" and h < 12:
+        h += 12
+    if ap == "am" and h == 12:
+        h = 0
+    return f"{h:02d}:{mi}"
+
+
+def day_month(text: Any) -> str | None:
+    """'Mar 7' -> '7 Mar' (US order to the order the operator's Chrome shows); '7 Mar' and anything else stay as they are."""
+    m = re.fullmatch(r"\s*([A-Z][a-z]{2})\s+(\d{1,2})\s*", str(text or ""))
+    return f"{int(m.group(2))} {m.group(1)}" if m else (None if text in (None, "") else str(text))
 
 
 # Pages whose security policy blocks a post to another address (seen: ingest received nothing from them): their scripts return the answer in parts, with no address to post to

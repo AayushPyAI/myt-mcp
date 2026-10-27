@@ -22,7 +22,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, clock24, server_first, with_emit
 
 NAME = "booking_attraction"
 SOURCE = "Booking.com attractions (public website price)"
@@ -93,7 +93,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         ticket = r.get("ticket") or "not shown"
         free = bool(re.match(r"free cancellation|cancel for free", ticket, re.I))
         nonref = bool(re.search(r"non-?refundable|not refundable", ticket, re.I))
-        times = r.get("times") or []
+        times = [clock24(t) for t in (r.get("times") or [])]      # "10:00 AM" in the server's Chrome, "10:00" in the operator's: the same clock for both
+        chosen_time = clock24(r.get("time_chosen")) if r.get("time_chosen") else None
         start = (f"{len(times)} start time(s): " + ", ".join(times[:6]) + (f", ... last {times[-1]}" if len(times) > 6 else "")) if times else "not shown"
         pax = exp.get("total") or sum(k.get("count") or 0 for k in kinds)
         fits = None
@@ -103,7 +104,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             group=exp.get("group") or group, source=SOURCE, name=(data.get("title") or "Booking.com activity") + (f" ({ticket})" if ticket != "not shown" else ""), price_total=r["total"], currency="EUR",
             price_basis=f"whole group ({pax} travellers; {breakdown}), " + ("taxes and charges included (the page says so)" if r.get("taxes") else "taxes not stated") + f", for {exp.get('day', 'the date asked')}",
             flexible=True if free else (False if nonref else None), fits=fits, quotable=False, supplier=data.get("operated_by") or "Booking.com",
-            details={"duration": "not shown on the ticket box", "start_times": start + (f" (first chosen: {r['time_chosen']}; the price is for the chosen time)" if r.get("time_chosen") else ""), "language": "not shown on the ticket box",
+            details={"duration": "not shown on the ticket box", "start_times": start + (f" (first chosen: {chosen_time}; the price is for the chosen time)" if chosen_time else ""), "language": "not shown on the ticket box",
                      "meeting_point": "not shown on the ticket box (see Location on the page)", "cancellation": ticket, "private_or_group": "not shown", "includes": data.get("includes") or "not shown",
                      "operated_by": data.get("operated_by") or "not shown", "know_before": data.get("additional") or "not shown"}))
     if not data.get("rows") and not data.get("unavailable"):
@@ -123,7 +124,7 @@ def register(mcp: MCPServer) -> None:
         it sets the number of tickets of each kind (each traveller in the kind whose age range holds the age) and reads the page's own Total for the group, the start times and the ticket's cancellation wording, and
         sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never
         type or pass a row. If the page says the date is unavailable the answer says so (never 'sold out'). It never presses Next, Book, Reserve or Pay. A human check (captcha) is never worked around: stop and tell
-        the operator. One call per activity."""
+        the operator. One call per activity. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
         try:
             out = booking_attraction_recipe(url, day, adults, children_ages, activity)
         except ValueError as e:      # a refusal the assistant must read and act on, not an 'unexpected error'
@@ -131,4 +132,4 @@ def register(mcp: MCPServer) -> None:
         out["wishes"] = {"expect": out["expect"], **({"free_cancellation": True} if free_cancellation else {})}
         out["filters_used"] = ["Date and group as the operator said (operator)", "Free cancellation only (operator)" if free_cancellation else "All ticket options of the activity for that date (default: no option filter)",
                                "Prices in EUR (server default)"]
-        return out
+        return await server_first(NAME, "BOOKING_ATTRACTION_READ_IN_SERVER", "https://www.booking.com", out)

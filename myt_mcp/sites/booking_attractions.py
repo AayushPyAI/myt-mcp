@@ -23,7 +23,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, server_first, with_emit
 
 NAME = "booking_attractions"
 SOURCE = "Booking.com attractions (public website price)"
@@ -169,7 +169,7 @@ def register(mcp: MCPServer) -> None:
         it) and a read-only SCRIPT: open the url, run the script with the javascript tool. The script reads the first `limit` cards (default 30, scrolling to load them) of 'Our top picks', then picks 'Best reviewed' in the page's sort box and
         reads the first `limit` of that (both are read together, the agency's rule), and sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call
         compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. The price is the lowest starting price per person: for the group price of a date call booking_attraction_recipe for the
-        best two or three. A human check (captcha) is never worked around: stop and tell the operator."""
+        best two or three. A human check (captcha) is never worked around: stop and tell the operator. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
         known = places().get(place.strip().lower())
         if place_path:
             path, name = place_path, place.strip() or place_path
@@ -190,4 +190,4 @@ def register(mcp: MCPServer) -> None:
             (["Skip the line (operator; the site's own filter)"] if skip_the_line else []) + ([f"Max {max_price:g} EUR per person (operator)"] if max_price is not None else []) + \
             ([f"Rating {min_rating:g} or more (operator; the site's '{exp['min_rating'][0]} up' box is the nearest below, the exact wish is judged on the cards)"] if min_rating is not None and exp["min_rating"] else
              ([f"Rating {min_rating:g} or more (operator; judged on the cards, the site has no box that low)"] if min_rating is not None else [])) + ([f"Language {language.lower()} (operator; the site's own filter)"] if language else [])
-        return out
+        return await server_first(NAME, "BOOKING_ATTRACTIONS_READ_IN_SERVER", "https://www.booking.com", out)
