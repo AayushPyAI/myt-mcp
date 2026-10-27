@@ -42,6 +42,15 @@ def _resolve(line: dict[str, Any], problems: list[str], warnings: list[str], n: 
     return None
 
 
+def line_note(n: int | None, comments: str | None = None) -> str:
+    """The reservation's comment: 'Quote line N' (N = the number in the line sheet the operator approved; the quote line carries the same product name and supplier),
+    then the operator's own comment. Same comment style everywhere a reservation is created, so a reservation can be tied to its quote line later (reconcile_trip)."""
+    own = (comments or "").strip()
+    if not n or own.lower().startswith("quote line"):
+        return own
+    return f"Quote line {n}" + (f" | {own}" if own else "")
+
+
 def build_plan(lines: list[dict[str, Any]], existing: list[dict[str, Any]], today: date) -> dict[str, Any]:
     """`lines`: dicts with supplier (name), supplier_id (optional), category, product_name, start_date (date), price, quantity, nights,
     pricing, currency, arrival_time, comments. `existing`: the trip's reservations as GetTrip/v3 returns them (duplicate check)."""
@@ -93,7 +102,7 @@ def build_plan(lines: list[dict[str, Any]], existing: list[dict[str, Any]], toda
         order["products"].append({"line": n, "category": line["category"], "product": line["product_name"].strip(), "start_date": line["start_date"].isoformat(),
                                   "pricing": line["pricing"], "unit_price": line["price"], "quantity": line["quantity"], "nights": line["nights"],
                                   "currency": line["currency"].upper(), "total": total,
-                                  "arrival_time": line.get("arrival_time"), "comments": line.get("comments")})
+                                  "arrival_time": line.get("arrival_time"), "comments": line_note(n, line.get("comments"))})
         cur = line["currency"].upper()
         order["totals"][cur] = round(order["totals"].get(cur, 0.0) + total, 2)
     grand: dict[str, float] = {}

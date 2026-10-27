@@ -145,7 +145,12 @@ def _candidates(res: dict[str, Any], lines: list[dict[str, Any]], used: set[int]
     by_name = [(i, ln) for i, ln in same_supplier if _same_product(ln.get("product"), res["product"])]
     if by_name:
         return by_name[0]
-    return same_supplier[0] if len(same_supplier) == 1 else None
+    if len(same_supplier) == 1:
+        return same_supplier[0]
+    if not same_supplier:         # another supplier record on the quote line ('RateHawk' against 'Emerging Travel Inc. - RateHawk'): the exact product name, if only one line has it, ties them
+        exact = [(i, ln) for i, ln in enumerate(lines) if i not in used and _key(res["product"]) and _key(ln.get("product")) == _key(res["product"])]
+        return exact[0] if len(exact) == 1 else None
+    return None
 
 
 def _quote_currency(v3: dict[str, Any]) -> str | None:
@@ -172,6 +177,8 @@ def reconcile(v3: dict[str, Any], today: date, soon_days: int = 7, profit_pcts: 
         index, line = found
         used.add(index)
         quote_total, notes = _line_total(line), []
+        if line.get("supplier_id") != res["supplier_id"] and _key(line.get("supplier")) != _key(res["supplier"]):
+            notes.append(f"the quote line has another supplier record ({line.get('supplier')}) than the reservation ({res['supplier']}): matched by the exact product name; use one supplier on both")
         cost = res["total_cost"]
         foreign = bool(res["currency"] and quote_cur and res["currency"] != quote_cur)
         if foreign and res["currency"] == "ILS" and quote_cur == "EUR" and eur_to_ils and cost:

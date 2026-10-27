@@ -327,7 +327,7 @@ async def test_create_with_confirm_sends_and_reads_back():
     d = r.structured_content
     assert not r.is_error and d["sent"] is True and d["order_id"] == 500100 and d["reservation_id"] == 500200
     assert len(myt.create_calls) == 1 and myt.create_calls[0]["products"][0]["PricingTypeId"] == 2
-    assert myt.create_calls[0]["products"][0]["Name"].startswith("Test transfer [") and d["confirmed_by_reading_the_trip_back"] is True
+    assert myt.create_calls[0]["products"][0]["Name"] == "Test transfer" and d["confirmed_by_reading_the_trip_back"] is True      # the real name: the quote line gets the same one
 
 
 @pytest.mark.anyio
@@ -636,3 +636,52 @@ async def test_plan_limits_the_number_of_lines():
     async with Client(await create_server_for(FakeMYT(_v3([], {}, [])))) as c:
         d = (await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": lines})).structured_content
     assert any("at most 12" in p for p in d["problems"])
+
+
+# ---------- reservation and quote line stay tied: same product name, same supplier, the line number in the reservation's comments (27 Oct 2026) ----------
+
+@pytest.mark.anyio
+async def test_plan_writes_the_line_number_into_every_reservations_comments_and_keeps_the_operators_own_note():
+    lines = [{**PLAN[0], "comments": "late check-in"}, PLAN[1], {**PLAN[2], "comments": "Quote line 9"}]
+    myt = FakeMYT(_v3([], {}, []), create_effect=_counting_effect(KINDS))
+    async with Client(await create_server_for(myt)) as c:
+        preview = (await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": lines})).structured_content
+        r = await c.call_tool("plan_supplier_reservations", {"trip_id": 1001, "lines": lines, "confirm": True})
+    shown = {p["line"]: p["comments"] for o in preview["orders"] for p in o["products"]}
+    assert shown == {1: "Quote line 1 | late check-in", 2: "Quote line 2", 3: "Quote line 9"}          # a note that already says 'Quote line' is not doubled
+    assert not r.is_error and [c_["products"][0]["Comments"] for c_ in myt.create_calls] == ["Quote line 1 | late check-in", "Quote line 2", "Quote line 9"]
+
+
+@pytest.mark.anyio
+async def test_the_single_create_tool_writes_the_exact_name_the_line_number_and_refuses_a_duplicate():
+    myt = FakeMYT(_v3([], {}, []), create_effect=_create_adds_reservation)
+    args = {"trip_id": 1001, "supplier_id": 101768, "product_name": "Transfer FCO - hotel", "start_date": "2027-03-01", "price": 50.0, "confirm": True, "line": 3, "comments": "2 bags"}
+    async with Client(await create_server_for(myt)) as c:
+        first = await c.call_tool("create_supplier_reservation", args)
+        again = await c.call_tool("create_supplier_reservation", args)
+        bad_line = await c.call_tool("create_supplier_reservation", {**args, "line": 0})
+    product = myt.create_calls[0]["products"][0]
+    assert not first.is_error and product["Name"] == "Transfer FCO - hotel" and product["Comments"] == "Quote line 3 | 2 bags" and myt.create_calls[0]["comments"] == "Quote line 3 | 2 bags"
+    assert again.is_error and "already exists" in again.content[0].text and len(myt.create_calls) == 1       # the same supplier, name and date is not created twice
+    assert bad_line.is_error and "line" in bad_line.content[0].text
+
+
+def test_reconcile_ties_a_reservation_to_its_line_by_the_exact_product_name_when_the_supplier_record_differs():
+    """Real trips (27 Oct 2026): 'Emerging Travel Inc. - RateHawk' on the reservation, 'RateHawk' on the quote line: a third of the items had no partner."""
+    v3 = _v3([_res(1, 10, "Emerging Travel Inc. - RateHawk", "1x Private Transfer : Airport - Hotel", 100.0, 1, 1, "2026-10-15")], {1: "NotSent"},
+             [_line(99, "RateHawk", "1x Private Transfer : Airport - Hotel", 113.0, 1, 1, "2026-10-15")])
+    result = reconcile(v3, TODAY)
+    row = result["rows"][0]
+    assert row["verdict"] == "ok" and result["reservations_without_quote_line"] == [] and result["quote_lines_without_reservation"] == []
+    assert "another supplier record" in row["notes"][0] and "use one supplier on both" in row["notes"][0]
+
+
+def test_reconcile_does_not_guess_when_two_lines_have_the_exact_name_or_the_name_differs():
+    two = _v3([_res(1, 10, "Emerging Travel Inc. - RateHawk", "Private Transfer", 100.0, 1, 1, "2026-10-15")], {1: "NotSent"},
+              [_line(99, "RateHawk", "Private Transfer", 113.0, 1, 1, "2026-10-15"), _line(98, "RateHawk Two", "Private Transfer", 113.0, 1, 1, "2026-10-16")])
+    other = _v3([_res(1, 10, "Emerging Travel Inc. - RateHawk", "Private Transfer", 100.0, 1, 1, "2026-10-15")], {1: "NotSent"},
+                [_line(99, "RateHawk", "Hotel transfer", 113.0, 1, 1, "2026-10-15")])
+    assert reconcile(two, TODAY)["rows"] == [] and len(reconcile(two, TODAY)["reservations_without_quote_line"]) == 1       # two candidates: left for the operator
+    assert reconcile(other, TODAY)["rows"] == []                                                                            # another name: not the same item
+    same_supplier = _v3([_res(1, 10, "RateHawk", "Hotel Uno", 100.0, 1, 1, "2026-10-15")], {1: "NotSent"}, [_line(10, "RateHawk", "Hotel Uno", 113.0, 1, 1, "2026-10-15")])
+    assert reconcile(same_supplier, TODAY)["rows"][0]["notes"] == []                                                        # no supplier note when it is the same record

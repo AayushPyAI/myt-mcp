@@ -16,7 +16,7 @@ from myt_mcp.checks import ensure, with_checked_at
 from myt_mcp.errors import tool_errors
 from myt_mcp.myt import supplier_directory
 from myt_mcp.myt.paperwork import paperwork_check
-from myt_mcp.myt.reservation_plan import build_plan
+from myt_mcp.myt.reservation_plan import build_plan, line_note
 from myt_mcp.myt.summaries import _amount, _date
 from myt_mcp.myt.reservations import (CATEGORY_NOTE, KNOWN_CREATE_CATEGORIES, SUPPLIER_KIND, _key, build_create_product, build_update_row,
                                       customer_invoices, find_reservation, reconcile, reservations_summary)
@@ -220,7 +220,7 @@ def register(mcp: MCPServer, services: Services) -> None:
     async def create_supplier_reservation(
         trip_id: int, supplier_id: int, product_name: str, start_date: date, price: float, currency: str = "EUR",
         pricing: str = "PS", quantity: float = 1, nights: int = 1, arrival_time: str | None = None,
-        comments: str | None = None, category: str = "Transport", confirm: bool = False,
+        comments: str | None = None, category: str = "Transport", confirm: bool = False, line: int | None = None,
     ) -> dict[str, Any]:
         """Create ONE supplier reservation (a supplier order) on a trip through MYT's write API (reservations/Create): the
         object the Supplier Reservations screen shows, separate from the quotation's cost lines (writing a quote line is a
@@ -233,8 +233,12 @@ def register(mcp: MCPServer, services: Services) -> None:
         With confirm=True, after the operator's explicit yes, it sends the write, reads the trip back, and reports the new
         order id and reservation id, or an error if MYT did not actually create it (MYT can answer success while silently
         dropping a product it does not support). If ALLOWED_TRIP_IDS lists trips only those can be touched; when it is empty, any trip the operator names. The new order starts as
-        "Ready To Send" like any manual reservation; moving its status on is a separate, screen-only action."""
+        "Ready To Send" like any manual reservation; moving its status on is a separate, screen-only action.
+        `product_name` is written to MYT exactly as given (no tag): write the quote line with the SAME product name and the same supplier, so the two stay tied.
+        `line` is the number of the line in the approved line sheet: it is written into the reservation's comments as "Quote line N"."""
         services.check_trip(trip_id)
+        if line is not None and line < 1:
+            raise ToolError("line is the number of the line in the approved line sheet (1 or more).")
         if category not in KNOWN_CREATE_CATEGORIES:
             raise ToolError(f"category must be {', '.join(KNOWN_CREATE_CATEGORIES)!r} for now. {CATEGORY_NOTE}")
         if pricing not in ("PS", "PP"):
@@ -250,20 +254,29 @@ def register(mcp: MCPServer, services: Services) -> None:
         if not product_name.strip():
             raise ToolError("product_name is empty.")
         tag = uuid.uuid4().hex[:10]
-        tagged_name = f"{product_name.strip()} [{tag}]"
+        name = product_name.strip()
+        note = line_note(line, comments)
         currency_code_id = await services.myt().currency_code_id(currency)
-        product = build_create_product(supplier_id=supplier_id, start_date=start_date.isoformat(), name=tagged_name, price=price,
+        product = build_create_product(supplier_id=supplier_id, start_date=start_date.isoformat(), name=name, price=price,
                                        currency_code_id=currency_code_id, pricing_type_id=1 if pricing == "PS" else 2,
                                        type_id=KNOWN_CREATE_CATEGORIES[category], quantity=quantity, nights=nights,
-                                       arrival_time=arrival_time or "10:00", comments=comments or "")
-        preview = {"trip_id": trip_id, "category": category, "pricing": pricing, "currency": currency,
-                  "product": {**product, "Name": product_name.strip()}}
+                                       arrival_time=arrival_time or "10:00", comments=note)
+        preview = {"trip_id": trip_id, "category": category, "pricing": pricing, "currency": currency, "product": product}
         if not confirm:
             return {**preview, "sent": False,
                    "note": "Nothing was sent. Show this to the operator; call again with confirm=true only after their explicit yes."}
-        await services.myt().create_reservation(trip_id, [product], external_id=f"claude-{tag}", comments=comments)
-        after = await services.myt().get_trip_v3(trip_id)
-        match = find_reservation(after, name_contains=tagged_name)
+
+        def same(r: dict[str, Any]) -> bool:
+            return (r.get("supplier_id") == supplier_id and _key(r.get("product_name")) == _key(name)
+                    and ((r.get("dates") or {}).get("start") or {}).get("date", "")[:10] == start_date.isoformat())
+        before = await trip_v3(trip_id, fresh=True)
+        existing = next((r for r in before.get("reservations") or [] if same(r)), None)
+        if existing:
+            raise ToolError(f"This reservation already exists (order {existing.get('order_id')}, reservation {existing.get('reservation_id')}): same supplier, product and date. Nothing was sent.")
+        known_ids = {r.get("reservation_id") for r in before.get("reservations") or []}
+        await services.myt().create_reservation(trip_id, [product], external_id=f"claude-{tag}", comments=note)
+        after = await trip_v3(trip_id, fresh=True)
+        match = next((r for r in after.get("reservations") or [] if r.get("reservation_id") not in known_ids and same(r)), None)
         if not match:
             raise ToolError("MYT answered success but the reservation is NOT visible when the trip is read back; nothing more "
                             "was sent. This can happen when a field MYT silently rejects. Tell the operator before trying again.")
