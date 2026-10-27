@@ -84,7 +84,7 @@ async def test_the_tool_asks_first_then_returns_the_address(monkeypatch):
         first = json.loads((await c.call_tool("cp_trains_recipe", {"origin": "Lisboa Oriente", "destination": "Coimbra-B", "day": "2026-11-03", "passengers": 3})).content[0].text)
         assert first["ok"] is False and len(first["ask_operator"]) == 4 and first["searched"] is False
         out = json.loads((await c.call_tool("cp_trains_recipe", {"origin": "Lisboa Oriente", "destination": "Coimbra-B", "day": "2026-11-03", "passengers": 3, "first_class": False, "earliest": "07:00", "refundable": False, "direct_only": False})).content[0].text)
-    assert out["url"].startswith("https://www.cp.pt/en/resultado-pesquisa?passageiros=3") and out["ingest"] and "Departing after 07:00 (operator)" in out["filters_used"]
+    assert out["url"].startswith("https://www.cp.pt/en/resultado-pesquisa?passageiros=3") and "window.__mytParts" in out["how_the_answer_comes_back"] and "Departing after 07:00 (operator)" in out["filters_used"]      # cp.pt does not let its page post to this server: the Chrome fallback returns its rows in parts
 
 
 def test_a_station_given_as_cps_own_id_is_checked_by_the_address_not_by_name():

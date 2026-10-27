@@ -25,6 +25,7 @@ from myt_mcp.sites import SiteRows, with_emit
 NAME = "getyourguide_activity"
 SOURCE = "GetYourGuide"
 GROUP = "Activities"
+RESULT_MARKS = {"url_path", "activity"}      # keys only this recipe's answers have: a display name that fits a list recipe and a page recipe is told apart by them (resolve_site_names)
 HERE = Path(__file__).parent
 URL = re.compile(r"^https://www\.getyourguide\.com/[^?#\s]*-t(\d+)/?(?:[?#].*)?$")
 EUR = {"€", "EUR"}

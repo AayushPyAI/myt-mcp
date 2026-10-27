@@ -21,7 +21,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, read_in_server_browser, server_reads, with_emit
+from myt_mcp.sites import SiteRows, server_first, with_emit
 
 NAME = "cp_trains"
 SOURCE = "CP (Comboios de Portugal)"
@@ -179,7 +179,6 @@ def register(mcp: MCPServer) -> None:
         out["filters_used"] = [("1st class (operator)" if first_class else f"2nd class ({src(first_class)})"), (f"Departing {'after ' + earliest if earliest else ''}{' and ' if earliest and latest else ''}{'by ' + latest if latest else ''} (operator)" if earliest or latest else "Any departure time (operator: any)"),
                                ("Refundable tickets only (operator)" if refundable else f"Any fare, promo included ({src(refundable)})"),
                                ("Direct trains only (operator; the card shows the changes)" if direct_only else f"Changes allowed ({src(direct_only)})")]
-        if server_reads("CP_READ_IN_SERVER"):
-            # cp.pt's security policy only lets the page talk to CP's own hosts, so the operator's Chrome cannot send the answer to this server: the server reads the page itself
-            return await read_in_server_browser(NAME, "https://www.cp.pt", out["url"], out)
-        return out
+        # cp.pt's security policy only lets the page talk to CP's own hosts, so the operator's Chrome cannot send the answer to this server: the server reads the page itself; when it cannot, the recipe comes back
+        # for the operator's Chrome and its script returns the rows in parts (cp_trains is in NO_POST)
+        return await server_first(NAME, "CP_READ_IN_SERVER", "https://www.cp.pt", out)

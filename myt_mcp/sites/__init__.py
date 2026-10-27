@@ -236,7 +236,7 @@ def day_month(text: Any) -> str | None:
 
 
 # Pages whose security policy blocks a post to another address (seen: ingest received nothing from them): their scripts return the answer in parts, with no address to post to
-NO_POST = {"getyourguide_find", "getyourguide_activity", "viator_find", "viator_activity", "ratehawk_hotels"}
+NO_POST = {"getyourguide_find", "getyourguide_activity", "viator_find", "viator_activity", "ratehawk_hotels", "cp_trains", "sata"}
 
 
 def embed_wishes(out: Any, site: str | None = None) -> Any:
@@ -447,10 +447,37 @@ def near_sites(site: str, mods: dict[str, Any]) -> list[str]:
     return sorted(k for k in mods if flat and (flat in _flat(k) or _flat(k) in flat))
 
 
+def _head_keys(item: dict[str, Any]) -> tuple[str | None, set[str]]:
+    try:
+        d = json.loads(item.get("result") or "")
+    except (TypeError, ValueError):
+        return None, set()
+    return (str(d.get("run")) if isinstance(d, dict) and d.get("run") else None), (set(d) if isinstance(d, dict) else set())
+
+
+def result_shapes(items: list[dict[str, Any]]) -> dict[str, set[str]]:
+    """The keys of the answers of each run: only the first part of an answer in parts carries the head (url_path, query_text...), the others are found by their run."""
+    shapes: dict[str, set[str]] = {}
+    for item in items:
+        run, keys = _head_keys(item)
+        if run:
+            shapes.setdefault(run, set()).update(keys)
+    return shapes
+
+
+def key_by_result_shape(item: dict[str, Any], candidates: list[str], mods: dict[str, Any], shapes: dict[str, set[str]]) -> str | None:
+    """Of several recipe keys a display name could mean, the one whose RESULT_MARKS (keys only its answers have) are all in this answer; None when no key or more than one fits."""
+    run, keys = _head_keys(item)
+    keys = keys | shapes.get(run or "", set())
+    fits = [k for k in candidates if getattr(mods.get(k), "RESULT_MARKS", None) and set(mods[k].RESULT_MARKS) <= keys]
+    return fits[0] if len(fits) == 1 else None
+
+
 def resolve_site_names(items: list[dict[str, Any]], mods: dict[str, Any], issued: set[str]) -> tuple[list[dict[str, Any]], dict[str, str]]:
     """The assistant sometimes names a site by its display name ('GetYourGuide', 'RateHawk'; seen 24 and 26 Oct 2026) and the whole answer was refused. A name that means exactly ONE recipe key
     is read as that key; a name that fits several is read as the one key whose recipe this chat issued for this kind of answer (`issued`); anything else stays unknown and is refused as before."""
     out, fixed = [], {}
+    shapes = result_shapes(items)
     for item in items:
         site = str(item.get("site", ""))
         if not site or site in mods:
@@ -459,6 +486,8 @@ def resolve_site_names(items: list[dict[str, Any]], mods: dict[str, Any], issued
         near = near_sites(site, mods)
         live = [k for k in near if k in issued]
         pick = near[0] if len(near) == 1 else live[0] if len(live) == 1 else None
+        if pick is None and len(near) > 1:
+            pick = key_by_result_shape(item, live if len(live) > 1 else near, mods, shapes)      # "Viator" with a list recipe AND a page recipe issued: the rows say which one they are
         if pick:
             fixed[site] = pick
             out.append({**item, "site": pick})

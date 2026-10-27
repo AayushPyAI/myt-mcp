@@ -19,12 +19,13 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, read_in_server_browser, server_reads, with_emit
+from myt_mcp.sites import SiteRows, server_first, with_emit
 from myt_mcp.sites.getyourguide_find import words
 
 NAME = "viator_find"
 SOURCE = "Viator"
 GROUP = "Activities"
+RESULT_MARKS = {"query_text", "results_total"}      # keys only this recipe's answers have: a display name that fits a list recipe and a page recipe is told apart by them (resolve_site_names)
 HERE = Path(__file__).parent
 ASK = {"cancel": "Free cancellation required, or any?", "budget": "Budget: the most per person (EUR), or no limit?", "duration": "Longest acceptable duration in hours (or time of day wish), or no limit?"}
 EUR = {"€", "EUR"}
@@ -37,6 +38,8 @@ def search_url(query: str, page: int) -> str:
 
 def viator_find_recipe(query: str, day_label: str | None = None, page: int = 1, title_contains: list[str] | None = None, free_cancellation: bool = False, max_price: float | None = None,
                        min_rating: float | None = None, max_hours: float | None = None) -> dict[str, Any]:
+    if min_rating is not None and min_rating > 5:      # the operator's "rating 9 and up" is on Booking.com's 10-point scale; this site rates on 5 points (27 Oct 2026: 9 was refused, then 4.9 was 'not 9')
+        min_rating = round(min_rating / 2, 2)
     q = " ".join((query or "").split())
     if not q or len(q) > 120:
         raise ValueError("query is empty or too long (for example 'Florence golf cart tour')")
@@ -138,9 +141,8 @@ def register(mcp: MCPServer) -> None:
                                (f"At most {max_price:g} EUR per person (operator)" if max_price is not None else f"No price limit ({src(max_price)})"),
                                (f"At most {max_hours:g} hours (operator)" if max_hours is not None else f"No duration limit ({src(max_hours)})"), f"Titles holding any of: {', '.join(out['expect']['title_contains'])} (the wish's own words)"]
         out["more"] = f"For the next 24 results call this tool again with the same values and page={page + 1}."
-        if server_reads("VIATOR_FIND_READ_IN_SERVER"):
-            # viator.com's pages carry a Content-Security-Policy in a <meta> tag that stops the page from sending data to this server (24 Oct 2026): the server reads the list itself, slowly (15 s apart, 20 an hour)
-            result = await read_in_server_browser(NAME, "https://www.viator.com", out["url"], out)
-            result["more"] = out["more"]
-            return result
-        return out
+        # viator.com's pages carry a Content-Security-Policy in a <meta> tag that stops the page from sending data to this server (24 Oct 2026): the server reads the list itself, slowly (15 s apart, 20 an hour);
+        # when it cannot (27 Oct 2026: "not a Viator search page" twice) the recipe comes back for the operator's Chrome, whose script returns the rows in parts
+        result = await server_first(NAME, "VIATOR_FIND_READ_IN_SERVER", "https://www.viator.com", out)
+        result["more"] = out["more"]
+        return result

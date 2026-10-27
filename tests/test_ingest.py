@@ -78,7 +78,7 @@ async def test_compose_answer_refuses_a_run_that_never_arrived(monkeypatch):
     monkeypatch.setenv("PUBLIC_BASE_URL", BASE)
     settings = Settings(mcp_secret="s" * 24)
     async with Client(create_server(settings, Services(settings))) as c:
-        out = json.loads((await c.call_tool("sata_recipe", {"origin": "LIS", "destination": "PDL", "day": "2027-03-08", "adults": 2, "direct_only": True, "checked_bag": True, "refundable": True})).content[0].text)
+        out = json.loads((await c.call_tool("tap_recipe", {"origin": "LIS", "destination": "PDL", "day": "2027-03-08", "adults": 2, "direct_only": True, "checked_bag": True, "refundable": True})).content[0].text)
         r = await c.call_tool("compose_answer", {"kind": "flights", "runs": [out["ingest"]]})
         d = r.structured_content
         assert d["ok"] is False and "no answer arrived" in d["problems"][0] and "Do not type any row" in d["next"]
@@ -132,6 +132,7 @@ async def test_sata_is_read_by_the_server_in_its_own_browser_and_stored_as_a_run
     monkeypatch.setattr(sites, "_SERVER_BROWSER", FakeBrowser())
     monkeypatch.setattr(sites, "MIN_SECONDS_BETWEEN_READS", 0)
     monkeypatch.setenv("BROWSER_CDP_URL", "http://127.0.0.1:9333")
+    monkeypatch.setenv("PUBLIC_BASE_URL", BASE)
     settings = Settings(mcp_secret="s" * 24)
     async with Client(create_server(settings, Services(settings))) as c:
         out = json.loads((await c.call_tool("sata_recipe", {"origin": "LIS", "destination": "PDL", "day": "2027-03-08", "adults": 2, "children": 1, "direct_only": True, "checked_bag": True, "refundable": True})).content[0].text)
@@ -156,10 +157,12 @@ async def test_a_page_the_server_cannot_read_is_reported_not_typed(monkeypatch):
     monkeypatch.setattr(sites, "_SERVER_BROWSER", FakeBrowser())
     monkeypatch.setattr(sites, "MIN_SECONDS_BETWEEN_READS", 0)
     monkeypatch.setenv("BROWSER_CDP_URL", "http://127.0.0.1:9333")
+    monkeypatch.setenv("PUBLIC_BASE_URL", BASE)
     settings = Settings(mcp_secret="s" * 24)
     async with Client(create_server(settings, Services(settings))) as c:
         out = json.loads((await c.call_tool("sata_recipe", {"origin": "LIS", "destination": "PDL", "day": "2027-03-08", "adults": 2, "direct_only": True, "checked_bag": False, "refundable": False})).content[0].text)
-    assert out["ok"] is False and "human check" in out["error"] and "not_checked" in out["next"] and "ingest" not in out
+    assert out["server_read"]["ok"] is False and "human check" in out["server_read"]["why"] and out["script"] and "never type a row" in out["how_to_read"]      # the server could not read it: the recipe comes back for the operator's Chrome
+    assert "window.__mytParts" in out["how_the_answer_comes_back"] and "ingest" not in out      # SATA's page does not let the operator's Chrome post to this server: its rows come in parts
 
 
 def test_a_narrow_window_is_named_instead_of_a_confusing_filter_error():

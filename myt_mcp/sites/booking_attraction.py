@@ -71,7 +71,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     notes: list[str] = []
     if data.get("unavailable"):
         notes.append(f"Booking.com says for {exp.get('day', 'the date asked')}: {data['unavailable']}. It may be sold out or simply not open yet for that date: it is not a price, and never 'sold out' from this alone.")
-        return SiteRows(offers=[], read=0, total=0, problems=problems, extra_notes=notes, read_rows=True, total_absolute=True)
+        return SiteRows(offers=[], read=0, total=0, problems=problems, extra_notes=notes, read_rows=True)
     offers: list[Offer] = []
     for r in data.get("rows", []):
         if r.get("symbol") != "€":
@@ -111,7 +111,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         problems.append("no ticket price could be read: say it could not be read, never that the activity is sold out")
     notes.append("Booking.com's price for this date and group, as the page's own Total; the activity's page is the quoted source. The 'from' price in the list is only the lowest starting price.")
     n = len(offers)
-    return SiteRows(offers=offers, read=n, total=n, problems=problems, extra_notes=notes, read_rows=True, total_absolute=True)
+    return SiteRows(offers=offers, read=n, total=n, problems=problems, extra_notes=notes, read_rows=True)      # one activity per run: the runs add up (27 Oct 2026: "2 of 1 read")
 
 
 def register(mcp: MCPServer) -> None:

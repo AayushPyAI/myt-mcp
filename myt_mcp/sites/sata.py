@@ -23,7 +23,7 @@ from mcp.types import ToolAnnotations
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
 from myt_mcp.sata.client import search_link
-from myt_mcp.sites import SiteRows, read_in_server_browser, server_browser_url, with_emit
+from myt_mcp.sites import SiteRows, server_first, with_emit
 
 NAME = "sata"
 SOURCE = "SATA / Azores Airlines"
@@ -162,9 +162,8 @@ def register(mcp: MCPServer) -> None:
                                ("Fares with a checked bag only (operator)" if checked_bag else f"Any bag option ({src(checked_bag)})"),
                                ("Refundable fares only, a penalty allowed (operator)" if refundable else f"Any refund option ({src(refundable)})")]
         out["more"] = f"For the next {limit} flights call this tool again with the same values and offset={offset + limit}."
-        if server_browser_url() and os.environ.get("SATA_READ_IN_SERVER", "1") != "0":
-            # SATA's page only lets its own hosts receive data from it (connect-src), so the operator's Chrome cannot send the answer to this server: the server reads the page itself
-            result = await read_in_server_browser(NAME, "https://book.azoresairlines.pt", out["url"], out, "/booking/flights")
-            result["more"] = out["more"]
-            return result
-        return out
+        # SATA's page only lets its own hosts receive data from it (connect-src), so the operator's Chrome cannot send the answer to this server: the server reads the page itself; when it cannot, the recipe comes
+        # back for the operator's Chrome and its script returns the rows in parts (sata is in NO_POST)
+        result = await server_first(NAME, "SATA_READ_IN_SERVER", "https://book.azoresairlines.pt", out, "/booking/flights")
+        result["more"] = out["more"]
+        return result

@@ -25,6 +25,7 @@ from myt_mcp.sites import SiteRows, with_emit
 NAME = "viator_activity"
 SOURCE = "Viator"
 GROUP = "Activities"
+RESULT_MARKS = {"url_path", "activity"}      # keys only this recipe's answers have: a display name that fits a list recipe and a page recipe is told apart by them (resolve_site_names)
 HERE = Path(__file__).parent
 URL = re.compile(r"^https://www\.viator\.com/tours/[^?#\s]+/d\d+-[A-Za-z0-9_.]+/?(?:[?#].*)?$")
 EUR = {"€", "EUR"}
@@ -112,14 +113,17 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         start = ((f"chosen: {r['start_time']}; " if r.get("start_time") else "") + f"{len(times)} start time(s): " + ", ".join(times[:6]) + (f", ... last {times[-1]}" if len(times) > 6 else "")) if times else \
             ("select this option on the page to see its start times" if r.get("option") else "not shown")
         cancel = re.sub(r"(?i)cancellation(?=before|up to)", "cancellation ", r.get("cancellation") or "") or ("not shown until this option is selected on the page" if r.get("option") else "not shown")
-        free = cancel.lower().startswith("free cancellation")
+        policy_free = bool(re.search(r"cancel up to \d+ (?:hours?|days?) in advance.{0,60}full refund", data.get("cancel_policy") or "", re.I))      # the page's own policy line (27 Oct 2026: it was not read as free cancellation)
+        free = cancel.lower().startswith("free cancellation") or policy_free
+        cancel_text = (f"Free cancellation per the page's policy: {data['cancel_policy']}" if policy_free and not cancel.lower().startswith("free cancellation")
+                       else cancel + (f"; policy: {data['cancel_policy']}" if data.get("cancel_policy") else ""))
         name = f"{title} - {r['option']}" if r.get("option") else title
         offers.append(Offer(
             group=exp.get("group") or group, source=SOURCE, name=f"{name} ({(data.get('duration') or 'duration not shown').replace(' (approx.)', ' approx.')})", price_total=amount, currency="EUR",
             price_basis=f"whole group ({n} travellers; {'; '.join(r.get('breakdown') or []) or 'breakdown not shown'}), taxes and fees not stated on the page", flexible=True if free else (False if re.search(r"non-?refundable|not refundable", cancel, re.I) else None),
             supplier="Viator", details={"duration": data.get("duration") or "not shown", "start_times": start, "language": f"offered in: {data['offered_in']}" if data.get("offered_in") else "not shown",
                                          "meeting_point": data.get("meeting_text") or "not shown in the booking box (see the activity page)", "includes": data.get("included") or "not shown", "additional_info": data.get("additional") or "not shown",
-                                         "cancellation": cancel + (f"; policy: {data['cancel_policy']}" if data.get("cancel_policy") else ""), "private_or_group": "private" if "private" in name.lower() else "not shown",
+                                         "cancellation": cancel_text, "private_or_group": "private" if "private" in name.lower() else "not shown",
                                          "pay": (r.get("pay_later") or "not shown"), "ticket": "mobile ticket" if data.get("mobile_ticket") else "not shown", "option_state": ("selected on the page" if r.get("selected") else "not selected on the page") if r.get("option") else "single option"}))
     return SiteRows(offers=offers, read=len(offers), total=len(rows), problems=problems, sorted_by_price=False, read_rows=True,
                     extra_notes=["Viator's exact price for this date and group (child discounts included as the page shows them); the activity's own page is the quoted source. The 'from' price in the search is only the lowest starting price."]
