@@ -75,6 +75,24 @@ def test_a_hotel_cheapest_from_a_rating_sorted_list_says_it_is_not_the_cheapest_
     assert "NOT read" not in picks("hotels", hotels, sorted_by_price=True)[0][0][2]
 
 
+def test_a_hotel_read_to_its_last_row_does_not_carry_the_not_cheapest_overall_caveat_but_a_cut_list_does():
+    rows = [Offer(group="Terra Nostra", source="Bensaude", name="Cosy Art Deco FLEX", price_total=322, currency="EUR"), Offer(group="Terra Nostra", source="Bensaude", name="Garden View FLEX", price_total=394, currency="EUR")]
+    assert "NOT read" not in picks("hotels", rows, sorted_by_price=False, complete=True)[0][0][2]
+    assert "NOT read" in picks("hotels", rows, sorted_by_price=False, complete=False)[0][0][2]
+    hotel = lambda read, of: [SourceRead(name="Bensaude", read=read, of=of, link="https://bensaude.e-gds.com/webfrontendcorporate/shoppingcart/availability.aspx?hotelid=29")]
+    common = dict(kind="hotels", filters_used=["breakfast (operator)"], not_checked=[NotChecked(name="RateHawk", reason="login/captcha/block"), NotChecked(name="Arbitrip", reason="login/captcha/block")],
+                  offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert "NOT read" not in compose(sources_read=hotel(2, 2), **common)["answer"]         # all of the source's rows were read
+    assert "NOT read" in compose(sources_read=hotel(2, 40), **common)["answer"]            # 2 of 40: something cheaper may be left
+
+
+def test_a_hotel_answer_from_one_named_source_is_composed_the_first_time_and_names_what_was_not_compared():
+    rows = [Offer(group="Terra Nostra", source="Bensaude", name="Cosy Art Deco FLEX", price_total=322, currency="EUR")]
+    r = compose(kind="hotels", filters_used=["breakfast (operator)"], sources_read=[SourceRead(name="Bensaude", read=1, of=1, link="https://bensaude.e-gds.com/webfrontendcorporate/shoppingcart/availability.aspx?hotelid=29")],
+                not_checked=[], offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert r["ok"] is True and "RateHawk (not read in this answer: not compared)" in r["answer"] and "Arbitrip (not read in this answer: not compared)" in r["answer"]
+
+
 async def test_compose_answer_tool_is_registered_and_read_only():
     from mcp import Client
 
@@ -331,7 +349,7 @@ def test_hand_typed_rows_without_a_proof_of_a_wish_do_not_fit():
 
 
 @pytest.mark.anyio
-async def test_a_minimal_compose_call_works_and_a_missing_hotel_source_is_refused():
+async def test_a_minimal_compose_call_works_and_a_hotel_source_left_out_is_named_not_refused():
     import json
 
     from mcp import Client
@@ -344,7 +362,7 @@ async def test_a_minimal_compose_call_works_and_a_missing_hotel_source_is_refuse
         r = await c.call_tool("compose_answer", {"kind": "hotels", "site_results": [item], "wishes": {"breakfast": True, "free_cancellation": True},
                                                  "myt_supplier": {"Hotel Four": "not checked: test"}})
         d = r.structured_content
-        assert d["ok"] is False and any("Arbitrip is neither in sources_read nor in not_checked" in x for x in d["problems"]) and not any("Ratehawk" in x for x in d["problems"])
+        assert d["ok"] is True and "Arbitrip (not read in this answer: not compared)" in d["answer"] and "RateHawk (not read" not in d["answer"], d     # never a refusal: the answer says what was not compared
         r = await c.call_tool("compose_answer", {"kind": "hotels", "site_results": [item], "wishes": {"breakfast": True, "free_cancellation": True},
                                                  "not_checked": [{"name": "Arbitrip", "reason": "login/captcha/block: test"}], "myt_supplier": {"Hotel Four": "not checked: test"}})
         d = r.structured_content

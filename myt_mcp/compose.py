@@ -119,11 +119,6 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
             by_group.setdefault(o.group, set()).add(o.source.lower())
         if len(by_group) > 1 and all(len(v) == 1 for v in by_group.values()) and len({next(iter(v)) for v in by_group.values()}) == len(by_group):
             problems.append(f"each source is in its own group ({', '.join(sorted(by_group))}): put the options of one stay in ONE `group` (same text on every source) so the picks compare all sources; use separate groups only for different cities")
-    if kind == "hotels":      # the agency compares RateHawk and Arbitrip for every hotel request: a source neither read nor excused is a hole in the answer
-        covered = names | {n.name.lower() for n in not_checked}
-        for src in ("ratehawk", "arbitrip"):
-            if not any(c.startswith(src) for c in covered):
-                problems.append(f"{src.capitalize()} is neither in sources_read nor in not_checked: read it (see task_plan) or give an allowed reason in not_checked")
     for o in offers:
         if o.source.lower() not in names:
             problems.append(f"offer '{o.name}' comes from '{o.source}', which is not in sources_read")
@@ -219,7 +214,7 @@ def price_gap_notes(kind: str, rows: list[Offer]) -> list[str]:
     return [f"Big price gap between sources: the cheapest {low} row is {best[low]:,.2f} {cur} and the cheapest {high} row is {best[high]:,.2f} {cur}. The vehicle class, the pick-up or drop-off point and what is included can differ: compare them row by row before quoting the cheapest."]
 
 
-def picks(kind: str, rows: list[Offer], sorted_by_price: bool) -> tuple[list[tuple[str, str, str]], list[str]]:
+def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = False) -> tuple[list[tuple[str, str, str]], list[str]]:
     """Cheapest, Best fit, Most flexible, Recommended for one group: (label, option, reason) rows and notes. All reasons come from the rows' own numbers."""
     notes: list[str] = []
     cur = _primary_currency(rows)
@@ -231,7 +226,7 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool) -> tuple[list[tup
         return [(p, "not determined", "no priced option") for p in ("Cheapest", "Best fit", "Most flexible", "Recommended")], notes
     cheapest = min(priced, key=lambda o: o.price_total)
     cheap_reason = f"lowest of {len(priced)} priced option(s) in {cur}"
-    if kind == "hotels" and not sorted_by_price:
+    if kind == "hotels" and not sorted_by_price and not complete:       # complete: every source of this group was read to its last row, so nothing cheaper was left unread
         cheap_reason = f"lowest of the {len(priced)} read, but the list sorted by price was NOT read: not the cheapest overall"
     if not cheapest.quotable:
         cheap_reason += " (comparison row, not quotable)"
@@ -300,6 +295,10 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
     if problems:
         return {"ok": False, "problems": problems, "next": "Fix every problem (read the source, or write an allowed reason / the missing field) and call compose_answer again. Do not write the answer yourself."}
     required = REQUIRED_DETAILS[kind]
+    if kind == "hotels":      # the agency usually compares RateHawk and Arbitrip: when neither read nor excused (the operator asked for one source, e.g. a hotel's own website) the answer SAYS so; it is not a refusal
+        covered = {s.name.lower() for s in sources_read} | {n.name.lower() for n in not_checked}
+        not_checked = list(not_checked) + [NotChecked(name=src, reason="not read in this answer: not compared") for src in ("RateHawk", "Arbitrip") if not any(c.startswith(src.lower()) for c in covered)]
+    complete_sources = {s.name.lower() for s in sources_read if s.of and s.read == s.of}
     lines: list[str] = []
     lines.append("Sources checked: " + "; ".join(f"{s.name} ({s.read} of {s.of} read)" for s in sources_read)
                  + " | Not checked: " + ("; ".join(f"{n.name} ({n.reason})" for n in not_checked) or "none"))
@@ -318,7 +317,7 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
         keys = list(dict.fromkeys(required + [k for o in rows for k in o.details if k not in required]))
         lines += ["", f"### {g}", "", "| Source | Option | " + " | ".join(k.replace("_", " ") for k in keys) + " | Price | Basis | Quotable | Link |",
                   "|" + "---|" * (len(keys) + 6)]
-        pk, pnotes = picks(kind, rows, sorted_by_price)
+        pk, pnotes = picks(kind, rows, sorted_by_price, all(o.source.lower() in complete_sources for o in rows))
         pnotes += cheaper_unconnected_notes(kind, rows)
         pnotes += price_gap_notes(kind, rows)
         kept = [o for o in rows if o.fits is not False]
