@@ -192,7 +192,7 @@ def register(mcp: MCPServer) -> None:
         as `pickup_place`). The driver is 30-65. The page's currency follows the visitor: the SERVER converts it to euro and says so in each row; never convert a price yourself. Then it returns the results url and a
         read-only SCRIPT: open the url, run the script with the javascript tool; it reads the page's own search answer (every car with supplier, depot, fees, excess), sends it to the server by itself and
         returns a short receipt (the `ingest` id): call compose_answer with `runs`=[that id] and this tool's `wishes` and `filters_used`. Never press View deal or type a row. A check page or block is never worked
-        around: stop and tell the operator. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
+        around: stop and tell the operator. READ IN THE OPERATOR'S CHROME ONLY: Rentalcars.com prices follow the visitor's country, so the server's own browser (in Germany) does not read it; open the url and run the script in Claude in Chrome."""
         asked = cars_ask_gate(gearbox, min_seats, zero_excess, max_total, operator_answered)
         if asked:
             return asked
@@ -220,4 +220,4 @@ def register(mcp: MCPServer) -> None:
                                + [f"driver age {age} " + ("(operator)" if driver_years else f"(default {DEFAULT_AGE}: the site's 30-65 band)")]
                                + ([f"prices converted to EUR by the server at the {fx['source']} of {fx['date']}"] if fx else ["no euro exchange rate was available: Rentalcars rows in another currency stay unconverted (the server never guesses a rate)"]))
         out["pickup_time"] = pickup_time
-        return await server_first(NAME, "RENTALCARS_READ_IN_SERVER", "https://www.rentalcars.com", out)
+        return await server_first(NAME, "RENTALCARS_READ_IN_SERVER", "https://www.rentalcars.com", out, default=False)      # operator's Chrome only (27 Oct 2026): Rentalcars prices follow the visitor's country (Mazda 2: EUR 19.02 from the server in Germany, about 18 from the operator's Israeli browser), and it showed the server a human check once

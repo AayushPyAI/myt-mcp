@@ -67,6 +67,20 @@ PAUSE_SECONDS = 3600                    # a site that showed a human check or re
 _READS: dict[str, list[float]] = {}
 _CACHE: dict[tuple[str, str], tuple[float, str]] = {}
 _PAUSED_UNTIL: dict[str, float] = {}
+_SLOTS: dict[int, Any] = {}      # one semaphore per event loop: how many pages the server's Chrome reads at the same time
+
+
+def read_slots() -> Any:
+    """Six tools called together made Europcar take 76 s instead of 19 s (27 Oct 2026: one Chrome, one CPU). SERVER_READS_AT_ONCE (default 2; 1 = strictly one after another) is how many pages it reads at once, the rest wait in a line."""
+    import asyncio
+    loop = asyncio.get_running_loop()
+    if id(loop) not in _SLOTS:
+        try:
+            n = max(1, int(os.environ.get("SERVER_READS_AT_ONCE", "2")))
+        except ValueError:
+            n = 2
+        _SLOTS[id(loop)] = asyncio.Semaphore(n)
+    return _SLOTS[id(loop)]
 PAUSE_FILE = Path(os.environ.get("MYT_PAUSE_FILE", "/tmp/myt-mcp/paused_sites.json"))     # wall-clock times: a pause survives a restart of the server and is seen by every process
 SITE_MIN_SECONDS = {"viator_find": 15.0, "viator_activity": 15.0}      # Viator flagged the server's IP once (15 Oct 2026): slower and fewer reads there
 SITE_MAX_PER_HOUR = {"viator_find": 20, "viator_activity": 20}
@@ -170,7 +184,8 @@ async def read_in_server_browser(site: str, origin: str, url: str, out: dict[str
     try:
         _READS.setdefault(site, []).append(time.monotonic())
         try:
-            raw = await _SERVER_BROWSER.run(origin, url, action)
+            async with read_slots():       # a short line for the one Chrome: at most SERVER_READS_AT_ONCE pages are read together
+                raw = await _SERVER_BROWSER.run(origin, url, action)
         except IntegrationError as e:
             return {"ok": False, "source": site, "error": str(e), "next": "Put this source in not_checked with the reason 'did not answer: the server's browser could not read it' and go on; never type a row yourself."}
     finally:
@@ -183,11 +198,11 @@ async def read_in_server_browser(site: str, origin: str, url: str, out: dict[str
     return finish(raw)
 
 
-async def server_first(site: str, flag: str, origin: str, out: dict[str, Any], ready_path: str | None = None) -> dict[str, Any]:
+async def server_first(site: str, flag: str, origin: str, out: dict[str, Any], ready_path: str | None = None, default: bool = True) -> dict[str, Any]:
     """The server's own automation Chrome reads the page FIRST (the same script, the whole answer stays here: the model gets a short receipt and calls compose_answer(runs=[...]));
     when it cannot (no automation Chrome, the site paused after a block, a human check or block page, a timeout, a script error, the answer not accepted) the recipe comes back unchanged for the operator's Claude in Chrome,
     with the reason in `server_read`. Nothing is ever worked around: a block only means the other way is used."""
-    if not server_reads(flag):
+    if not server_reads(flag, default):      # default False: the site is read in the operator's Chrome unless the flag is set to 1 (Rentalcars.com: its prices follow the visitor's country)
         return out
     try:
         result = await read_in_server_browser(site, origin, out["url"], out, ready_path)

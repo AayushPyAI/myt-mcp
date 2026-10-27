@@ -12,8 +12,8 @@ from myt_mcp.sites.booking_flights import booking_flights_recipe
 from tests.test_booking_flights import DAY, EXPECT, RECIPE
 
 
-def page(total_pages=9, found=133, no_direct=False, airlines_off=0, times_on=0, stops_radio="-1", sym="€", legs=1, cards_per_page=15) -> str:
-    cfg = {"pages": total_pages, "found": found, "sym": sym, "legs": legs, "per": cards_per_page}
+def page(total_pages=9, found=133, no_direct=False, airlines_off=0, times_on=0, stops_radio="-1", sym="€", legs=1, cards_per_page=15, sort_button_not_ready=False) -> str:
+    cfg = {"pages": total_pages, "found": found, "sym": sym, "legs": legs, "per": cards_per_page, "late": sort_button_not_ready}
     banner = "<p>There are no direct flights for your search. Here are other options you might like.</p>" if no_direct else ""
     airlines = "".join(f'<label><input type="checkbox" {"" if i < airlines_off else "checked"}>Airline {i}</label>' for i in range(5))
     times = "".join(f'<label><input type="checkbox" {"checked" if i < times_on else ""}>{h}</label>' for i, h in enumerate(["00:00-05:59", "06:00-11:59"]))
@@ -41,9 +41,11 @@ function render() {{
   document.querySelectorAll('#pager button').forEach((b) => b.addEventListener('click', () => setTimeout(() => {{ state.page = parseInt(b.innerText, 10); render(); }}, 300)));
   sortbtn.innerText = 'Sort by: ' + state.sort;
 }}
+let sortClicks = 0;      // a page that is still wiring its buttons ignores the first click on Sort and shows the menu a moment after the next one (seen from the server's Chrome)
 sortbtn.addEventListener('click', () => {{
-  document.getElementById('menu').innerHTML = ['Best We look at the price, travel time, number of stops and baggage allowance', 'Cheapest', 'Fastest'].map((t) => '<button role="menuitem">' + t + '</button>').join('');
-  document.querySelectorAll('#menu button').forEach((b) => b.addEventListener('click', () => setTimeout(() => {{ state.sort = b.innerText.split(' ')[0]; state.page = 1; document.getElementById('menu').innerHTML = ''; render(); }}, 300)));
+  sortClicks++; if (CFG.late && sortClicks === 1) return;
+  setTimeout(() => {{ document.getElementById('menu').innerHTML = ['Best We look at the price, travel time, number of stops and baggage allowance', 'Cheapest', 'Fastest'].map((t) => '<button role="menuitem">' + t + '</button>').join('');
+  document.querySelectorAll('#menu button').forEach((b) => b.addEventListener('click', () => setTimeout(() => {{ state.sort = b.innerText.split(' ')[0]; state.page = 1; document.getElementById('menu').innerHTML = ''; render(); }}, 300))); }}, CFG.late ? 900 : 0);
 }});
 render();
 </script></body></html>"""
@@ -146,3 +148,11 @@ def test_a_card_with_two_legs_or_another_currency_reaches_the_converter_and_is_r
     usd = json.loads(run_script(page(sym="$"), rec))
     off, _, problems, _, _ = convert_one(usd, rec)
     assert off == [] and any("not euro" in p for p in problems)
+
+
+def test_a_sort_button_that_ignores_the_first_click_and_shows_its_menu_late_is_asked_again_until_the_menu_comes():
+    rec = booking_flights_recipe("TLV", "LIS", DAY, 2, False, "economy", 1)
+    data = json.loads(run_script(page(sort_button_not_ready=True), rec))
+    assert data["ok"] is True and [s["shown_as"] for s in data["sorts"]] == ["Best", "Cheapest"] and len(data["rows"]) == 30
+    _, _, problems, _, _ = convert_one(data, rec)
+    assert problems == []

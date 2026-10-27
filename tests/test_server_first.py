@@ -2,6 +2,7 @@
 cannot (no browser, a block or human check, a timeout, a script error) the same recipe comes back for the operator's Claude in Chrome with the reason. A blocked site is paused (Rentalcars: 6 hours)."""
 
 import json
+import os
 
 import pytest
 from mcp import Client
@@ -25,6 +26,12 @@ ARGS = {
 }
 SITE_OF = {"bensaude_hotels_recipe": "bensaude_hotels", "europcar_cars_recipe": "europcar_cars", "rentalcars_cars_recipe": "rentalcars_cars", "booking_flights_recipe": "booking_flights",
            "booking_attractions_recipe": "booking_attractions", "booking_attraction_recipe": "booking_attraction"}
+
+
+def switch(flag, default=True):
+    """What the real server_reads does with its default and the environment, without a browser address."""
+    value = os.environ.get(flag)
+    return default if value is None else value.strip().lower() not in ("0", "false", "no", "")
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +97,8 @@ async def test_a_human_verification_page_pauses_rentalcars_for_six_hours_and_oth
 
 @pytest.mark.parametrize("tool", sorted(ARGS))
 async def test_every_one_of_the_six_tools_gives_the_receipt_when_the_server_read_and_the_recipe_with_the_reason_when_not(tool, monkeypatch):
-    monkeypatch.setattr(sites, "server_reads", lambda flag, default=True: True)
+    monkeypatch.setattr(sites, "server_reads", switch)
+    monkeypatch.setenv("RENTALCARS_READ_IN_SERVER", "1")      # Rentalcars is off by default; the switch turns it on
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://mcp.example.test")
     calls = []
 
@@ -140,3 +148,49 @@ def test_the_start_times_of_an_activity_read_by_the_server_have_the_24_hour_cloc
     from myt_mcp.sites.booking_attraction import convert
     o = convert(answer([row(times=["10:00 AM", "01:30 PM", "06:00 PM"], time_chosen="10:00 AM")]), {"expect": EXPECT}, "Activities").offers[0]
     assert o.details["start_times"].startswith("3 start time(s): 10:00, 13:30, 18:00 (first chosen: 10:00;")
+
+
+async def test_the_server_reads_at_most_the_set_number_of_pages_at_once_and_the_rest_wait_in_line(monkeypatch):
+    import asyncio
+    monkeypatch.setattr(sites, "server_reads", lambda flag, default=True: True)
+    monkeypatch.setattr(sites, "MIN_SECONDS_BETWEEN_READS", 0.0)
+    sites._SLOTS.clear()
+
+    async def run_with(limit):
+        monkeypatch.setenv("SERVER_READS_AT_ONCE", str(limit))
+        sites._SLOTS.clear()
+        now = {"n": 0, "max": 0}
+
+        class Browser:
+            async def run(self, origin, url, action):
+                now["n"] += 1; now["max"] = max(now["max"], now["n"])
+                await asyncio.sleep(0.05)
+                now["n"] -= 1
+                return json.dumps({"ok": False, "error": "no rows (test)"})
+        monkeypatch.setattr(sites, "_SERVER_BROWSER", Browser())
+        sites_list = ["bensaude_hotels", "europcar_cars", "booking_flights", "booking_attractions", "booking_attraction", "rentalcars_cars"]
+        await asyncio.gather(*[server_first(n, "F", f"https://{n}.test", {"url": f"https://{n}.test/x", "script": "await (async () => {\n})()"}) for n in sites_list])
+        return now["max"]
+    assert await run_with(2) == 2
+    assert await run_with(1) == 1       # strictly one after another
+    assert await run_with(0) == 1       # a nonsense value never blocks everything: at least one at a time
+    monkeypatch.setenv("SERVER_READS_AT_ONCE", "many")
+    sites._SLOTS.clear()
+    assert sites.read_slots()._value == 2       # an unreadable value falls back to two
+
+
+async def test_rentalcars_is_read_in_the_operators_chrome_only_unless_its_switch_is_set(monkeypatch):
+    monkeypatch.setattr(sites, "server_reads", switch)
+    monkeypatch.delenv("RENTALCARS_READ_IN_SERVER", raising=False)
+    called = []
+
+    async def spy(*a, **k):
+        called.append(1)
+        return dict(RECEIPT)
+    monkeypatch.setattr(sites, "read_in_server_browser", spy)
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        got = (await c.call_tool("rentalcars_cars_recipe", ARGS["rentalcars_cars_recipe"])).structured_content
+        tool = next(t for t in (await c.list_tools()).tools if t.name == "rentalcars_cars_recipe")
+    assert called == [] and got["script"] and "server_read" not in got
+    assert "OPERATOR'S CHROME ONLY" in tool.description and "SERVER FIRST" not in tool.description

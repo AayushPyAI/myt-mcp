@@ -51,12 +51,24 @@ await (async () => {
     await wait(1500);
     return currentPage() === n;
   };
+  // the Sort menu: a click made before the page is ready (seen from the server's Chrome, 27 Oct 2026: "the Sort menu has no Cheapest item") opens nothing, so the menu is asked for up to three times, each time waiting for its items
+  const menuItem = (sort) => [...document.querySelectorAll('button[role=menuitem]')].find((b) => new RegExp('^' + sort, 'i').test((b.innerText || '').trim()));
+  const openSortMenu = async (sort) => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (menuItem(sort)) return menuItem(sort);      // already open: a second click would close it
+      const sb = [...document.querySelectorAll('button')].find((b) => /^Sort by:/i.test((b.innerText || '').trim()));
+      if (sb) sb.click();
+      for (let k = 0; k < 8 && !menuItem(sort); k++) await wait(400);
+      if (menuItem(sort)) return menuItem(sort);
+      await wait(1000);
+    }
+    return null;
+  };
+  let settled = false;
   for (const sort of SORTS) {
     if ((sortLabel() || '').toLowerCase() !== sort.toLowerCase()) {
-      const sb = [...document.querySelectorAll('button')].find((b) => /^Sort by:/i.test((b.innerText || '').trim()));
-      if (!sb) return JSON.stringify({ ok: false, error: 'the Sort menu is not on the page: run the script once more' });
-      sb.click(); await wait(900);
-      const item = [...document.querySelectorAll('button[role=menuitem]')].find((b) => new RegExp('^' + sort, 'i').test((b.innerText || '').trim()));
+      if (!settled) { await wait(2000); settled = true; }      // the page is still wiring its buttons when the cards first appear
+      const item = await openSortMenu(sort);
       if (!item) return JSON.stringify({ ok: false, error: 'the Sort menu has no "' + sort + '" item: run the script once more' });
       item.click();
       for (let k = 0; k < 24 && (sortLabel() || '').toLowerCase() !== sort.toLowerCase(); k++) await wait(400);
