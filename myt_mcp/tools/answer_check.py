@@ -14,6 +14,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
+from myt_mcp import answer_watch
 from myt_mcp.composed import amount_problems, currency_problems, row_problems, source_warnings
 from myt_mcp.errors import tool_errors
 
@@ -127,6 +128,7 @@ def register(mcp: MCPServer) -> None:
         line, a link for every source, the four Picks rows, "Filters used" with their sources, "N of M", forbidden excuses
         ("for time", "out of scope"), "all adults" said without the operator, and numbers a tool never returns (TAP change fees).
         It reads no site and changes nothing. Fix what it lists, then send. `kind` is the kind of answer ("general" for the rest)."""
+        answer_watch.checked()
         out = check_answer_text(draft, kind)
         typed = row_problems(draft, kind)
         amounts, amount_warnings = amount_problems(draft)

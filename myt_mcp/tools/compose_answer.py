@@ -10,6 +10,7 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
+from myt_mcp import answer_watch
 from myt_mcp.composed import COMPOSED
 from myt_mcp.ingest import STORE
 from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, bag_unconfirmed, compose, refund_unconfirmed
@@ -190,6 +191,7 @@ def register(mcp: MCPServer) -> None:
                  sorted((wishes or {}).keys()), "; ".join(out.get("problems", []))[:800])          # sizes and rule messages only, never the rows
         if out.get("ok") and out.get("answer"):
             COMPOSED.remember(kind, out["answer"])
+            answer_watch.composed(kind)
             if renamed:
                 out["site_names_fixed"] = renamed
         return out

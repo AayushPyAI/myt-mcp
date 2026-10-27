@@ -1649,3 +1649,21 @@ def test_a_source_the_operator_excluded_and_a_filter_the_server_wrote_are_accept
     lazy = compose(kind="hotels", filters_used=["breakfast (operator)"], sources_read=[SourceRead(name="Bensaude", read=1, of=1, link="https://bensaude.e-gds.com/webfrontendcorporate/shoppingcart/availability.aspx?hotelid=29")],
                    not_checked=[NotChecked(name="RateHawk", reason="for time")], offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
     assert lazy["ok"] is False        # the laziness reasons stay refused
+
+
+def test_the_reasons_a_chat_gives_for_leaving_out_sources_the_operator_did_not_name_are_accepted_and_laziness_is_not():
+    rows = [Offer(group="Terra Nostra", source="Bensaude", name="Cosy Art Deco FLEX", price_total=322, currency="EUR")]
+    src = [SourceRead(name="Bensaude", read=1, of=1, link="https://bensaude.e-gds.com/webfrontendcorporate/shoppingcart/availability.aspx?hotelid=29")]
+    for reason in ("operator asked for Bensaude only", "the operator named Booking.com only", "operator excluded this source"):
+        ok = compose(kind="hotels", filters_used=["breakfast (operator)"], sources_read=src, not_checked=[NotChecked(name="RateHawk", reason=reason)], offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+        assert ok["ok"] is True, (reason, ok)
+    for reason in ("for time", "out of scope", "you did not ask"):
+        bad = compose(kind="hotels", filters_used=["breakfast (operator)"], sources_read=src, not_checked=[NotChecked(name="RateHawk", reason=reason)], offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+        assert bad["ok"] is False, reason
+
+
+def test_a_filter_line_the_server_wrote_with_agency_rule_is_not_refused():
+    rows = [Offer(group="Terra Nostra", source="Bensaude", name="Cosy Art Deco FLEX", price_total=322, currency="EUR")]
+    src = [SourceRead(name="Bensaude", read=1, of=1, link="https://bensaude.e-gds.com/webfrontendcorporate/shoppingcart/availability.aspx?hotelid=29")]
+    ok = compose(kind="hotels", filters_used=["Best and Cheapest sorts read together (agency rule)"], sources_read=src, not_checked=[], offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert ok["ok"] is True, ok

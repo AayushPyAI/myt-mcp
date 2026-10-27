@@ -30,8 +30,8 @@ BANNED_REASONS = ("for time", "out of scope", "this pass", "keep it short", "say
 MAX_ROWS_BY_KIND = {"flights": 20, "hotels": 20, "cars": 20, "transfers": 20, "trains": 20}      # rows the table shows per group; the picks always use every row read
 PER_SOURCE_MIN_ROWS = 3
 ALLOWED_REASON_WORDS = ("browser", "chrome", "login", "captcha", "block", "not served", "does not sell", "doesn't sell", "does not fly", "did not answer",
-                        "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded")      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
-SOURCE_WORDS = ("operator", "trip", "default", "server")      # "server": a filter the server itself wrote, e.g. the euro conversion
+                        "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded", "operator asked for", "operator named")      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
+SOURCE_WORDS = ("operator", "trip", "default", "server", "agency")      # "server": a filter the server itself wrote, e.g. the euro conversion
 
 
 class Offer(BaseModel):
@@ -103,7 +103,7 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
         if any(b in low for b in BANNED_REASONS):
             problems.append(f"{n.name}: '{n.reason}' is not an allowed reason; read it, or use: no browser tool, login/captcha/block, route not served, did not answer")
         elif not any(w in low for w in ALLOWED_REASON_WORDS):
-            problems.append(f"{n.name}: the reason must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, source did not answer, 'could not be read: <the script's own error>', or 'operator excluded this source' when the operator named the sources to use")
+            problems.append(f"{n.name}: the reason must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, source did not answer, 'could not be read: <the script's own error>', or 'operator asked for <sources> only' when the operator named the sources to use")
     if kind in NEEDS_FILTERS:
         if not filters_used:
             problems.append("filters_used is empty: write each filter with its source, e.g. 'direct only (trip default)'")
