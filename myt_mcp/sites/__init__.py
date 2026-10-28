@@ -12,6 +12,7 @@ from __future__ import annotations
 import functools
 import importlib
 import json
+import logging
 import os
 import pkgutil
 import re
@@ -24,6 +25,8 @@ from typing import Any
 
 from myt_mcp.compose import Offer, SourceRead
 from myt_mcp.ingest import STORE
+
+log = logging.getLogger("myt_mcp")
 
 
 @dataclass
@@ -479,6 +482,55 @@ def checksum_problem(raw: str) -> str | None:
     return None if text[cut + 8:-2] == expected else "does not match its checksum (a character was changed while it was passed on)"
 
 
+def _escape_non_ascii(text: str) -> str:
+    """What emit.js does: every character from U+007F up is written as \\uXXXX (one escape per UTF-16 unit, so an emoji is a surrogate pair)."""
+    out = []
+    for c in text:
+        o = ord(c)
+        if o < 0x7F:
+            out.append(c)
+        elif o > 0xFFFF:
+            o -= 0x10000
+            out.append(f"\\u{0xD800 + (o >> 10):04x}\\u{0xDC00 + (o & 0x3FF):04x}")
+        else:
+            out.append(f"\\u{o:04x}")
+    return "".join(out)
+
+
+_REPAIRS = (                             # what a model does when it types a part back: writes \\u twice, writes the hex in capitals, turns an escape into the character itself
+    lambda t: re.sub(r"\\\\u([0-9a-fA-F]{4})", r"\\u\1", t),
+    lambda t: re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: "\\u" + m.group(1).lower(), t),
+    _escape_non_ascii,
+)
+
+
+def repaired_part(raw: str) -> str | None:
+    """A part that fails its checksum only because of how the escapes were typed back (28 Oct 2026: the assistant wrote \\\\u20ac for \\u20ac). The text is accepted ONLY when one of these
+    rewrites gives back the exact text the script made, which the script's own checksum proves; then the repaired text is returned. Information that is gone (a no-break space typed as a plain space) is not guessed."""
+    text = raw.strip()
+    cut = text.rfind(',"crc":"')
+    if cut < 0 or not text.endswith('"}'):
+        return None
+    given = text[cut + 8:-2]
+    body = text[:cut] + "}"
+    for mask in range(1, 8):
+        candidate = body
+        for i, fix in enumerate(_REPAIRS):
+            if mask >> i & 1:
+                candidate = fix(candidate)
+        if format(zlib.crc32(candidate.encode("utf-8")), "08x") == given:
+            return candidate[:-1] + ',"crc":"' + given + '"}'
+    return None
+
+
+def part_shape(raw: str) -> str:
+    """What a failed part looks like, for the message and the log: its backslashes, doubled escapes and characters above ASCII (no data is repeated)."""
+    backslashes = raw.count("\\")
+    doubled = len(re.findall(r"\\\\u[0-9a-fA-F]{4}", raw))
+    non_ascii = sum(1 for c in raw if ord(c) > 126)
+    return f"{backslashes} backslashes, {doubled} doubled \\u escapes, {non_ascii} non-ASCII characters"
+
+
 def _flat(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(name).lower())
 
@@ -556,9 +608,16 @@ def check_parts(site_results: list[dict[str, Any]]) -> list[str]:
         except (TypeError, ValueError):
             continue
         if isinstance(data, dict) and data.get("parts") and data.get("run"):
-            why = checksum_problem(str(item.get("result", "")))
+            received = str(item.get("result", ""))
+            why = checksum_problem(received)
+            fixed = repaired_part(received) if why else None
+            if fixed:
+                item["result"] = fixed          # the script's own checksum proves this is the text it made
+                log.info("PARTS %s part %s of %s: repaired a typed-back part (%s)", item.get("site"), data.get("part"), data.get("parts"), part_shape(received))
+                why = None
             if why:
-                bad.append(f"{item.get('site')}: part {data.get('part')} of {data.get('parts')} {why} (the server received {len(str(item.get('result', '')))} characters): run window.__mytParts[{int(data.get('part', 1)) - 1}] again in the same Chrome tab and pass it exactly as it is")
+                log.info("PARTS %s part %s of %s: %s (%s)", item.get("site"), data.get("part"), data.get("parts"), why, part_shape(received))
+                bad.append(f"{item.get('site')}: part {data.get('part')} of {data.get('parts')} {why} (the server received {len(received)} characters, {part_shape(received)}): run window.__mytParts[{int(data.get('part', 1)) - 1}] again in the same Chrome tab and pass it exactly as it is, from ONE output; never join an output that was cut ([TRUNCATED]) or retype it")
             key = (str(item.get("site", "")), str(data["run"]))
             runs.setdefault(key, {})[int(data.get("part", 0))] = len(data.get("rows") or [])
             meta[key] = (int(data["parts"]), int(data.get("rows_read") or 0))

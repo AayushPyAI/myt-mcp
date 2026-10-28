@@ -171,3 +171,44 @@ def test_every_part_is_ascii_only_so_what_the_model_sees_is_exactly_what_it_pass
     assert "Hotel\u00a0Açores\u200aLisboa 0" in [r["name"] for r in json.loads(expand(parts[0]))["rows"]]       # the server's own decoder gives the plain rows back
     typed = parts[0].replace("\\u00a0", " ", 1)                                  # a no-break space typed as a plain space is still caught (and now it cannot be mistaken for one)
     assert checksum_problem(typed) is not None
+
+
+# ---------- a part typed back with its escapes written another way is repaired, proved by the script's own checksum ----------
+
+def _escaped_part(names: list[str], run: str = "r1") -> str:
+    """A part as emit.js makes it: ASCII only (json.dumps writes the same lowercase \\uXXXX escapes), the checksum on the text before it."""
+    import zlib
+    text = json.dumps({"ok": True, "run": run, "rows_read": len(names), "part": 1, "parts": 1, "cols": ["name"], "common": {}, "path_base": "", "rows": [[n] for n in names]})
+    return text[:-1] + ',"crc":"' + format(zlib.crc32(text.encode("utf-8")), "08x") + '"}'
+
+
+def test_a_part_whose_escapes_were_typed_another_way_is_repaired_and_the_repaired_text_is_what_is_used(caplog):
+    from myt_mcp.sites import check_parts, checksum_problem
+    part = _escaped_part(["Café € 10", "emoji \U0001F600", "Hotel Lisboa"])
+    assert part.isascii() and "\\u20ac" in part and checksum_problem(part) is None
+    typed = {
+        "escape written as the character": part.replace("\\u20ac", "€").replace("\\u00e9", "é"),
+        "backslash doubled": part.replace("\\u", "\\\\u"),
+        "hex in capitals": part.replace("\\u20ac", "\\u20AC").replace("\\u00e9", "\\u00C9".replace("C9", "E9")),
+        "all three": part.replace("\\u20ac", "€").replace("\\ud83d\\ude00", "\U0001F600").replace("\\u00a0", "\\\\u00A0"),
+    }
+    for what, text in typed.items():
+        assert text != part and checksum_problem(text) is not None, what
+        items = [{"site": "ofran", "result": text}]
+        with caplog.at_level("INFO", logger="myt_mcp"):
+            assert check_parts(items) == [], what
+        assert items[0]["result"] == part, what                      # the exact text the script made goes on to the converters
+    assert any("repaired a typed-back part" in r.message for r in caplog.records)
+
+
+def test_a_part_that_lost_information_is_not_guessed_and_the_message_says_what_it_looks_like():
+    from myt_mcp.sites import check_parts
+    part = _escaped_part(["Hotel Lisboa", "Café € 10"])
+    lost = part.replace("\\u00a0", " ", 1)                           # a no-break space typed as a plain space cannot be known again
+    wrong_digit = part.replace("Caf", "Cat", 1)
+    for i, text in enumerate((lost, wrong_digit)):
+        items = [{"site": f"shape_test_{i}", "result": text}]      # a site of its own each: two failures of one site make the server say STOP
+        problems = check_parts(items)
+        assert len(problems) == 1 and "checksum" in problems[0] and "backslashes" in problems[0] and "non-ASCII" in problems[0]
+        assert "never join an output that was cut" in problems[0]
+        assert items[0]["result"] == text                             # nothing was changed
