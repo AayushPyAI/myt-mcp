@@ -286,6 +286,17 @@ def test_a_cheaper_airline_only_a_comparison_source_lists_is_named_in_the_picks_
     assert cheaper_unconnected_notes("hotels", rows) == []
 
 
+def test_a_cheaper_comparison_row_of_an_airline_whose_own_source_was_read_gets_no_no_source_note():
+    """28 Oct 2026: Booking.com's TAP flight at 532 EUR got 'no connected source sells it' although TAP's own page was read (its rows are named by flight number, the airline is their supplier and source)."""
+    from myt_mcp.compose import Offer, cheaper_unconnected_notes
+    rows = [Offer(group="TLV to LIS", source="TAP Air Portugal", name="TP8920 13:40-17:50 operated by El Al Israel Airlines Ltd. (direct, 6h 10) fare PLUSINT", supplier="TAP Air Portugal", price_total=647.80, currency="EUR", fits=True, quotable=True),
+            Offer(group="TLV to LIS", source="Booking.com flights (public website price)", name="TAP Portugal, operated by EL Al Israel Airlines 13:40-17:50 (6h 10m)", price_total=532.0, currency="EUR", quotable=False)]
+    assert cheaper_unconnected_notes("flights", rows) == []
+    rows.append(Offer(group="TLV to LIS", source="Booking.com flights (public website price)", name="Arkia 17:15-21:00 (5h 45m)", price_total=500.0, currency="EUR", quotable=False))
+    notes = cheaper_unconnected_notes("flights", rows)
+    assert len(notes) == 1 and "Arkia" in notes[0]                      # an airline no connected source sells still gets its note
+
+
 async def _fake_server_browser(monkeypatch, answer):
     import myt_mcp.sites as sites
     seen = {}

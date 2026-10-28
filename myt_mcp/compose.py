@@ -218,7 +218,7 @@ def cheaper_unconnected_notes(kind: str, rows: list[Offer]) -> list[str]:
     if not quotable:
         return []
     best = min(o.price_total for o in quotable)
-    sold = " ".join(o.name.lower() for o in rows if o.quotable)
+    sold = " ".join(f"{o.name} {o.supplier or ''} {o.source}".lower() for o in rows if o.quotable)      # the airline's own source (TAP rows are named by flight number) counts as selling it
     notes = []
     for o in sorted((o for o in rows if not o.quotable and o.price_total is not None and (o.currency or "") == cur and o.price_total < best), key=lambda r: r.price_total):
         airline = re.split(r"\s+\d{1,2}:\d{2}", o.name, maxsplit=1)[0].strip()

@@ -1112,6 +1112,26 @@ def test_tap_wishes_decide_fits_and_every_refusal_is_reported():
     assert len(elsewhere[0]) == 5 and any("another place than FLR" in n for n in elsewhere[4]) and not elsewhere[2]
 
 
+def test_tap_cabin_wish_drops_the_fares_of_another_cabin_and_marks_a_fare_that_names_none():
+    """28 Oct 2026: Economy was asked and TAP's Executive fare (TOPINT) was in the table as quotable, 'meets every wish'."""
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.tap import tap_recipe
+    plain = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1)["expect"]
+    assert plain["cabin"] is None
+    eco = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1, cabin="Economy")["expect"]
+    biz = tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1, cabin="business")["expect"]
+    assert eco["cabin"] == "economy" and biz["cabin"] == "executive"
+    run = lambda exp, rows: convert_all([{"site": "tap", "result": _tap(rows), "url": "u"}], {"expect": exp})[0]
+    assert [o.fits for o in run(plain, TAP_REAL)] == [True] * 5                                   # no cabin asked: nothing changes
+    assert [o.fits for o in run(eco, TAP_REAL)] == [True, True, True, False, False]              # Economy: the two Executive fares are a clear miss
+    assert [o.fits for o in run(biz, TAP_REAL)] == [False, False, False, True, True]
+    unnamed = run(eco, [_tp(cabin=None)])[0]
+    assert unnamed.fits is None and unnamed.unconfirmed == ["cabin"]                              # a fare that does not name its cabin is marked, never a pick
+    with pytest.raises(ValueError):
+        tap_recipe("FLR", "LIS", date(2027, 3, 6), 2, 1, cabin="luxury")
+
+
 def test_tap_parts_are_counted_once_per_flight_and_a_later_window_says_so():
     from datetime import date
     from myt_mcp.sites import convert_all
@@ -1138,6 +1158,11 @@ async def test_tap_tool_asks_first_then_returns_the_url_script_wishes_and_filter
         assert any("checked bag only (operator)" in f for f in part["filters_used"]) and any("Connections allowed (operator)" in f for f in part["filters_used"])
         none = (await c.call_tool("tap_recipe", {"origin": "FLR", "destination": "LIS", "day": "2027-03-06", "operator_answered": True})).structured_content
         assert any("default: no preference" in f for f in none["filters_used"])
+        eco = (await c.call_tool("tap_recipe", {"origin": "TLV", "destination": "LIS", "day": "2027-01-12", "direct_only": True, "checked_bag": True, "refundable": True, "cabin": "economy"})).structured_content
+        assert eco["wishes"]["expect"]["cabin"] == "economy" and "Economy cabin only (operator)" in eco["filters_used"]
+        assert not any("cabin" in f.lower() for f in none["filters_used"]) and none["wishes"]["expect"]["cabin"] is None
+        bad = await c.call_tool("tap_recipe", {"origin": "TLV", "destination": "LIS", "day": "2027-01-12", "direct_only": True, "checked_bag": True, "refundable": True, "cabin": "luxury"})
+        assert bad.is_error                                                  # a cabin TAP does not have is refused (the tool's generic error answer)
 
 
 # ---------- SATA / Azores Airlines (recipe: the page's own state store) ----------

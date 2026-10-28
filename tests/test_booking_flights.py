@@ -144,3 +144,13 @@ async def test_the_tool_asks_direct_only_and_cabin_first_refuses_children_and_re
         assert kids.is_error and "adults only" in kids.content[0].text
         bad = await c.call_tool("booking_flights_recipe", {"origin": "TLV", "destination": "TLV", "day": "2027-03-06", "direct_only": False, "cabin": "economy"})
         assert bad.is_error and "two different" in bad.content[0].text
+
+
+def test_the_flights_a_page_is_only_said_when_the_list_has_more_than_one_page():
+    """28 Oct 2026: with one direct flight the note said 'the site lists 1 flights a page' (the page's 'Flight option 1 of 1' is the size of the list, not the page size)."""
+    one_page = [dict(s, pages_seen=1) for s in SORTS]
+    rows = convert(answer(per_page=1, results_total=1, sorts=one_page), {"expect": EXPECT}, "Flights")
+    notes = " ".join(rows.extra_notes)
+    assert "Pages read: Best 2 of 1 page(s)" in notes and "flights a page" not in notes
+    many = " ".join(convert(answer(per_page=1), {"expect": EXPECT}, "Flights").extra_notes)
+    assert "(the site lists 15 flights a page)" in many

@@ -19,7 +19,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp.compose import Offer
+from myt_mcp.compose import Offer, mark_unconfirmed
 from myt_mcp.errors import tool_errors
 from myt_mcp.sites import SiteRows, server_first, with_emit
 from myt_mcp.tap.client import search_link
@@ -31,19 +31,31 @@ HERE = Path(__file__).parent
 ASK = {"stops": "Direct only, or connections allowed?", "bag": "Is a checked bag needed (only fares with one), or any fare?", "refund": "Refundable fares only, or any fare?"}
 BATCH = 24          # flights per call (the first 12 and the next 12: a whole day is read at once); each flight carries all its fares
 CODE = re.compile(r"[A-Z]{3}")
+CABINS = {"economy": "economy", "premium": "premium", "business": "executive", "executive": "executive", "first": "first"}      # the operator's word -> the key of TAP's cabin name
+
+
+def cabin_key(text: Any) -> str | None:
+    """TAP's own cabin name ('Economy', 'Executive', 'Premium Economy') as one of the CABINS keys; None when it is not shown or not known."""
+    low = str(text or "").lower()
+    for word, key in (("premium", "premium"), ("economy", "economy"), ("executive", "executive"), ("business", "executive"), ("first", "first")):
+        if word in low:
+            return key
+    return None
 
 
 def tap_recipe(origin: str, destination: str, day: date, adults: int = 2, children: int = 0, infants: int = 0, direct_only: bool = False, checked_bag: bool = False,
-               refundable: bool = False, limit: int = BATCH, offset: int = 0) -> dict[str, Any]:
+               refundable: bool = False, limit: int = BATCH, offset: int = 0, cabin: str | None = None) -> dict[str, Any]:
     origin, destination = origin.strip().upper(), destination.strip().upper()
     if not (CODE.fullmatch(origin) and CODE.fullmatch(destination)) or origin == destination:
         raise ValueError("origin and destination must be two different 3-letter IATA airport codes (FLR, LIS)")
     if not 1 <= adults <= 9 or children < 0 or infants < 0 or adults + children > 9 or infants > adults or not 1 <= limit <= 30 or offset < 0:
         raise ValueError("adults 1-9 (travellers aged 12+), adults + children at most 9, infants (under 2) at most one per adult, limit 1-30")
+    if cabin is not None and cabin.strip().lower() not in CABINS:
+        raise ValueError(f"cabin must be one of {sorted(CABINS)} (or left out when the operator named none)")
     url = search_link(origin, destination, day, adults, children, infants)
     script = with_emit((HERE / "tap.js").read_text(encoding="utf-8")).replace("__LIMIT__", str(limit)).replace("__SKIP__", str(offset))
     expect = {"origin": origin, "destination": destination, "day": day.isoformat(), "adults": adults, "children": children, "infants": infants, "direct_only": direct_only,
-              "checked_bag": checked_bag, "refundable": refundable, "leg": f"{origin} to {destination}, {day:%d %b %Y}"}
+              "checked_bag": checked_bag, "refundable": refundable, "cabin": CABINS[cabin.strip().lower()] if cabin else None, "leg": f"{origin} to {destination}, {day:%d %b %Y}"}
     return {"url": url, "script": script, "expect": expect}
 
 
@@ -96,16 +108,21 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         dur = f"{mins // 60}h {mins % 60:02d}" if isinstance(mins, int) else "duration not shown"
         label = f"{name} {_hm(r.get('dep'))}-{_hm(r.get('arr'))}" + (f" operated by {r['op']}" if r.get("op") else "")
         fits = None
+        want_cabin = exp.get("cabin") if exp else None
+        cabin = cabin_key(r.get("cabin")) if want_cabin else None
         if exp:
-            fits = ((direct or not exp.get("direct_only")) and (bag == 1 or not exp.get("checked_bag")) and (ref == 1 or not exp.get("refundable")))
-        offers.append(Offer(
+            fits = ((direct or not exp.get("direct_only")) and (bag == 1 or not exp.get("checked_bag")) and (ref == 1 or not exp.get("refundable")) and (not want_cabin or cabin is None or cabin == want_cabin))
+        offer = Offer(
             group=exp.get("leg") or group, source=SOURCE, name=f"{label} ({'direct' if direct else str(r.get('stops')) + ' stop via ' + (r.get('via') or '?')}, {dur}) fare {r.get('fare')}",
             price_total=r["total"], currency="EUR", price_basis=f"whole group ({pax_n} seated travellers), taxes included, TAP's own price" if pax_n else "whole group, taxes included, TAP's own price",
             fits=fits, flexible=True if ref == 1 else (False if ref == 0 else None), connecting=not direct, supplier="TAP Air Portugal",
             details={"stops": "Direct" if direct else f"{r.get('stops')} stop(s) via {r.get('via') or '?'}", "fare": f"{r.get('fare')} ({r.get('cabin') or 'cabin not shown'})",
                      "checked_bag": "yes" if bag == 1 else ("no" if bag == 0 else "not shown"), "refund_change": "refundable" if ref == 1 else ("not refundable" if ref == 0 else "not shown") + "; change fees not shown",
                      "per_person": " / ".join(f"{k} {v:g} EUR" for k, v in per_type.items() if v is not None) or "not shown",
-                     "seats_left": r.get("seats") if r.get("seats") is not None else "not shown"}))
+                     "seats_left": r.get("seats") if r.get("seats") is not None else "not shown"})
+        if want_cabin and cabin is None:
+            mark_unconfirmed(offer, "cabin")        # the fare does not name its cabin: it stays in the table, marked, and is never a pick
+        offers.append(offer)
     flights_total = data.get("flights_total") or n_flights
     if exp and data.get("page_direct") is not None and data.get("page_connecting") is not None and not data.get("offset") and not elsewhere:
         if data["page_direct"] + data["page_connecting"] != flights_total:
@@ -123,24 +140,27 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool(name="tap_recipe", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
     async def tap_recipe_tool(origin: str, destination: str, day: date, adults: int = 2, children: int = 0, infants: int = 0, direct_only: bool | None = None,
-                              checked_bag: bool | None = None, refundable: bool | None = None, operator_answered: bool = False, limit: int = BATCH, offset: int = 0) -> dict[str, Any]:
+                              checked_bag: bool | None = None, refundable: bool | None = None, operator_answered: bool = False, limit: int = BATCH, offset: int = 0,
+                              cabin: str | None = None) -> dict[str, Any]:
         """FOR TAP AIR PORTUGAL (one leg, one way; read in the operator's own Chrome with Claude in Chrome, on TAP's own booking page; these are the airline's own prices: quotable). ASK FIRST: without
         `direct_only`, `checked_bag` and `refundable` (true/false each) it opens nothing and returns `ask_operator`: ask them in ONE message, wait, call again with the answers (`operator_answered`=true for
         "no preference", only after the operator replied). Then it returns the TAP results url and a read-only SCRIPT: open the url in a tab, run the script with the javascript tool (it reads the flights and
         every fare of each with the group total, bag and refund flags; `limit` flights from `offset`, cheapest first; for more call again with offset=offset+limit). The script sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. Airport codes as `origin` / `destination`; `children` = ages 2-11, `infants` = under 2,
-        travellers aged 12+ count as adults. If a cookie banner is in the way, decline non-essential cookies. A human check is never worked around: stop and tell the operator. One call per leg."""
+        travellers aged 12+ count as adults. `cabin` (economy / premium / business / first) only when the request names one: TAP lists the Economy and the Executive fares of one flight, and the fares of
+        any other cabin are then left out of the answer. If a cookie banner is in the way, decline non-essential cookies. A human check is never worked around: stop and tell the operator. One call per leg."""
         asked = ((ASK["stops"], direct_only is not None), (ASK["bag"], checked_bag is not None), (ASK["refund"], refundable is not None))
         missing = [q for q, given in asked if not given]
         if missing and not operator_answered:
             return {"ok": False, "ask_operator": missing, "searched": False,
                     "next": "Nothing was opened. Ask the operator these questions in ONE message (add the date, the airports and the travellers with the children's ages only if the request did not say them), "
                             "wait for the reply, then call this tool again with the answers. For 'no preference' leave that value out and set operator_answered=true (only after the operator replied in this chat)."}
-        out = tap_recipe(origin, destination, day, adults, children, infants, bool(direct_only), bool(checked_bag), bool(refundable), limit, offset)
+        out = tap_recipe(origin, destination, day, adults, children, infants, bool(direct_only), bool(checked_bag), bool(refundable), limit, offset, cabin)
         out["wishes"] = {"expect": out["expect"]}
         src = lambda v: "operator" if v is not None else "default: no preference"       # noqa: E731
         out["filters_used"] = [("Direct flights only (operator)" if direct_only else f"Connections allowed ({src(direct_only)})"),
                                ("Fares with a checked bag only (operator)" if checked_bag else f"Any bag option ({src(checked_bag)})"),
-                               ("Refundable fares only (operator)" if refundable else f"Any refund option ({src(refundable)})")]
+                               ("Refundable fares only (operator)" if refundable else f"Any refund option ({src(refundable)})"),
+                               *([f"{cabin.strip().capitalize()} cabin only (operator)"] if cabin else [])]
         out["more"] = f"For the next {limit} flights call this tool again with the same values and offset={offset + limit}."
         # the server's own Chrome reads it first (28 Oct 2026, from the VPS: TAP's own "No flights available" in 6 s)
         return await server_first(NAME, "TAP_READ_IN_SERVER", "https://booking.flytap.com", out)

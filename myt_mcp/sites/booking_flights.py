@@ -135,7 +135,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     n = len(offers)
     seen = ", ".join(f"{name} {s.get('pages_read')} of {s.get('pages_seen')} page(s)" for name, s in sorts.items())
     notes = ["Booking.com only compares: the price to quote comes from the airline's own page. Best and Cheapest were read together; a flight in both lists is one row (column from tab).",
-             f"Pages read: {seen} (the site lists {data.get('per_page') or PER_PAGE} flights a page)."]
+             f"Pages read: {seen}" + (f" (the site lists {PER_PAGE} flights a page)." if any((s.get("pages_seen") or 1) > 1 for s in sorts.values()) else ".")]
     if data.get("results_total"):
         notes.append(f"Booking.com says it found {data['results_total']} flight options for this search; only the first pages of each sort were read, so a flight further down was not seen.")
     if data.get("no_direct_notice") and exp.get("direct_only"):
