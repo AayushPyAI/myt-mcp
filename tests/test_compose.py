@@ -1342,7 +1342,7 @@ def test_gyg_activity_recipe_converts_the_exact_group_price_and_refuses_what_doe
     offers, sources, problems, _, notes = run(_gya([_gopt()]))
     assert not problems and len(offers) == 1 and offers[0].quotable and offers[0].price_total == 717 and offers[0].currency == "EUR" and offers[0].flexible is True and (sources[0].read, sources[0].of) == (1, 1)
     d = offers[0].details
-    assert "whole group (3 travellers; 3 Adult × 239)" in offers[0].price_basis and "all taxes and fees included" in offers[0].price_basis and d["start_times"].startswith("8 start time(s): 8:30 AM, 9:00 AM") and "last 12:00 PM" in d["start_times"]
+    assert "whole group (3 travellers; 3 Adult × 239)" in offers[0].price_basis and "all taxes and fees included" in offers[0].price_basis and d["start_times"].startswith("8 start time(s): 08:30, 09:00") and "last 12:00" in d["start_times"]
     assert d["cancellation"] == "Cancel for free until Mar 4" and d["language"] == "Audio guide: English" and offers[0].group == "Golf cart tour Florence, 05 Mar 2027"
     assert any("not EUR" in p for p in run(_gya([_gopt("₪")]))[2])
     assert any("2 traveller(s) selected" in p for p in run(_gya([_gopt()], travellers="Adult x 2"))[2])
@@ -1466,7 +1466,7 @@ def test_viator_activity_recipe_converts_the_exact_group_price_and_refuses_what_
     offers, sources, problems, _, notes = run(_via())
     assert not problems and len(offers) == 1 and offers[0].quotable and offers[0].price_total == 195.0 and offers[0].currency == "EUR" and offers[0].flexible is True and (sources[0].read, sources[0].of) == (1, 1)
     d = offers[0].details
-    assert "whole group (3 travellers; 2 Adults x €73.00 = €146.00; 1 Child x €49.00 = €49.00)" in offers[0].price_basis and d["start_times"].startswith("chosen: 9:00 AM; 8 start time(s): 9:00 AM, 9:30 AM") and "last 8:00 PM" in d["start_times"]
+    assert "whole group (3 travellers; 2 Adults x €73.00 = €146.00; 1 Child x €49.00 = €49.00)" in offers[0].price_basis and d["start_times"].startswith("chosen: 09:00; 8 start time(s): 09:00, 09:30") and "last 20:00" in d["start_times"]
     assert d["cancellation"] == "Free cancellation before 9:00 AM on Mar 4, 2027 (local time)" and d["language"] == "offered in: English and 5 more" and offers[0].group == "Golf cart tour Florence, 05 Mar 2027"
     assert any("still shows 'From" in p for p in run(_via({"priced": False, "price_text": None, "from_text": "From €73.00"}))[2])
     assert any("not EUR" in p for p in run(_via({"price_text": "₪195.00", "dialog_total": "₪195.00"}))[2])
@@ -1576,7 +1576,7 @@ def test_viator_activity_with_several_options_gives_one_offer_per_option():
     offers, sources, problems, _, notes = convert_all([{"site": "viator_activity", "result": json.dumps({**head, "rows": rows}), "url": "u"}], {"expect": exp})
     assert not problems and len(offers) == 2 and (sources[0].read, sources[0].of) == (2, 2) and [o.price_total for o in offers] == [167.0, 267.0] and all(o.quotable for o in offers)
     assert offers[0].name.startswith("Tour in Golf Cart from Florence with Tuscan hills or Fiesole - Tour around Florence (1 hour to 2 hours 25 minutes approx.)") and offers[0].flexible is True
-    assert "2 Adults x €69.00; 1 Child x €29.00 −57%" in offers[0].price_basis and offers[0].details["option_state"] == "selected on the page" and offers[0].details["start_times"].startswith("8 start time(s): 9:30 AM")
+    assert "2 Adults x €69.00; 1 Child x €29.00 −57%" in offers[0].price_basis and offers[0].details["option_state"] == "selected on the page" and offers[0].details["start_times"].startswith("8 start time(s): 09:30")
     assert offers[1].details["start_times"] == "select this option on the page to see its start times" and offers[1].details["cancellation"].startswith("not shown until this option is selected") and offers[1].flexible is None
     assert any("several options" in n for n in notes)
     bad = convert_all([{"site": "viator_activity", "result": json.dumps({**head, "travellers_box": 2, "date_box": "Sat, Mar 6", "rows": rows}), "url": "u"}], {"expect": exp})[2]
@@ -1769,3 +1769,23 @@ def test_a_source_listed_as_read_with_no_options_still_gets_the_nothing_found_an
     odd = compose(kind="trains", filters_used=["2nd class (operator)"], sources_read=[SourceRead(name="CP", read=5, of=5, link="https://www.cp.pt/en/resultado-pesquisa?x=1")], not_checked=[], offers=[],
                   myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
     assert odd["ok"] is False and any("offers is empty" in p for p in odd["problems"])          # rows read but none passed on is still a mistake
+
+
+def test_a_long_detail_cell_is_cut_at_a_word_and_ends_with_an_ellipsis_but_the_name_and_the_basis_are_never_cut():
+    """28 Oct 2026: 'Please look for the Blue Umbrellas at t' and 'contact us directly befor': cut in the middle of a word."""
+    from myt_mcp.compose import DETAIL_CAP, _cell
+    long = "Please look for the Blue Umbrellas at the meeting point near the statue and wait for your guide. " * 5
+    cut = _cell(long, DETAIL_CAP)
+    assert len(cut) <= DETAIL_CAP + 1 and cut.endswith("…") and not cut[:-1].endswith(" ") and long.startswith(cut[:-1])
+    assert _cell("short text", DETAIL_CAP) == "short text" and _cell(long) == long.replace("\n", " ")
+    basis = "per vehicle, one way, iWay's list price for the route (its date and time step was not opened: a night or holiday surcharge or a wait may change it), converted from USD 28.40 at 1 USD = 0.8932 EUR " * 2
+    o = Offer(group="g", source="iWay", name="Standard " + "x " * 120, price_total=25.37, currency="EUR", price_basis=basis, details={"capacity": long, "waiting_time": "x", "cancellation": "x", "provider": "x", "meeting_point": "x"})
+    text = compose("transfers", ["2 passengers (operator)"], [SourceRead(name="iWay", read=1, of=1, link="https://iway.io/booking?from=a&to=b")], [], [o], {}, "10:00", False, "")["answer"]
+    assert basis.strip()[:60] in text and "x x x x" in text and "…" in text
+
+
+def test_a_place_the_sources_box_does_not_offer_is_an_allowed_reason_so_it_need_not_be_called_route_not_served():
+    """28 Oct 2026: RateHawk Transfers had no 'Praça do Comércio' place; 'place not offered' was refused and the chat relabelled it 'route not served', which is not true (RateHawk serves Lisbon)."""
+    r = run(not_checked=[NotChecked(name="RateHawk Transfers", reason="place not found in RateHawk's drop-off box: no 'Praça do Comércio, Lisbon' suggestion")])
+    assert r["ok"] is True, r
+    assert "RateHawk Transfers (place not found" in r["answer"]

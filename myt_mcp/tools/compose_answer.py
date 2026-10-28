@@ -100,6 +100,30 @@ def split_problems(carried: dict[tuple[str, str], dict[str, Any]]) -> list[str]:
     return out
 
 
+WISH_LINES = (("breakfast", "Breakfast included"), ("free_cancellation", "Free cancellation"), ("refundable", "Refundable fares only"), ("checked_bag", "Checked bag included"), ("direct_only", "Direct flights only"))
+
+
+def wishes_as_filters(wishes: dict[str, Any]) -> list[str]:
+    """The operator's wishes handed straight to compose_answer, written as filter lines (28 Oct 2026: `refundable` was a wish and no line said so)."""
+    out = [f"{label} (operator)" for key, label in WISH_LINES if wishes.get(key) is True]
+    return out + ([f"{wishes['stars_min']}+ stars (operator)"] if wishes.get("stars_min") else [])
+
+
+def _filter_key(line: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"\(.*?\)|\b(?:only|fares?)\b", " ", line.lower())).strip()
+
+
+def merge_filters(own: list[str], more: list[str]) -> list[str]:
+    """`own` first, then the recipes' lines that say something new (the same filter in other words, 'Free cancellation only', is not repeated)."""
+    out = list(own)
+    seen = {_filter_key(f) for f in out}
+    for f in more:
+        if _filter_key(f) not in seen:
+            out.append(f)
+            seen.add(_filter_key(f))
+    return out
+
+
 def asks_refundable(filters_used: list[str]) -> bool:
     """A filter line says the operator wants refundable fares (28 Oct 2026: the answer said 'Refundable fares only (operator)' but only TAP and SATA, both not read, had been given the wish, so a fare
     with no refund terms became the Best fit)."""
@@ -135,9 +159,9 @@ def register(mcp: MCPServer) -> None:
         sources_read = list(sources_read or [])
         not_checked = list(not_checked or [])
         wishes = wishes or hotel_wishes
+        wrote_own_filters = bool(filters_used)
         if not filters_used and wishes:       # the operator's own wishes are the filters: no need to type them again
-            filters_used = [f"{label} (operator)" for key, label in (("breakfast", "Breakfast included"), ("free_cancellation", "Free cancellation")) if wishes.get(key)]
-            filters_used += [f"{wishes['stars_min']}+ stars (operator)"] if wishes.get("stars_min") else []
+            filters_used = wishes_as_filters(wishes)
         filters_used = list(filters_used or [])
         items = list(site_results or [])
         ingested, ingest_problems = STORE.items(runs or [])
@@ -156,8 +180,8 @@ def register(mcp: MCPServer) -> None:
         if mixed:
             log.info("CHECK compose_answer travellers differ: %s", "; ".join(mixed)[:400])
             return {"ok": False, "problems": mixed, "next": "Fix this (search the odd source again with the same adults and children) and call compose_answer again. Do not write the answer yourself."}
-        if not filters_used:          # each recipe handed over the filters it was given, inside its own script answer
-            filters_used = list(dict.fromkeys(f for c in carried.values() for f in c["filters_used"]))
+        if not wrote_own_filters:          # each recipe handed over the filters it was given, inside its own script answer: they join the lines made from the wishes (28 Oct 2026: with `wishes` given, only 'Free cancellation' was listed)
+            filters_used = merge_filters(filters_used, [f for c in carried.values() for f in c["filters_used"]])
         if items:
             extra, srcs, problems, by_price, site_notes = convert_all(items, wishes or hotel_wishes)
             if problems:
@@ -183,10 +207,10 @@ def register(mcp: MCPServer) -> None:
                     "next": "Fix this and call compose_answer again. Do not write the answer without these sources."}
         merge_default_group(offers, items)
         apply_wishes(offers, wishes or hotel_wishes)
-        if any((c["wishes"].get("expect") or {}).get("checked_bag") for c in carried.values()):
+        if any((c["wishes"].get("expect") or {}).get("checked_bag") for c in carried.values()) or (kind == "flights" and (wishes or {}).get("checked_bag")):
             bag_note = bag_unconfirmed(offers)
             notes = (notes + " " + bag_note).strip() if bag_note else notes
-        if kind == "flights" and (any((c["wishes"].get("expect") or {}).get("refundable") for c in carried.values()) or asks_refundable(filters_used)):
+        if kind == "flights" and (any((c["wishes"].get("expect") or {}).get("refundable") for c in carried.values()) or asks_refundable(filters_used) or (wishes or {}).get("refundable")):
             refund_note = refund_unconfirmed(offers)
             notes = (notes + " " + refund_note).strip() if refund_note else notes
         tracking_unknown = sorted({o.source for o in offers if (o.details or {}).get("flight_tracking") not in ("yes", "no")}) if kind == "transfers" and (wishes or any(c["wishes"].get("flight_tracking") for c in carried.values())) else []

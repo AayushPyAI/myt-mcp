@@ -98,3 +98,37 @@ async def test_the_nothing_found_answer_goes_through_the_tool_and_check_answer_p
         assert done["answer"].startswith("Sources checked: none returned an option")
         checked = (await c.call_tool("check_answer", {"draft": done["answer"], "kind": "trains"})).structured_content
         assert checked["ok"] is True, checked
+
+
+def test_wishes_given_to_compose_answer_become_filter_lines_and_the_recipes_lines_join_without_repeating():
+    """28 Oct 2026: with `wishes` given, only 'Free cancellation (operator)' was listed (activities) and no line at all said 'refundable' (flights)."""
+    from myt_mcp.tools.compose_answer import merge_filters, wishes_as_filters
+    assert wishes_as_filters({"refundable": True, "checked_bag": True, "direct_only": False, "breakfast": True, "stars_min": 4}) == [
+        "Breakfast included (operator)", "Refundable fares only (operator)", "Checked bag included (operator)", "4+ stars (operator)"]
+    assert wishes_as_filters({"direct_only": None, "refundable": False}) == []
+    merged = merge_filters(["Free cancellation (operator)"], ["Free cancellation only (operator)", "Day 2027-03-07 and 2 adults (operator)", "Rating 9 or more (operator)", "Day 2027-03-07 and 2 adults (operator)"])
+    assert merged == ["Free cancellation (operator)", "Day 2027-03-07 and 2 adults (operator)", "Rating 9 or more (operator)"]
+
+
+@pytest.mark.anyio
+async def test_the_refundable_wish_given_straight_to_compose_answer_is_written_and_checked(monkeypatch):
+    """28 Oct 2026: the chat passed wishes {'refundable': true} and no filters_used; no line said so and a fare with no refund terms was the Best fit."""
+    from tests.test_booking_flights import RECIPE, answer
+    import myt_mcp.tools.compose_answer as ca
+    monkeypatch.setattr(ca, "refund_unconfirmed", lambda offers: "REFUND TERMS WERE NOT CONFIRMED")
+    async with Client(create_server(Settings())) as c:
+        item = {"site": "booking_flights", "result": answer(), "url": RECIPE["url"]}
+        done = (await c.call_tool("compose_answer", {"kind": "flights", "site_results": [item], "wishes": {"expect": RECIPE["expect"], "refundable": True},
+                                                     "not_checked": [{"name": "TAP", "reason": "operator asked for Booking.com only"}], "myt_supplier": {"SKY express": "not checked: test"}})).structured_content
+    assert done["ok"] is True, done
+    assert "Refundable fares only (operator)" in done["answer"] and "REFUND TERMS WERE NOT CONFIRMED" in done["answer"]
+
+
+def test_a_flight_pick_whose_refund_or_bag_terms_are_not_shown_gets_a_caution_whether_or_not_it_was_asked():
+    from myt_mcp.compose import Offer, picks
+    row = Offer(group="g", source="RateHawk Air", name="Sky Express SKY ENJOY", price_total=446.7, currency="EUR", quotable=True, fits=True,
+                details={"refund_change": "not shown on the list (open More rates)", "checked_bag": "23 kg checked bag included"})
+    _, notes = picks("flights", [row], False)
+    assert any("Caution on the Best fit (RateHawk Air: Sky Express SKY ENJOY)" in n and "refund terms are not shown" in n and "checked-bag" not in n for n in notes)
+    ok = row.model_copy(update={"details": {"refund_change": "refundable", "checked_bag": "23 kg checked bag included"}})
+    assert not any("Caution" in n for n in picks("flights", [ok], False)[1])

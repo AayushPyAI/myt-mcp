@@ -20,7 +20,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, group_title, with_emit
+from myt_mcp.sites import SiteRows, clock24, group_title, with_emit
 
 NAME = "getyourguide_activity"
 SOURCE = "GetYourGuide"
@@ -76,6 +76,13 @@ def _travellers(label: str | None) -> int | None:
     return sum(int(n) for n in found) if found else None
 
 
+def _page_link(exp: dict[str, Any]) -> str | None:
+    """Each priced activity names its own page, with the date (28 Oct 2026: three rows, one link in Sources)."""
+    path = str((exp or {}).get("path") or "")
+    day = str((exp or {}).get("day") or "")
+    return f"https://www.getyourguide.com{path}/" + (f"?date_from={day}&date_to={day}" if day else "") if path.startswith("/") and "-t" in path else None
+
+
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     try:
         data = json.loads(result_json)
@@ -109,7 +116,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         if exp and d and d.isoformat() != exp["day"]:
             problems.append(f"option '{r.get('title')}' is for {d.isoformat()}, not {exp['day']}: set the date and run the script again")
             continue
-        times = r.get("times") or []
+        times = [clock24(t) or t for t in (r.get("times") or [])]      # one 24-hour clock for every source
         start = (f"{len(times)} start time(s): " + ", ".join(times[:6]) + (f", ... last {times[-1]}" if len(times) > 6 else "")) if times else "not shown"
         cancel = r.get("cancel") or "not shown"
         free = bool(re.match(r"(cancel for free|free cancellation)", cancel, re.I))
@@ -117,7 +124,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         offers.append(Offer(
             group=exp.get("group") or group, source=SOURCE, name=f"{r.get('title')} ({r.get('duration') or 'duration not shown'}{', ' + r['guide'] if r.get('guide') else ''})", price_total=r.get("price"), currency="EUR",
             price_basis=f"whole group ({pax} travellers; {'; '.join(r.get('breakdown') or []) or 'breakdown not shown'}), " + ("all taxes and fees included" if r.get("taxes_included") else "taxes not stated"),
-            flexible=True if free else (False if re.match(r"(non-?refundable|not refundable)", cancel, re.I) else None), supplier="GetYourGuide",
+            flexible=True if free else (False if re.match(r"(non-?refundable|not refundable)", cancel, re.I) else None), supplier="GetYourGuide", link=_page_link(exp),
             details={"duration": r.get("duration") or "not shown", "start_times": start, "language": r.get("guide") or "not shown",
                      "meeting_point": (("page says: " + data["meeting_page"]) if data.get("meeting_page") else "see the Meeting point link on the page") if r.get("meeting_point") or data.get("meeting_page") else "not shown",
                      "cancellation": cancel, "availability": r.get("spots") or "not shown", "private_or_group": _kind(data.get("group_size")), "includes": data.get("includes") or "not shown", "group_size": data.get("group_size") or "not shown", "know_before": data.get("know_before") or "not shown",

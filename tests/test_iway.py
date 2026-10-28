@@ -148,4 +148,5 @@ async def test_the_iway_recipe_says_to_use_the_operators_own_tab_in_front_and_it
     async with Client(create_server(Settings())) as c:
         out = (await c.call_tool("iway_transfers_recipe", {"origin": "Lisbon Airport", "destination": "Praça do Comércio", "day": "2027-03-06", "time": "10:00", "adults": 2, "children_ages": [], "bags": 2})).structured_content
     assert "OWN iWay tab" in out["tab"] and "NEW tab" not in out["tab"] and "in front" in out["tab"]
+    assert "WITHOUT parameters" in out["tab"] and "grey placeholders" in out["tab"] and "Never press Order now" in out["tab"]      # what to do when the address with place ids draws no form
     assert all(any(w in f.lower() for w in SOURCE_WORDS) for f in out["filters_used"]), out["filters_used"]

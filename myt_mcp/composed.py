@@ -72,6 +72,24 @@ def row_problems(draft: str, kind: str, store: ComposedStore = COMPOSED) -> list
     return [f"table rows were typed or changed by hand (not in the compose_answer text): {shown}. Show compose_answer's `answer` exactly as written; do not retype, reword or reorder its rows"]
 
 
+def shortened_warnings(draft: str, kind: str, store: ComposedStore = COMPOSED) -> list[str]:
+    """The draft has fewer table rows than the compose_answer text of its kind (28 Oct 2026: a draft of 3 of 23 flight rows was checked 'ok' and the whole text was shown afterwards, so the check had covered a text nobody saw).
+    A warning, never a refusal: it says what this check covered."""
+    composed = store.recent(kind)
+    if not composed or kind in (None, "general"):
+        return []
+    want = _rows(composed[-1])
+    if len(want) < 2:
+        return []
+    low = _norm(draft)
+    missing = [r for r in want if not all(_norm(c) in low for c in r[:2] if _norm(c))]
+    if not missing:
+        return []
+    shown = len(want) - len(missing)
+    return [f"this draft shows {shown} of the {len(want)} table rows of the compose_answer text ({len(missing)} missing): this check covers only the rows you pasted, not the text the operator will see. "
+            "Show the composed answer unchanged and in full, and check that same text."]
+
+
 _NUMBER = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?![\d,])|(?<![\d.,])\d+(?:\.\d+)?(?![\d,])")
 _PRICE_IN_PROSE = re.compile(r"[€$£₪]\s?(\d[\d,]*(?:\.\d\d?)?)|(\d[\d,]*\.\d\d)\s?(?:EUR|USD|GBP|ILS)\b")
 MAX_MULTIPLE = 9      # a per-person price times the group ("80.00 per person" -> 240.00 for three) is the assistant's own arithmetic, not a typed price

@@ -15,7 +15,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
 from myt_mcp import answer_watch
-from myt_mcp.composed import amount_problems, currency_problems, row_problems, source_warnings
+from myt_mcp.composed import amount_problems, currency_problems, row_problems, shortened_warnings, source_warnings
 from myt_mcp.errors import tool_errors
 
 Kind = Literal["flights", "hotels", "cars", "transfers", "trains", "activities", "lounges", "general"]
@@ -134,7 +134,7 @@ def register(mcp: MCPServer) -> None:
         out = check_answer_text(draft, kind)
         typed = row_problems(draft, kind)
         amounts, amount_warnings = amount_problems(draft)
-        amount_warnings += source_warnings(draft, kind)
+        amount_warnings += source_warnings(draft, kind) + shortened_warnings(draft, kind)
         typed = [*typed, *amounts, *currency_problems(draft)]
         if amount_warnings:
             out = {**out, "warnings": [*out.get("warnings", []), *amount_warnings]}

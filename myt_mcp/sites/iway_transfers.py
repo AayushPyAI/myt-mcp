@@ -58,7 +58,9 @@ def find_place(text: str) -> dict[str, Any] | None:
 
 IWAY_TAB = ("iWay draws its page only in a tab that is in front (27-28 Oct 2026: a new tab opened in the background stayed blank, 'still loading'). Use the operator's OWN iWay tab in this chat's tab group "
             "(iway.io/booking, already logged in): bring it to the front, open the url in it, run the script, and leave it open. If there is none, ask the operator to open iway.io/booking in this chat's tab group "
-            "and keep it in front; never wait on a blank background tab.")
+            "and keep it in front; never wait on a blank background tab. If the page still shows only grey placeholders after 10 seconds in the front tab (no From/To text, no vehicle list: the address with place ids does not always draw the form, "
+            "28 Oct 2026), open https://iway.io/booking WITHOUT parameters in that same tab, click the From box, type the place name and choose the exact suggestion, do the same for To, wait for the vehicle list, and run the script then. "
+            "Never press Order now.")
 
 
 def iway_transfers_recipe(origin: str, destination: str, day: date, time: str, adults: int = 2, children_ages: list[int] | None = None, bags: int | None = None,

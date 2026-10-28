@@ -31,7 +31,7 @@ BANNED_REASONS = ("for time", "out of scope", "this pass", "keep it short", "say
 MAX_ROWS_BY_KIND = {"flights": 20, "hotels": 20, "cars": 20, "transfers": 20, "trains": 20, "activities": 30}      # rows the table shows per group; the picks always use every row read
 PER_SOURCE_MIN_ROWS = 3
 ALLOWED_REASON_WORDS = ("browser", "chrome", "login", "captcha", "block", "not served", "does not sell", "doesn't sell", "does not fly", "did not answer",
-                        "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded", "operator asked for", "operator named")      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
+                        "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded", "operator asked for", "operator named", "place not found", "place not offered", "no matching place")      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
 SOURCE_WORDS = ("operator", "trip", "default", "server", "agency", "assistant")      # "server": a filter the server itself wrote, e.g. the euro conversion; "assistant": a choice the assistant made and says so (28 Oct 2026: "(assistant: no hotel picked)" and "(my judgement)" were refused)
 
 
@@ -89,12 +89,18 @@ def _money(v: float | None, cur: str | None) -> str:
     return "not shown" if v is None else f"{v:,.2f} {cur or ''}".strip()
 
 
-def _cell(v: Any) -> str:
+DETAIL_CAP = 200      # characters of one detail cell (includes, know before, meeting point...): a longer text is cut at a word and ends with "…" (28 Oct 2026: cells were cut in the middle of a word and the answers were so long that the chat shortened them by hand)
+
+
+def _cell(v: Any, cap: int | None = None) -> str:
     if v is None or v == "":
         return "not shown"
     if isinstance(v, bool):
         return "yes" if v else "no"
-    return str(v).replace("|", "/").replace("\n", " ")
+    text = str(v).replace("|", "/").replace("\n", " ")
+    if cap and len(text) > cap:
+        text = text[:cap].rsplit(" ", 1)[0].rstrip(" ,;:.-") + "…"
+    return text
 
 
 def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
@@ -115,7 +121,7 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
         if any(b in low for b in BANNED_REASONS):
             problems.append(f"{n.name}: '{n.reason}' is not an allowed reason; read it, or use: no browser tool, login/captcha/block, route not served, did not answer")
         elif not any(w in low for w in ALLOWED_REASON_WORDS):
-            problems.append(f"{n.name}: the reason must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, source did not answer, 'could not be read: <the script's own error>', or 'operator asked for <sources> only' when the operator named the sources to use")
+            problems.append(f"{n.name}: the reason must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, place not found in the source's From/To box (say which place), source did not answer, 'could not be read: <the script's own error>', or 'operator asked for <sources> only' when the operator named the sources to use")
     if kind in NEEDS_FILTERS:
         if not filters_used:
             problems.append("filters_used is empty: write each filter with its source, e.g. 'direct only (trip default)'")
@@ -298,6 +304,15 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
                 notes.append(f"Caution on the {title} ({o.name}): score {o.details.get('score') or 'not shown'} from {reviews if reviews is not None else 'not shown'} review(s). "
                              "Ask the operator for a minimum score or star level if this is too low.")
                 break
+    if kind == "flights":      # what the row itself says it does not show, whether or not the operator asked for it (28 Oct 2026: a 'refundable only' answer's Best fit showed 'not shown on the list')
+        done: set[int] = set()
+        for title, o in (("Best fit", best), ("Recommended", rec)):
+            if o is None or id(o) in done:
+                continue
+            done.add(id(o))
+            gaps = [w for key, w in (("refund_change", "refund terms"), ("checked_bag", "checked-bag terms")) if str(o.details.get(key) or "").lower().startswith("not shown")]
+            if gaps:
+                notes.append(f"Caution on the {title} ({o.source}: {o.name}): its {' and '.join(gaps)} are not shown on the list: confirm them on the airline's page before quoting.")
     rows_out = [("Cheapest", label(cheapest), cheap_reason),
                 ("Best fit", label(best), best_reason),
                 ("Most flexible", label(flexible), "the cheapest option the source says is refundable or free to cancel" if flexible else "not determined: no refundable or free-cancellation option was read"),
@@ -399,7 +414,7 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
                 v = o.details.get(k)
                 if (v is None or v == "") and k not in NOT_A_GAP:
                     gaps[k] = gaps.get(k, 0) + 1
-                cells.append(_cell(v))
+                cells.append(_cell(v, DETAIL_CAP))
             tag = " (connecting)" if o.connecting else ""
             lines.append(f"| {o.source} | {_cell(o.name)}{tag} | " + " | ".join(cells)
                          + f" | {_money(o.price_total, o.currency)} | {_cell(o.price_basis)} | {'yes' if o.quotable else 'comparison only'} | {o.link or 'see Sources'} |")

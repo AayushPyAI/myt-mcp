@@ -20,7 +20,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, group_title, with_emit
+from myt_mcp.sites import SiteRows, clock24, group_title, with_emit
 
 NAME = "viator_activity"
 SOURCE = "Viator"
@@ -72,6 +72,12 @@ def _count(text: str | None) -> int | None:
     return sum(int(n) for n in found) if found else None
 
 
+def _page_link(exp: dict[str, Any]) -> str | None:
+    """Each priced activity names its own page (28 Oct 2026: three rows, one link in Sources)."""
+    path = str((exp or {}).get("path") or "")
+    return f"https://www.viator.com{path}" if path.startswith("/tours/") else None
+
+
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     try:
         data = json.loads(result_json)
@@ -109,8 +115,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             problems.append("the date of the group price could not be read ('Price details' did not open): run the script once more")
         if r.get("dialog_total") and r.get("price_text") and r["dialog_total"] != r["price_text"]:
             problems.append(f"the box says {r['price_text']} but 'Price details' says {r['dialog_total']}: run the script once more")
-        times = r.get("times") or []
-        start = ((f"chosen: {r['start_time']}; " if r.get("start_time") else "") + f"{len(times)} start time(s): " + ", ".join(times[:6]) + (f", ... last {times[-1]}" if len(times) > 6 else "")) if times else \
+        times = [clock24(t) or t for t in (r.get("times") or [])]      # "10:00 AM" in the server's English Chrome: the same 24-hour clock as every other source
+        start = ((f"chosen: {clock24(r['start_time']) or r['start_time']}; " if r.get("start_time") else "") + f"{len(times)} start time(s): " + ", ".join(times[:6]) + (f", ... last {times[-1]}" if len(times) > 6 else "")) if times else \
             ("select this option on the page to see its start times" if r.get("option") else "not shown")
         cancel = re.sub(r"(?i)cancellation(?=before|up to)", "cancellation ", r.get("cancellation") or "") or ("not shown until this option is selected on the page" if r.get("option") else "not shown")
         policy_free = bool(re.search(r"cancel up to \d+ (?:hours?|days?) in advance.{0,60}full refund", data.get("cancel_policy") or "", re.I))      # the page's own policy line (27 Oct 2026: it was not read as free cancellation)
@@ -121,7 +127,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         offers.append(Offer(
             group=exp.get("group") or group, source=SOURCE, name=f"{name} ({(data.get('duration') or 'duration not shown').replace(' (approx.)', ' approx.')})", price_total=amount, currency="EUR",
             price_basis=f"whole group ({n} travellers; {'; '.join(r.get('breakdown') or []) or 'breakdown not shown'}), taxes and fees not stated on the page", flexible=True if free else (False if re.search(r"non-?refundable|not refundable", cancel, re.I) else None),
-            supplier="Viator", details={"duration": data.get("duration") or "not shown", "start_times": start, "language": f"offered in: {data['offered_in']}" if data.get("offered_in") else "not shown",
+            supplier="Viator", link=_page_link(exp), details={"duration": data.get("duration") or "not shown", "start_times": start, "language": f"offered in: {data['offered_in']}" if data.get("offered_in") else "not shown",
                                          "meeting_point": data.get("meeting_text") or "not shown in the booking box (see the activity page)", "includes": data.get("included") or "not shown", "additional_info": data.get("additional") or "not shown",
                                          "cancellation": cancel_text, "private_or_group": "private" if "private" in name.lower() else "not shown",
                                          "pay": (r.get("pay_later") or "not shown"), "ticket": "mobile ticket" if data.get("mobile_ticket") else "not shown", "option_state": ("selected on the page" if r.get("selected") else "not selected on the page") if r.get("option") else "single option"}))

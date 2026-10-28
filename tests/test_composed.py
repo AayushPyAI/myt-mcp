@@ -263,3 +263,19 @@ def test_a_table_cell_in_another_currency_is_refused_when_the_server_converted_t
     assert len(problems) == 1 and "$86.50" in problems[0] and "never the original or your own conversion" in problems[0]
     assert currency_problems("| CITROEN C4 | 76.85 EUR |") == [] and currency_problems("The dollar price was $86.50 before the conversion.") == []       # euro cells and prose are fine
     assert currency_problems("| CITROEN C4 | 76.85 EUR | whole rental, converted from USD 86.50 at 1 USD = 0.8885 EUR |") == []   # the server's own basis text may name the original
+
+
+def test_a_draft_with_fewer_table_rows_than_the_composed_answer_is_warned_not_refused():
+    """28 Oct 2026: 3 of 23 flight rows were checked 'ok', then the whole text was shown."""
+    from myt_mcp.composed import shortened_warnings
+    store = ComposedStore()
+    full = ("| Source | Option | Price | Basis |\n|---|---|---|---|\n"
+            "| Skyscanner | Wizz Air Malta 18:55 | 218.00 EUR | whole group |\n| Skyscanner | Iberia 05:30 | 355.00 EUR | whole group |\n"
+            "| RateHawk Air | Sky Express 23:30 | 446.70 EUR | whole group |\n| Booking.com | Lufthansa 07:05 | 457.00 EUR | whole group |\n")
+    store.remember("flights", full)
+    assert shortened_warnings(full, "flights", store) == []
+    short = "\n".join(full.splitlines()[:4])
+    w = shortened_warnings(short, "flights", store)
+    assert len(w) == 1 and "2 of the 4 table rows" in w[0] and "2 missing" in w[0] and "unchanged and in full" in w[0]
+    assert shortened_warnings(short, "general", store) == [] and shortened_warnings(short, "cars", store) == []
+    assert shortened_warnings("Sources checked: none returned an option | Not checked: CP", "trains", store) == []

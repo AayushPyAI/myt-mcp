@@ -87,3 +87,22 @@ def test_viators_policy_line_up_to_24_hours_for_a_full_refund_is_free_cancellati
     assert o.flexible is True and o.details["cancellation"].startswith("Free cancellation per the page's policy: You can cancel up to 24 hours")
     other = convert(json.dumps({**data, "cancel_policy": "This activity is non-refundable."}), wishes, "Activities").offers[0]
     assert other.flexible is not True and not other.details["cancellation"].startswith("Free cancellation")
+
+
+def test_each_priced_viator_row_names_its_own_page_and_its_times_are_on_the_24_hour_clock():
+    """28 Oct 2026: three Viator rows said 'see Sources' and Sources held one link; the start times were '10:00 AM' next to Booking.com's '10:00'."""
+    from myt_mcp.sites.viator_activity import convert
+    row = {"option": None, "selected": True, "priced": True, "price_text": "€38.00", "from_text": None, "start_time": "3:30 PM", "times": ["10:00 AM", "11:00 AM", "3:30 PM"], "cancellation": None, "pay_later": None,
+           "dialog_travellers": "2 Adults", "dialog_when": "Sun, Mar 7, 2027 • 9:30 AM", "breakdown": ["2 Adults x €19.00 = €38.00"], "dialog_total": "€38.00"}
+    data = {"ok": True, "url_path": "/tours/Lisbon/Alfama-Tour-Lisbon-Old-Town/d538-268183P3", "activity": "Alfama Tour", "date_box": "Sun, Mar 7", "travellers_box": 2, "options_found": 1, "duration": "2 hours", "rows": [row]}
+    wishes = {"expect": {"day": "2027-03-07", "adults": 2, "children": 0, "ages": [], "total": 2, "path": data["url_path"], "group": "Lisbon activities 7 Mar 2027"}}
+    o = convert(json.dumps(data), wishes, "Activities").offers[0]
+    assert o.link == "https://www.viator.com/tours/Lisbon/Alfama-Tour-Lisbon-Old-Town/d538-268183P3"
+    assert o.details["start_times"] == "chosen: 15:30; 3 start time(s): 10:00, 11:00, 15:30"
+
+
+def test_a_getyourguide_row_link_names_the_activity_page_with_the_date():
+    from myt_mcp.sites.getyourguide_activity import _page_link
+    exp = {"day": "2027-03-07", "path": "/lisbon-l42/best-of-lisbon-walking-tour-rossio-chiado-alfama-t600"}
+    assert _page_link(exp) == "https://www.getyourguide.com/lisbon-l42/best-of-lisbon-walking-tour-rossio-chiado-alfama-t600/?date_from=2027-03-07&date_to=2027-03-07"
+    assert _page_link({"day": "2027-03-07", "path": ""}) is None and _page_link({}) is None

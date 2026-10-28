@@ -393,9 +393,9 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
         problems += rows.problems
         notes += rows.extra_notes
         by_price = by_price or rows.sorted_by_price
-        seen = reads.setdefault(site, {o.link or f"{o.name}|{o.price_total}" for o in offers if o.source == getattr(mod, "SOURCE", site)})
+        seen = reads.setdefault(site, {f"{o.link}|{o.name}|{o.price_total}" for o in offers if o.source == getattr(mod, "SOURCE", site)})
         for o in rows.offers:
-            key = o.link or f"{o.name}|{o.price_total}"
+            key = f"{o.link}|{o.name}|{o.price_total}"      # the options of one activity share its page link: the name and the price tell them apart
             if key not in seen:
                 seen.add(key)
                 offers.append(o)
