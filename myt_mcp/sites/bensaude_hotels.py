@@ -44,6 +44,12 @@ def hotels() -> dict[str, tuple[int, str]]:
     return {k: (v[0], v[1]) for k, v in data.items() if not k.startswith("_")}
 
 
+def places() -> dict[int, tuple[str, str]]:
+    """{hotel id: (town, island or region)}: from the address data on each hotel's own page (28 Oct 2026). Only Hotel Açores Lisboa is in Lisbon; the other ten are in the Azores."""
+    data = json.loads((HERE / "bensaude_hotels.json").read_text(encoding="utf-8"))
+    return {v[0]: (v[2], v[3]) for k, v in data.items() if not k.startswith("_") and len(v) >= 4}
+
+
 def _plain(text: str) -> str:
     """Lower case, no accents, words only: 'Hotel Açores Lisboa' and 'hotel acores lisboa' are the same."""
     return re.sub(r"[^a-z0-9]+", " ", unicodedata.normalize("NFKD", str(text).lower()).encode("ascii", "ignore").decode()).strip()
@@ -61,6 +67,23 @@ def find_hotel(text: str) -> tuple[int, str] | list[str] | None:
     if len(near) == 1:
         return near[0]
     return [n for _, n in near] if near else None
+
+
+def in_destination(hotel_id: int, destination: str) -> bool:
+    """Is this hotel in the place the operator searches (28 Oct 2026: NEAT Hotel Avenida, in Ponta Delgada, became 'Best fit' of a Lisbon search)? The destination can be the town, the island, the region
+    ('Azores') or the country; 'Lisbon' and 'Lisboa' are the same."""
+    town, area = places().get(hotel_id, ("", ""))
+    want = _plain(destination).replace("lisbon", "lisboa").replace("azores", "acores")
+    if not want or not town:
+        return False
+    if want in ("portugal", "pt"):
+        return True
+    hay = [_plain(town).replace("lisbon", "lisboa"), _plain(area).replace("lisbon", "lisboa")]
+    return any(h and (h in want or want in h) for h in hay) or ("acores" in want and _plain(area) != "lisboa")
+
+
+def hotels_in(destination: str) -> list[str]:
+    return [name for _, (hid, name) in sorted(hotels().items()) if in_destination(hid, destination)]
 
 
 def availability_url(hotel_id: int, check_in: date, check_out: date, adults: int, rooms: int) -> str:
@@ -178,11 +201,11 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
 def register(mcp: MCPServer) -> None:
     @mcp.tool(name="bensaude_hotels_recipe", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
-    async def bensaude_hotels_recipe_tool(hotel: str, check_in: date, check_out: date, adults: int = 2, rooms: int = 1, breakfast: bool = False, free_cancellation: bool = False,
+    async def bensaude_hotels_recipe_tool(hotel: str, destination: str, check_in: date, check_out: date, adults: int = 2, rooms: int = 1, breakfast: bool = False, free_cancellation: bool = False,
                                           budget_per_night: float | None = None, children_ages: list[int] | None = None) -> dict[str, Any]:
         """FOR A BENSAUDE HOTEL (Azores and Lisbon: Terra Nostra Garden, Grand Hotel Açores Atlântico, Caloura, São Miguel Park, Marina Atlântico, Terceira Mar, Canal, Caracol, NEAT Avenida, Botania Hall, Hotel
         Açores Lisboa) on the group's OWN website, read in the operator's Chrome with Claude in Chrome, next to RateHawk and Arbitrip (the client compares the hotel's direct rate). `hotel` is the hotel's
-        name (an unclear name returns the list: ask the operator). Then it returns the url and a read-only SCRIPT: open the url in Claude in Chrome, run the script with the javascript tool; it reads every room
+        name (an unclear name returns the list: ask the operator). `destination` is the place the operator is searching (Lisbon, Ponta Delgada, Azores...): a hotel in another place is refused ("place not offered"; only Hotel Açores Lisboa is in Lisbon, the other ten hotels are in the Azores). Then it returns the url and a read-only SCRIPT: open the url in Claude in Chrome, run the script with the javascript tool; it reads every room
         and rate plan with its meal, price of the whole stay and cancellation policy, sends them to the server by itself and returns a short receipt (the `ingest` id): then call compose_answer with `runs`=[that id]
         and the `wishes` and `filters_used` of this tool. Never type a row. The page shows no stars or review score. Children are not supported yet (their ages are not in the address): search adults only
         and say so. `budget_per_night` is per night; the price is per room for the stay. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
@@ -190,9 +213,15 @@ def register(mcp: MCPServer) -> None:
             raise ToolError("Bensaude's page takes a child's age in its form, not in the address, and that is not tested: search with adults only, say so, and put the children in not_checked for this source (reason: could not be read: children are not supported yet)")
         found = find_hotel(hotel)
         if not isinstance(found, tuple):
-            return {"ok": False, "searched": False, "known_hotels": found or [n for _, n in hotels().values()],
+            return {"ok": False, "searched": False, "known_hotels": found or [f"{n} ({places().get(i, ('?',))[0]})" for i, n in hotels().values()],
                     "next": "Nothing was opened. Ask the operator which Bensaude hotel (the names above), then call this tool again with the exact name."}
         hotel_id, hotel_name = found
+        if not in_destination(hotel_id, destination):
+            town, area = places().get(hotel_id, ("?", "?"))
+            here = hotels_in(destination)
+            return {"ok": False, "searched": False, "place_not_offered": True, "hotel": hotel_name, "hotel_town": town, "destination": destination, "bensaude_hotels_in_destination": here,
+                    "next": f"Nothing was opened: {hotel_name} is in {town} ({area}), not in {destination}. " + (f"Bensaude hotels in {destination}: {', '.join(here)}: call again with one of them if the operator wants it." if here else
+                            f"Bensaude has no hotel in {destination}: put Bensaude in not_checked with the reason 'place not offered: Bensaude has no hotel in {destination}'.")}
         try:
             out = bensaude_hotels_recipe(hotel_id, check_in, check_out, adults, rooms)
         except ValueError as e:      # a refusal the assistant must read and act on, not an 'unexpected error'

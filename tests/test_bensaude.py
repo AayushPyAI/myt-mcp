@@ -13,7 +13,7 @@ from myt_mcp.app import create_server
 from myt_mcp.config import Settings
 from myt_mcp.services import Services
 from myt_mcp.sites import convert_all, modules
-from myt_mcp.sites.bensaude_hotels import availability_url, bensaude_hotels_recipe, convert, find_hotel, hotels
+from myt_mcp.sites.bensaude_hotels import availability_url, bensaude_hotels_recipe, convert, find_hotel, hotels, hotels_in, in_destination
 
 CANCEL = "Cancellation Policy Cancellations must be submitted 7 days before check-in date. Any cancellation submitted after this period shall be charged by 100.00% of the total value of the reservation."
 TAX = "Local tourist tax: €2 per night (maximum 3 nights), per guest, to be charged at the reception desk upon check-in. Children up to the age of 13 are exempt from payment."
@@ -119,10 +119,10 @@ def test_a_logged_in_agency_page_drops_the_public_rate_note():
 async def test_the_tool_asks_for_an_unclear_hotel_refuses_children_and_returns_the_url_and_wishes():
     settings = Settings()
     async with Client(create_server(settings, Services(settings))) as c:
-        unclear = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "terra nostra", "check_in": "2027-03-06", "check_out": "2027-03-08"})).structured_content
-        unknown = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "Hilton", "check_in": "2027-03-06", "check_out": "2027-03-08"})).structured_content
-        children = await c.call_tool("bensaude_hotels_recipe", {"hotel": "Terra Nostra Garden Hotel", "check_in": "2027-03-06", "check_out": "2027-03-08", "children_ages": [8]})
-        ok = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "Terra Nostra Garden Hotel", "check_in": "2027-03-06", "check_out": "2027-03-08", "breakfast": True, "free_cancellation": True,
+        unclear = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "terra nostra", "destination": "Azores", "check_in": "2027-03-06", "check_out": "2027-03-08"})).structured_content
+        unknown = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "Hilton", "destination": "Lisbon", "check_in": "2027-03-06", "check_out": "2027-03-08"})).structured_content
+        children = await c.call_tool("bensaude_hotels_recipe", {"hotel": "Terra Nostra Garden Hotel", "destination": "Azores", "check_in": "2027-03-06", "check_out": "2027-03-08", "children_ages": [8]})
+        ok = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "Terra Nostra Garden Hotel", "destination": "Azores", "check_in": "2027-03-06", "check_out": "2027-03-08", "breakfast": True, "free_cancellation": True,
                                                             "budget_per_night": 200})).structured_content
     assert unclear["ok"] is False and unclear["searched"] is False and len(unclear["known_hotels"]) == 2 and "Terra Nostra Garden Hotel" in unclear["known_hotels"]
     assert unknown["ok"] is False and len(unknown["known_hotels"]) == 11
@@ -163,3 +163,26 @@ def test_a_distance_limit_the_hotels_own_site_cannot_show_leaves_every_room_not_
     rows = convert(_data([_row()]), {**WISHES, "max_distance_km": 2}, "Hotels")
     assert rows.offers and all(o.unconfirmed == ["distance from the centre"] and o.fits is not True for o in rows.offers)
     assert all(not o.unconfirmed for o in convert(_data([_row()]), WISHES, "Hotels").offers)
+
+
+def test_a_hotel_is_only_offered_in_the_place_it_is_in():
+    """28 Oct 2026: NEAT Hotel Avenida (Ponta Delgada) was the Best fit of a Lisbon search; only Hotel Açores Lisboa is in Lisbon, the other ten are in the Azores."""
+    assert hotels_in("Lisbon") == ["Hotel Açores Lisboa"] and hotels_in("Lisboa, Portugal") == ["Hotel Açores Lisboa"]
+    assert in_destination(30, "Lisbon") and in_destination(30, "lisboa") and not in_destination(31, "Lisbon") and not in_destination(29, "Lisbon")
+    assert len(hotels_in("Azores")) == 10 and len(hotels_in("Açores")) == 10 and "Hotel Açores Lisboa" not in hotels_in("Azores")
+    assert sorted(hotels_in("Ponta Delgada")) == ["Grand Hotel Açores Atlântico", "Hotel Marina Atlântico", "NEAT Hotel Avenida", "São Miguel Park Hotel"]
+    assert sorted(hotels_in("Terceira")) == ["Caracol Hotel", "Terceira Mar Hotel"] and hotels_in("Faial") == ["Canal Hotel"]
+    assert len(hotels_in("São Miguel")) == 7 and len(hotels_in("Portugal")) == 11 and hotels_in("Paris") == [] and not in_destination(31, "")
+
+
+@pytest.mark.anyio
+async def test_the_tool_refuses_a_hotel_in_another_place_and_says_which_hotels_are_there():
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        neat = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "NEAT Hotel Avenida", "destination": "Lisbon", "check_in": "2027-01-12", "check_out": "2027-01-19"})).structured_content
+        paris = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "NEAT Hotel Avenida", "destination": "Paris", "check_in": "2027-01-12", "check_out": "2027-01-19"})).structured_content
+        lisbon = (await c.call_tool("bensaude_hotels_recipe", {"hotel": "Hotel Açores Lisboa", "destination": "Lisbon", "check_in": "2027-01-12", "check_out": "2027-01-19"})).structured_content
+    assert neat["ok"] is False and neat["searched"] is False and neat["place_not_offered"] is True and "url" not in neat and "script" not in neat
+    assert neat["bensaude_hotels_in_destination"] == ["Hotel Açores Lisboa"] and "Ponta Delgada" in neat["next"] and "not in Lisbon" in neat["next"]
+    assert paris["bensaude_hotels_in_destination"] == [] and "place not offered" in paris["next"] and "not_checked" in paris["next"]
+    assert "hotelid=30" in lisbon["url"] and lisbon["hotel"] == "Hotel Açores Lisboa"

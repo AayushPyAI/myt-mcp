@@ -137,7 +137,10 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             fits = bool(fits and shown == "EUR" and price <= float(wishes["max_total"]))      # the budget is in euro: a price with no euro rate cannot be judged
         days = round(total / per_day) if per_day else None
         seats_bags = " / ".join(x for x in (f"{r['seats']} seats" if r.get("seats") else None, f"{r['bags']} bags" if r.get("bags") else None, f"{r['doors']} doors" if r.get("doors") else None) if x) or None
-        excess = (f"basic protection with an excess of {r['excess_text'].split(':', 1)[1].strip()} (collision damage and theft); zero excess is an upgrade after selecting the car, not priced here" if r.get("excess_text")
+        excess_shown = r["excess_text"].split(":", 1)[1].strip() if r.get("excess_text") and ":" in r["excess_text"] else None
+        if excess_shown and factor and excess_amount:        # the excess is money too: in euro with the same rate as the price, never in the page's currency (28 Oct 2026: a "$2,650" cell failed the server's own check)
+            excess_shown = f"EUR {round(excess_amount * factor, 2):,.2f} (converted from {cur} {excess_amount:,.2f} at 1 {cur} = {factor:.4f} EUR)"
+        excess = (f"basic protection with an excess of {excess_shown} (collision damage and theft); zero excess is an upgrade after selecting the car, not priced here" if excess_shown
                   else "not shown (the details card could not be read)")
         offers.append(Offer(
             group=group, source=SOURCE, name=name, price_total=price, currency=shown,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from myt_mcp.compose import Offer, mark_unconfirmed
+from myt_mcp.compose import Offer, distance_km, mark_unconfirmed
 
 _UNITS = {"day": 24.0, "hour": 1.0, "hr": 1.0, "minute": 1 / 60, "min": 1 / 60}
 
@@ -34,6 +34,12 @@ def shared_wishes(carried: dict[Any, dict[str, Any]], wishes: dict[str, Any] | N
             out["min_rating_10"] = max(out.get("min_rating_10", rating), rating)
         if w.get("free_cancellation") or e.get("free_cancellation"):
             out["free_cancellation"] = True
+        stars = w.get("stars_min")                              # hotels: the stars and the distance asked on any one hotel recipe count for every hotel row of the answer
+        if isinstance(stars, (int, float)) and not isinstance(stars, bool) and stars:
+            out["stars_min"] = max(out.get("stars_min", stars), stars)
+        km = w.get("max_distance_km")
+        if isinstance(km, (int, float)) and not isinstance(km, bool):
+            out["max_distance_km"] = min(out.get("max_distance_km", km), km)
     return out
 
 
@@ -116,3 +122,76 @@ def judge_activities(offers: list[Offer], shared: dict[str, Any]) -> None:
                 mark_unconfirmed(o, what)
         elif o.fits is None:
             o.fits = True
+
+
+def judge_hotels(offers: list[Offer], shared: dict[str, Any]) -> None:
+    """The stars and the distance the operator asked for, judged on EVERY hotel row, whichever source it came from (28 Oct 2026: the Bensaude rows show neither, were never given those wishes, and one of them
+    became 'Best fit, meets every wish'). A miss is `fits=False`; a number the row cannot show is `unconfirmed` (the row stays in the table, marked, never a pick)."""
+    if not shared.get("stars_min") and shared.get("max_distance_km") is None:
+        return
+    for o in offers:
+        if o.fits is False or o.price_total is None:
+            continue
+        d = o.details or {}
+        miss = False
+        unknown: list[str] = []
+        if shared.get("stars_min"):
+            try:
+                stars = float(str(d.get("stars")).replace("★", "").strip())
+            except (TypeError, ValueError):
+                stars = None
+            if stars is None:
+                unknown.append("stars")
+            elif stars < float(shared["stars_min"]):
+                miss = True
+        if shared.get("max_distance_km") is not None:
+            km = distance_km(d.get("distance_from_centre"))
+            if km is None:
+                unknown.append("distance from the centre")
+            elif km > float(shared["max_distance_km"]):
+                miss = True
+        if miss:
+            o.fits = False
+        else:
+            for what in unknown:
+                mark_unconfirmed(o, what)
+
+
+_COMFORT_YES = {"comfort", "business", "first", "premium", "executive", "luxury", "vip"}      # 'Comfort', 'Electro Comfort', 'Business MPV', 'First class', 'Premium Minibus'
+_COMFORT_NO = {"micro", "economy", "standard", "cheapest"}
+
+
+def comfort_of(name: str) -> bool | None:
+    """Is a transfer vehicle class a comfortable one? RateHawk names its rows 'Micro: Opel Corsa...', 'Comfort: VW Passat...', Kiwitaxi 'Comfort (Sedan comfort...)', 'Minivan 4PAX (...)': only the class before the first ':' or '(' counts.
+    True for Comfort, Business, First class, Premium...; False for Micro and Economy; None for a class that says nothing about comfort (MPV, Minivan, Minibus, Bus)."""
+    cls = re.sub(r"\b\d+\s*pax\b", "", re.split(r"[:(]", str(name or ""), maxsplit=1)[0].lower())
+    words = set(re.findall(r"[a-z]+", cls))
+    if words & _COMFORT_YES:
+        return True
+    if words & _COMFORT_NO:
+        return False
+    return None
+
+
+def comfort_unconfirmed(offers: list[Offer]) -> str | None:
+    """A comfortable vehicle was asked (28 Oct 2026: a Micro, an Opel Corsa, became 'Best fit, meets every wish' because the wish only chose RateHawk's tab). A Micro or Economy row is a clear miss; a class that says nothing
+    about comfort is marked 'not confirmed' and is never a pick."""
+    cut, unsure = 0, 0
+    for o in offers:
+        if not o.quotable or o.fits is False:
+            continue
+        verdict = comfort_of(o.name)
+        if verdict is False:
+            o.fits = False
+            cut += 1
+        elif verdict is None:
+            mark_unconfirmed(o, "vehicle comfort")
+            unsure += 1
+    if not cut and not unsure:
+        return None
+    parts = []
+    if cut:
+        parts.append(f"{cut} Micro/Economy row(s) are not comfortable vehicles and are left out of the table")
+    if unsure:
+        parts.append(f"{unsure} row(s) of a class that says nothing about comfort (MPV, Minivan, Minibus, Bus...) are marked 'not confirmed' and are not picks")
+    return "A comfortable vehicle was asked: " + "; ".join(parts) + "."

@@ -17,7 +17,7 @@ pytestmark = pytest.mark.anyio
 
 RECEIPT = {"ok": True, "received": True, "how": "read by the server itself in its own automation Chrome", "ingest": "tok123", "rows_read": 7, "next": 'STOP: Call compose_answer with runs=["tok123"]'}
 ARGS = {
-    "bensaude_hotels_recipe": {"hotel": "Terra Nostra Garden Hotel", "check_in": "2027-03-06", "check_out": "2027-03-08"},
+    "bensaude_hotels_recipe": {"hotel": "Terra Nostra Garden Hotel", "destination": "Azores", "check_in": "2027-03-06", "check_out": "2027-03-08"},
     "europcar_cars_recipe": {"pickup": "Lisbon Airport", "pickup_date": "2027-03-06", "pickup_time": "10:00", "dropoff_date": "2027-03-08", "dropoff_time": "10:00", "gearbox": "automatic", "min_seats": 5, "zero_excess": False, "max_total": 300},
     "rentalcars_cars_recipe": {"pickup": "Lisbon Airport", "pickup_date": "2027-03-06", "pickup_time": "10:00", "dropoff_date": "2027-03-08", "dropoff_time": "10:00", "gearbox": "automatic", "min_seats": 5, "zero_excess": False, "max_total": 300},
     "booking_flights_recipe": {"origin": "TLV", "destination": "LIS", "day": "2027-03-06", "direct_only": False, "cabin": "economy"},

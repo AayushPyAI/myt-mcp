@@ -75,7 +75,8 @@ def test_the_server_converts_dollars_to_euro_with_the_rate_it_carried_and_every_
     rows = convert(_data(), {**WISHES, "fx": FX}, "Cars")
     c4 = next(o for o in rows.offers if o.name.startswith("CITROEN"))
     assert (c4.price_total, c4.currency) == (round(86.5 * 0.8885, 2), "EUR") and c4.details["original_price"] == "USD 86.50"
-    assert "converted from USD 86.50 at 1 USD = 0.8885 EUR (Bank of Israel representative rates, 2026-10-26)" in c4.price_basis and "excess of $3,458.64" in c4.details["excess"]
+    assert "converted from USD 86.50 at 1 USD = 0.8885 EUR (Bank of Israel representative rates, 2026-10-26)" in c4.price_basis and "$" not in c4.details["excess"]
+    assert "excess of EUR 3,073.00 (converted from USD 3,458.64 at 1 USD = 0.8885 EUR)" in c4.details["excess"]       # the excess is money too: euro, same rate as the price
     notes = " ".join(rows.extra_notes)
     assert "converted the prices to euro" in notes and "Do not convert them yourself" in notes and "no euro rate" not in notes and "days old" not in notes
     assert all(o.currency == "EUR" for o in rows.offers)
@@ -179,3 +180,16 @@ def test_a_row_whose_large_bags_the_list_cannot_show_is_marked_not_confirmed_and
     offers = convert(_data(), {**WISHES, "min_large_bags": 2}, "Cars").offers
     assert offers and all(o.unconfirmed == ["large bags"] and o.fits is not True for o in offers)
     assert all(not o.unconfirmed for o in convert(_data(), WISHES, "Cars").offers)
+
+
+def test_the_converted_excess_cell_passes_the_servers_own_currency_check():
+    """28 Oct 2026: check_answer refused the server's own text ('basic protection with an excess of $2,650') and the assistant could not change it."""
+    from myt_mcp.composed import ComposedStore, currency_problems
+    rows = convert(_data(), {**WISHES, "fx": FX}, "Cars")
+    c4 = next(o for o in rows.offers if o.name.startswith("CITROEN"))
+    store = ComposedStore()
+    store.remember("cars", f"| {c4.name} | {c4.price_total:.2f} EUR | {c4.price_basis} |")
+    table = f"| Car | Excess | Price |\n|---|---|---|\n| {c4.name} | {c4.details['excess']} | {c4.price_total:.2f} EUR |"
+    assert currency_problems(table, store) == []
+    unconverted = convert(_data(), {**WISHES}, "Cars").offers[0]                  # no euro rate: the page's own money stays, and nothing was converted
+    assert "$" in unconverted.details["excess"]

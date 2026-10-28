@@ -17,7 +17,7 @@ from myt_mcp.ingest import STORE
 from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, bag_unconfirmed, compose, refund_unconfirmed, tracking_unconfirmed
 from myt_mcp.sites import carried_wishes, convert_all, register_all, resolve_site_names
 from myt_mcp.errors import tool_errors
-from myt_mcp.wishes import judge_activities, shared_wishes
+from myt_mcp.wishes import comfort_unconfirmed, judge_activities, judge_hotels, shared_wishes
 
 log = logging.getLogger("myt_mcp")
 
@@ -229,6 +229,12 @@ def register(mcp: MCPServer) -> None:
             notes = (notes + " " + refund_note).strip() if refund_note else notes
         if kind == "activities":      # the wishes of all the recipes of this answer are judged on every row (a maximum per person, hours, a rating), not only on the list they were given to
             judge_activities(offers, shared_wishes(carried, wishes))
+        if kind == "hotels":      # the stars and the distance asked on any hotel recipe are judged on every hotel row, also the source that cannot take them
+            judge_hotels(offers, shared_wishes(carried, wishes))
+        if kind == "transfers" and (any(c["wishes"].get("vehicle") == "comfortable" for c in carried.values()) or (wishes or {}).get("vehicle") == "comfortable"
+                                    or any("comfortable" in f.lower() for f in (filters_used or []))):
+            comfort_note = comfort_unconfirmed(offers)
+            notes = (notes + " " + comfort_note).strip() if comfort_note else notes
         if kind == "transfers" and (any(c["wishes"].get("flight_tracking") for c in carried.values()) or (wishes or {}).get("flight_tracking") or asks_flight_tracking(filters_used)):
             tracking_note = tracking_unconfirmed(offers)      # a row that does not say 'yes' is marked not confirmed and is never a pick (28 Oct 2026: Kiwitaxi became 'Best fit, meets every wish')
             notes = (notes + " " + tracking_note).strip() if tracking_note else notes

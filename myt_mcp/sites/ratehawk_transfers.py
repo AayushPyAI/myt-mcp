@@ -140,7 +140,7 @@ def register(mcp: MCPServer) -> None:
         if vehicle not in (None, *TABS):
             raise ValueError("vehicle must be 'cheapest', 'comfortable', 'spacious' or left out")
         out = ratehawk_transfers_recipe(pickup_place, dropoff_place, day, pickup_time, adults, children_ages, TABS.get(vehicle or "cheapest"))
-        out["wishes"] = {"expect": out["expect"], "min_bags": bags, "flight_tracking": bool(flight_tracking), "max_total": max_total}
+        out["wishes"] = {"expect": out["expect"], "min_bags": bags, "flight_tracking": bool(flight_tracking), "max_total": max_total, "vehicle": vehicle}
         out["filters_used"] = [f"{TABS[vehicle]} tab (operator)"] if vehicle else ["Cheapest tab (default)"]
         out["filters_used"] += ([f"at least {bags} bags (operator)"] if bags else []) + (["With flight tracking (operator)"] if flight_tracking else []) + \
             ([f"budget up to {max_total:g} EUR (operator)"] if max_total is not None else [])
