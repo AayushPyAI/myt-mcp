@@ -1678,3 +1678,12 @@ def test_a_tab_column_only_some_sources_have_is_not_reported_as_not_shown():
     booking = SourceRead(name="Booking.com flights", read=1, of=1, link="https://flights.booking.com/flights/TLV.AIRPORT-LIS.AIRPORT/?depart=2027-03-06")
     text = run(offers=rows, sources_read=SRC + [booking])["answer"]
     assert "| from tab |" in text and "from tab" not in text.split("Not shown by the sources:")[1].split("\n")[0]
+
+
+def test_detail_keys_typed_with_spaces_or_capitals_are_one_column():
+    """27 Oct 2026, Kiwitaxi rows: 'meeting point' and 'waiting time' (spaces) came next to the required meeting_point and waiting_time: two columns each."""
+    o = Offer(source="Kiwitaxi", name="Comfort", price_total=40, currency="EUR", details={"meeting point": "arrivals hall", "Waiting-Time": "60 min", "waiting_time": None, "flight tracking": "yes"})
+    assert o.details == {"meeting_point": "arrivals hall", "waiting_time": "60 min", "flight_tracking": "yes"}
+    r = run(kind="transfers", pickup_time="10:00", offers=[Offer(group="A to B", source="TAP", name="Comfort", price_total=40, currency="EUR", details={"meeting point": "hall", "waiting time": "60 min", "capacity": "4", "cancellation": "free", "provider": "x"})])
+    header = next(line for line in r["answer"].splitlines() if line.startswith("| Source |"))
+    assert header.lower().count("meeting point") == 1 and header.lower().count("waiting time") == 1

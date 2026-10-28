@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # the details every kind of offer must show ("not shown" when the source did not give them)
 REQUIRED_DETAILS: dict[str, list[str]] = {
@@ -49,6 +49,17 @@ class Offer(BaseModel):
     supplier: str | None = Field(None, description="The company to check in MYT (airline, hotel, rental company, provider).")
     preferred_reason: str | None = Field(None, description="Why this option suits the trip better, from a source or the trip data (for example 'departs 12:20, the trip plans 12:10'). Used for Best fit.")
     link: str | None = None
+
+    @field_validator("details")
+    @classmethod
+    def _one_form_of_key(cls, v: dict) -> dict:
+        """'meeting point', 'Meeting-Point' and 'meeting_point' are one column (27 Oct 2026: a chat typed spaces and the table got both)."""
+        out: dict = {}
+        for k, val in v.items():
+            key = re.sub(r"[\s\-]+", "_", str(k).strip().lower())
+            if key not in out or out[key] in (None, ""):
+                out[key] = val
+        return out
 
 
 class SourceRead(BaseModel):
