@@ -136,3 +136,16 @@ async def test_the_tool_returns_the_address_the_wishes_with_the_euro_rate_and_th
         assert bad.is_error and "two different places" in bad.content[0].text
         tool = next(t for t in (await c.list_tools()).tools if t.name == "iway_transfers_recipe")
         assert tool.description.startswith("[TRANSFERS (airport transfer") and "ONLY" in tool.description
+
+
+@pytest.mark.anyio
+async def test_the_iway_recipe_says_to_use_the_operators_own_tab_in_front_and_its_filter_lines_name_their_source():
+    """28 Oct 2026: a new iWay tab stayed blank (the page does not draw in the background) and the recipe's own line 'One way, price per vehicle (iWay)' was refused by compose_answer."""
+    from mcp import Client
+    from myt_mcp.app import create_server
+    from myt_mcp.compose import SOURCE_WORDS
+    from myt_mcp.config import Settings
+    async with Client(create_server(Settings())) as c:
+        out = (await c.call_tool("iway_transfers_recipe", {"origin": "Lisbon Airport", "destination": "Praça do Comércio", "day": "2027-03-06", "time": "10:00", "adults": 2, "children_ages": [], "bags": 2})).structured_content
+    assert "OWN iWay tab" in out["tab"] and "NEW tab" not in out["tab"] and "in front" in out["tab"]
+    assert all(any(w in f.lower() for w in SOURCE_WORDS) for f in out["filters_used"]), out["filters_used"]

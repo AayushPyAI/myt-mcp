@@ -142,11 +142,12 @@ def currency_problems(draft: str, store: ComposedStore = COMPOSED) -> list[str]:
 _SOURCES_LINE = re.compile(r"Sources checked:\s*(.*?)(?:\s*\|\s*Not checked:|$)", re.I | re.M)
 
 
-def source_warnings(draft: str, store: ComposedStore = COMPOSED) -> list[str]:
-    """Sources a compose_answer of the last 3 hours says it read that the draft does not name at all (24 Oct 2026: El Al, Arbitrip, Ofran and RateHawk Air were read and missing from the final Sources)."""
+def source_warnings(draft: str, kind: str | None = None, store: ComposedStore = COMPOSED) -> list[str]:
+    """Sources a compose_answer of the last 3 hours says it read that the draft does not name at all (24 Oct 2026: El Al, Arbitrip, Ofran and RateHawk Air were read and missing from the final Sources).
+    Only answers of the draft's own kind count (28 Oct 2026: a train answer was warned about Kiwitaxi and iWay, the sources of the transfer answer written before it)."""
     low = draft.lower()
     missing: list[str] = []
-    for text in store.recent(None):
+    for text in store.recent(kind):
         for line in _SOURCES_LINE.findall(text):
             for part in line.split(";"):
                 name = re.sub(r"\s*\(.*$", "", part).strip()

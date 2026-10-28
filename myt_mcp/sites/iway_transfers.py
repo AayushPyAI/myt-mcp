@@ -56,6 +56,11 @@ def find_place(text: str) -> dict[str, Any] | None:
     return None
 
 
+IWAY_TAB = ("iWay draws its page only in a tab that is in front (27-28 Oct 2026: a new tab opened in the background stayed blank, 'still loading'). Use the operator's OWN iWay tab in this chat's tab group "
+            "(iway.io/booking, already logged in): bring it to the front, open the url in it, run the script, and leave it open. If there is none, ask the operator to open iway.io/booking in this chat's tab group "
+            "and keep it in front; never wait on a blank background tab.")
+
+
 def iway_transfers_recipe(origin: str, destination: str, day: date, time: str, adults: int = 2, children_ages: list[int] | None = None, bags: int | None = None,
                           max_total: float | None = None, from_place_id: str | None = None, to_place_id: str | None = None) -> dict[str, Any]:
     if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", time):
@@ -172,9 +177,10 @@ def register(mcp: MCPServer) -> None:
             out = iway_transfers_recipe(origin, destination, day, time, adults, children_ages, bags, max_total, from_place_id, to_place_id)
         except ValueError as e:      # a refusal the assistant must read and act on, not an 'unexpected error'
             raise ToolError(str(e)) from None
+        out["tab"] = IWAY_TAB
         fx = await eur_factors()
         out["wishes"] = {"expect": out["expect"], "min_bags": bags, "max_total": max_total, "fx": fx}
         out["filters_used"] = [f"{out['expect']['from']} to {out['expect']['to']}, {day.isoformat()} {time} (operator; iWay's list does not use the date and time)", f"{out['expect']['total']} travellers (operator)",
-                               "One way, price per vehicle (iWay)"] + ([f"At least {bags} bags (operator)"] if bags else []) + ([f"Max {max_total:g} EUR (operator)"] if max_total is not None else []) + \
+                               "One way, price per vehicle (default)"] + ([f"At least {bags} bags (operator)"] if bags else []) + ([f"Max {max_total:g} EUR (operator)"] if max_total is not None else []) + \
             (["Prices converted to EUR by the server at the Bank of Israel representative rates (server default)"] if fx else ["No euro exchange rate was available: iWay rows stay in the account's currency (server default)"])
         return out

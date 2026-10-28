@@ -47,8 +47,11 @@ def viator_find_recipe(query: str, day_label: str | None = None, page: int = 1, 
         raise ValueError("page 1-9, max_price and max_hours above 0, min_rating 0-5")
     script = with_emit((HERE / "viator_find.js").read_text(encoding="utf-8"))
     must = [w.lower() for w in (title_contains or words(q))]
-    expect = {"query": q, "page": page, "group": f"{q}, {day_label}" if day_label else q, "title_contains": must, "free_cancellation": free_cancellation, "max_price": max_price, "min_rating": min_rating, "max_hours": max_hours}
-    return {"url": search_url(q, page), "script": script, "expect": expect}
+    # a single word that is a destination ("Lisbon") sends the page to the destination's own page (viator.com/Lisbon/d538-ttd), whose cards are laid out differently and have no "Showing N - M of" line
+    # (28 Oct 2026, checked in the server's Chrome); "Lisbon tours" stays on the search page. The title words to look for stay those of the operator's own query.
+    searched = f"{q} tours" if len(q.split()) == 1 else q
+    expect = {"query": searched, "page": page, "group": f"{q}, {day_label}" if day_label else q, "title_contains": must, "free_cancellation": free_cancellation, "max_price": max_price, "min_rating": min_rating, "max_hours": max_hours}
+    return {"url": search_url(searched, page), "script": script, "expect": expect}
 
 
 def hours(duration: str | None) -> float | None:

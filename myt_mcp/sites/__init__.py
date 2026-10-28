@@ -244,8 +244,8 @@ def embed_wishes(out: Any, site: str | None = None) -> Any:
     """The operator's wishes for THIS script (and the filters it was given) travel inside the script's own answer: the model passes ONE `wishes` to compose_answer for every source,
     so a source whose recipe had other wishes (checked bag, refundable) was judged by the wrong ones (seen 23 Oct 2026: a fare with no bag and no refund became 'Best fit')."""
     if isinstance(out, dict) and out.get("script"):
-        out["tab"] = ("Open the url in a NEW tab (tabs_create_mcp), never in the operator's current tab: their own work is open there (27 Oct 2026: a search replaced the operator's Booking.com flight search). "
-                      "Close that tab when you have the receipt.")
+        out.setdefault("tab", "Open the url in a NEW tab (tabs_create_mcp), never in the operator's current tab: their own work is open there (27 Oct 2026: a search replaced the operator's Booking.com flight search). "
+                              "Close that tab when you have the receipt.")      # a recipe may bring its own rule (iWay: its own tab, in front)
         head = "await (async () => {\n"
         base = public_base()
         if base and site in NO_POST:     # the page's security policy stops the post, so the script gets no address to post to (once the chat's Claude declined to run a GetYourGuide script that posts to this server: "sends page data to an unfamiliar outside web address", 26 Oct 2026; a model's choice, not a block)

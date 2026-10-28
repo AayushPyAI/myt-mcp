@@ -1730,3 +1730,42 @@ def test_nothing_found_still_needs_allowed_reasons_filters_with_a_source_and_no_
     assert nofilter["ok"] is False and any("where it comes from" in p for p in nofilter["problems"])
     nothing = compose(kind="trains", filters_used=["2nd class (operator)"], sources_read=[], not_checked=[], offers=[], myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
     assert nothing["ok"] is False and any("sources_read is empty" in p for p in nothing["problems"])
+
+
+def test_one_leg_written_with_different_spellings_is_one_table_with_one_set_of_picks():
+    """28 Oct 2026: Kiwitaxi (typed by the chat) and iWay (from the recipe) named the same leg differently and came as two tables; Best fit was Kiwitaxi in one and 'not determined' in the other."""
+    from myt_mcp.compose import group_key
+    assert group_key("Lisbon Airport -> Praça do Comércio 6 Mar 2027 10:00") == group_key("Lisbon Airport to Praça do Comércio, 06 Mar 2027 10:00")
+    assert group_key("Lisbon Airport to Praça do Comércio") != group_key("Praça do Comércio to Lisbon Airport")      # direction matters
+    assert group_key("TLV -> LIS 6 Mar 2027") != group_key("LIS -> TLV 6 Mar 2027") and group_key("TLV -> LIS 6 Mar 2027") != group_key("TLV -> LIS 16 Mar 2027")
+    mk = lambda g, src, name, p, q: Offer(group=g, source=src, name=name, price_total=p, currency="EUR", quotable=q, fits=True,
+                                          details={"capacity": "x", "waiting_time": "x", "cancellation": "free", "provider": "x", "meeting_point": "x"})
+    rows = [mk("Lisbon Airport -> Praça do Comércio 6 Mar 2027 10:00", "Kiwitaxi", "Comfort", 40, True), mk("Lisbon Airport to Praça do Comércio, 06 Mar 2027 10:00", "iWay", "Standard", 25.37, False)]
+    src = [SourceRead(name="Kiwitaxi", read=9, of=9, link="https://kiwitaxi.com/en/portugal/x?ref=sf"), SourceRead(name="iWay", read=4, of=4, link="https://iway.io/booking?from=a&to=b")]
+    text = compose("transfers", ["2 passengers (operator)"], src, [], rows, {}, "10:00", False, "")["answer"]
+    assert text.count("| Pick | Option | Reason |") == 1 and "iWay" in text and "Kiwitaxi" in text
+
+
+def test_a_long_activities_list_shows_30_rows_and_says_how_many_were_read():
+    """28 Oct 2026: 54 Booking.com rows were shown in full and the chat shortened them by hand into 'for example ...' (check_answer cannot see a shortened table); the server now does the cutting and says so."""
+    from myt_mcp.compose import MAX_ROWS_BY_KIND
+    assert MAX_ROWS_BY_KIND["activities"] == 30
+    rows = [Offer(group="Lisbon, 7 Mar 2027", source="Booking.com attractions", name=f"Tour {i}", price_total=10 + i, currency="EUR", quotable=False,
+                  details={"duration": "2h", "start_times": "x", "language": "x", "meeting_point": "x", "cancellation": "free", "private_or_group": "x"}) for i in range(54)]
+    src = [SourceRead(name="Booking.com attractions", read=54, of=54, link="https://www.booking.com/attractions/searchresults/pt/lisbon.html?date_from=2027-03-07")]
+    text = compose("activities", ["Free cancellation (operator)"], src, [], rows, {}, None, False, "", max_rows=MAX_ROWS_BY_KIND["activities"])["answer"]
+    assert len([l for l in text.splitlines() if l.startswith("| Booking.com")]) == 30 and "Showing 30 of the 54 options read" in text
+
+
+def test_a_source_listed_as_read_with_no_options_still_gets_the_nothing_found_answer():
+    """28 Oct 2026, trains: the chat listed CP in sources_read (searched, 0 trains) and RateHawk in not_checked; compose answered 'offers is empty' and the chat had to retry."""
+    cp = SourceRead(name="CP Comboios de Portugal", read=0, of=0, link="https://www.cp.pt/en/resultado-pesquisa?passageiros=2&startDate=2027-03-07")
+    r = compose(kind="trains", filters_used=["2nd class (operator)"], sources_read=[cp], not_checked=[NotChecked(name="RateHawk Train tickets", reason="route not served: no Lisboa station")],
+                offers=[], myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert r["ok"] is True, r
+    text = r["answer"]
+    assert text.startswith("Sources checked: none returned an option (searched, no options: CP Comboios de Portugal) | Not checked: RateHawk Train tickets (route not served: no Lisboa station)")
+    assert "0 of 0" not in text and "Sources: CP Comboios de Portugal: https://www.cp.pt/en/resultado-pesquisa" in text
+    odd = compose(kind="trains", filters_used=["2nd class (operator)"], sources_read=[SourceRead(name="CP", read=5, of=5, link="https://www.cp.pt/en/resultado-pesquisa?x=1")], not_checked=[], offers=[],
+                  myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert odd["ok"] is False and any("offers is empty" in p for p in odd["problems"])          # rows read but none passed on is still a mistake

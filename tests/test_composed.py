@@ -141,10 +141,21 @@ def test_a_source_the_composed_answers_read_but_the_draft_never_names_is_warned_
     store.remember("flights", "Sources checked: TAP (7 of 7 read); El Al (2 of 2 read); SATA / Azores Airlines (3 of 3 read) | Not checked: Israir (not connected)\n| TAP | x |")
     store.remember("hotels", "Sources checked: RateHawk (30 of 80 read); Arbitrip (30 of 40 read) | Not checked: none")
     draft = "Sources: TAP flights, SATA, RateHawk hotels in Lisbon."
-    warnings = source_warnings(draft, store)
+    warnings = source_warnings(draft, None, store)
     assert len(warnings) == 1 and "El Al" in warnings[0] and "Arbitrip" in warnings[0] and "TAP" not in warnings[0] and "SATA" not in warnings[0] and "Israir" not in warnings[0]
-    assert source_warnings(draft + " El Al, Arbitrip.", store) == []
-    assert source_warnings(draft, ComposedStore()) == []
+    assert source_warnings(draft + " El Al, Arbitrip.", None, store) == []
+    assert source_warnings(draft, None, ComposedStore()) == []
+
+
+def test_a_draft_is_only_warned_about_the_sources_of_answers_of_its_own_kind():
+    """28 Oct 2026: a train answer and an activities answer were warned that Kiwitaxi and iWay (the transfer answer's sources) were missing."""
+    store = ComposedStore()
+    store.remember("transfers", "Sources checked: Kiwitaxi (9 of 9 read); iWay (4 of 4 read) | Not checked: none")
+    store.remember("trains", "Sources checked: none returned an option | Not checked: CP (not available)")
+    train = "Sources checked: none returned an option | Not checked: CP (not available)"
+    assert source_warnings(train, "trains", store) == [] and source_warnings(train, "activities", store) == []
+    assert "Kiwitaxi" in source_warnings(train, "transfers", store)[0]
+    assert "Kiwitaxi" in source_warnings(train, "general", store)[0]          # an unknown kind still looks at every answer
 
 
 def test_a_recipe_issued_but_missing_from_the_answer_is_named_unless_it_is_in_not_checked_or_was_composed_since():

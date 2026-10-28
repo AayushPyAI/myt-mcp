@@ -46,6 +46,6 @@ async def test_every_recipe_with_a_script_says_to_open_the_url_in_a_new_tab(monk
         flights = (await c.call_tool("booking_flights_recipe", {"origin": "TLV", "destination": "LIS", "day": "2027-03-06", "direct_only": False, "cabin": "economy"})).structured_content
         iway = (await c.call_tool("iway_transfers_recipe", {"origin": "Lisbon Airport", "destination": "Praça do Comércio", "day": "2027-03-06", "time": "10:00"})).structured_content
         asked = (await c.call_tool("booking_flights_recipe", {"origin": "TLV", "destination": "LIS", "day": "2027-03-06"})).structured_content
-    for out in (flights, iway):
-        assert "NEW tab" in out["tab"] and "never in the operator's current tab" in out["tab"]
+    assert "NEW tab" in flights["tab"] and "never in the operator's current tab" in flights["tab"]
+    assert "OWN iWay tab" in iway["tab"] and "NEW tab" not in iway["tab"]      # iWay is the one exception: its page does not draw in a background tab (28 Oct 2026)
     assert "tab" not in asked      # a question has no page to open

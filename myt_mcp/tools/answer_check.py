@@ -134,7 +134,7 @@ def register(mcp: MCPServer) -> None:
         out = check_answer_text(draft, kind)
         typed = row_problems(draft, kind)
         amounts, amount_warnings = amount_problems(draft)
-        amount_warnings += source_warnings(draft)
+        amount_warnings += source_warnings(draft, kind)
         typed = [*typed, *amounts, *currency_problems(draft)]
         if amount_warnings:
             out = {**out, "warnings": [*out.get("warnings", []), *amount_warnings]}

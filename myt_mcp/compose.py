@@ -8,6 +8,7 @@ with the required lines and links. Claude shows the text as it is. Nothing here 
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -27,7 +28,7 @@ NEEDS_SUPPLIER_CHECK = {"flights", "hotels", "cars", "transfers", "activities"}
 NEEDS_PICKUP = {"cars", "transfers"}
 BANNED_REASONS = ("for time", "out of scope", "this pass", "keep it short", "say the word", "not asked", "didn't ask", "did not ask", "on request",
                   "happy to run", "would need the quotation", "no myt trip", "trip number")
-MAX_ROWS_BY_KIND = {"flights": 20, "hotels": 20, "cars": 20, "transfers": 20, "trains": 20}      # rows the table shows per group; the picks always use every row read
+MAX_ROWS_BY_KIND = {"flights": 20, "hotels": 20, "cars": 20, "transfers": 20, "trains": 20, "activities": 30}      # rows the table shows per group; the picks always use every row read
 PER_SOURCE_MIN_ROWS = 3
 ALLOWED_REASON_WORDS = ("browser", "chrome", "login", "captcha", "block", "not served", "does not sell", "doesn't sell", "does not fly", "did not answer",
                         "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded", "operator asked for", "operator named")      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
@@ -304,10 +305,27 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
     return rows_out, notes
 
 
-def nothing_found_answer(kind: str, filters_used: list[str], not_checked: list[NotChecked], pickup_time: str | None, notes: str) -> dict[str, Any]:
+def group_key(group: str) -> tuple[str, ...]:
+    """'Lisbon Airport -> Praça do Comércio 6 Mar 2027 10:00' and 'Lisbon Airport to Praça do Comércio, 06 Mar 2027 10:00' name one leg: no accents or punctuation, '->' and 'to' dropped,
+    '06' is '6'. The order of the words stays (A to B is not B to A)."""
+    plain = unicodedata.normalize("NFKD", str(group).lower()).encode("ascii", "ignore").decode()
+    words = [w.lstrip("0") or "0" if w.isdigit() else w for w in re.findall(r"[a-z0-9:]+", plain)]
+    return tuple(w for w in words if w != "to")
+
+
+def unify_groups(offers: list[Offer]) -> None:
+    """Rows of one leg written with different spellings of its name become one group, so there is one table and one set of Picks (28 Oct 2026: Kiwitaxi's rows typed by the chat and iWay's rows
+    from the recipe came as two tables, 'Best fit' in one and 'not determined' in the other). The first spelling seen is kept."""
+    first: dict[tuple[str, ...], str] = {}
+    for o in offers:
+        o.group = first.setdefault(group_key(o.group), o.group)
+
+
+def nothing_found_answer(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], pickup_time: str | None, notes: str) -> dict[str, Any]:
     """No source returned an option and every one has an allowed reason: the answer says exactly that (no '0 of 0 read'), with the same lines and an empty pick table."""
     why = "no source returned an option for this search"
-    lines = ["Sources checked: none returned an option | Not checked: " + "; ".join(f"{n.name} ({n.reason})" for n in not_checked)]
+    lines = ["Sources checked: none returned an option" + (f" (searched, no options: {'; '.join(s.name for s in sources_read)})" if sources_read else "")
+             + " | Not checked: " + ("; ".join(f"{n.name} ({n.reason})" for n in not_checked) or "none")]
     if filters_used:
         lines.append("Filters used: " + "; ".join(filters_used))
     if pickup_time:
@@ -315,7 +333,7 @@ def nothing_found_answer(kind: str, filters_used: list[str], not_checked: list[N
     lines += ["", "No options to show: " + why + ".", "", "| Pick | Option | Reason |", "|---|---|---|"] + [f"| {p} | not determined | not determined: {why} |" for p in ("Cheapest", "Best fit", "Most flexible", "Recommended")]
     if kind in NEEDS_SUPPLIER_CHECK:
         lines += ["", "In MYT supplier? not checked: there was no option to check."]
-    lines += ["", "Sources: none read"]
+    lines += ["", "Sources: " + (" | ".join(f"{s.name}: {s.link}" for s in sources_read) if sources_read else "none read")]
     if notes.strip():
         lines += ["", "Notes (assistant's judgement, not from a source): " + notes.strip()]
     return {"ok": True, "answer": "\n".join(lines), "next": "Call check_answer with this `answer` (and this kind) BEFORE you send it, then show `answer` to the operator exactly as written. Do not retype, reword or reorder it. You may add questions after it."}
@@ -323,12 +341,14 @@ def nothing_found_answer(kind: str, filters_used: list[str], not_checked: list[N
 
 def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
             myt_supplier: dict[str, str], pickup_time: str | None, sorted_by_price: bool, notes: str, max_rows: int | None = None, checked_at: str | None = None) -> dict[str, Any]:
-    empty = not offers and not sources_read and bool(not_checked)      # every source was excused (28 Oct 2026: CP had no trains on sale, RateHawk has no Lisbon station): the server writes "nothing found" itself
+    unify_groups(offers)
+    # every source was excused or read nothing (28 Oct 2026: CP had no trains on sale, RateHawk has no Lisbon station; a chat listed CP as '0 of 0 read' and the answer was refused): the server writes "nothing found" itself
+    empty = not offers and bool(sources_read or not_checked) and all(not s.read for s in sources_read)
     problems = validate(kind, filters_used, sources_read, not_checked, offers, myt_supplier, pickup_time, nothing_found=empty)
     if problems:
         return {"ok": False, "problems": problems, "next": "Fix every problem (read the source, or write an allowed reason / the missing field) and call compose_answer again. Do not write the answer yourself."}
     if empty:
-        return nothing_found_answer(kind, filters_used, not_checked, pickup_time, notes)
+        return nothing_found_answer(kind, filters_used, sources_read, not_checked, pickup_time, notes)
     required = REQUIRED_DETAILS[kind]
     if kind == "hotels":      # the agency usually compares RateHawk and Arbitrip: when neither read nor excused (the operator asked for one source, e.g. a hotel's own website) the answer SAYS so; it is not a refusal
         covered = {s.name.lower() for s in sources_read} | {n.name.lower() for n in not_checked}

@@ -451,3 +451,13 @@ async def test_title_contains_keeps_only_matching_titles():
     word = r.structured_content["activities"][0]["title"].split()[0].lower().strip(":,")
     r, _ = await _search(_paged_pages(1), max_results=60, title_contains=[word])
     assert r.structured_content["activities"] and all(word in a["title"].lower() for a in r.structured_content["activities"])
+
+
+def test_a_one_word_query_is_searched_as_x_tours_so_viator_does_not_redirect_to_the_destination_page():
+    """28 Oct 2026, checked in the server's Chrome: 'Lisbon' ends on viator.com/Lisbon/d538-ttd (other card layout, no 'Showing N - M of' line); 'Lisbon tours' stays on the search page."""
+    from myt_mcp.sites.viator_find import viator_find_recipe
+    one = viator_find_recipe("Lisbon", "7 Mar 2027")
+    assert one["url"].endswith("/searchResults/all?text=Lisbon+tours") and one["expect"]["query"] == "Lisbon tours"
+    assert one["expect"]["title_contains"] == ["lisbon"] and one["expect"]["group"] == "Lisbon, 7 Mar 2027"          # the title words stay the operator's own
+    many = viator_find_recipe("Florence golf cart tour")
+    assert many["url"].endswith("text=Florence+golf+cart+tour") and many["expect"]["query"] == "Florence golf cart tour"
