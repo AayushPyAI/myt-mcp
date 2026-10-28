@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,22 @@ def _norm(s: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
+def leg_name(expect: dict[str, Any]) -> str | None:
+    if not (expect.get("pickup") and expect.get("dropoff") and expect.get("day")):
+        return None
+    try:
+        day = date.fromisoformat(expect["day"]).strftime("%d %b %Y")
+    except ValueError:
+        day = expect["day"]
+    return f"{expect['pickup']} to {expect['dropoff']}, {day}"
+
+
+def search_of(expect: dict[str, Any]) -> tuple[Any, str | None] | None:
+    """Each leg is its own search (28 Oct 2026: the two legs were one table 'Transfers' and the same car at the same price collapsed into one row)."""
+    name = leg_name(expect)
+    return ((expect.get("pickup"), expect.get("dropoff"), expect.get("day"), expect.get("time")), name) if name else None
+
+
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     try:
         data = json.loads(result_json)
@@ -60,6 +77,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     problems: list[str] = []
     form = data.get("form") or {}
     exp = wishes.get("expect") or {}
+    group = leg_name(exp) or group
     if exp:
         for key, label in (("pickup", "from"), ("dropoff", "to")):
             if exp.get(key) and form.get(label) and not place_matches(exp[key], form[label]):

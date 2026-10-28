@@ -44,6 +44,11 @@ def hotels() -> dict[str, tuple[int, str]]:
     return {k: (v[0], v[1]) for k, v in data.items() if not k.startswith("_")}
 
 
+def search_of(expect: dict[str, Any]) -> tuple[Any, str | None] | None:
+    """Every hotel is its own search: its total and its link are kept apart (28 Oct 2026: two hotels read gave '18 of 9 read' and only the first link)."""
+    return (expect["hotel_id"], expect.get("hotel_name") or f"hotel {expect['hotel_id']}") if expect.get("hotel_id") else None
+
+
 def places() -> dict[int, tuple[str, str]]:
     """{hotel id: (town, island or region)}: from the address data on each hotel's own page (28 Oct 2026). Only Hotel Açores Lisboa is in Lisbon; the other ten are in the Azores."""
     data = json.loads((HERE / "bensaude_hotels.json").read_text(encoding="utf-8"))
@@ -227,6 +232,6 @@ def register(mcp: MCPServer) -> None:
         except ValueError as e:      # a refusal the assistant must read and act on, not an 'unexpected error'
             raise ToolError(str(e)) from None
         wishes, filters = limits(None, budget_per_night, None, breakfast, free_cancellation, (check_out - check_in).days)
-        wishes["expect"] = out.pop("expect")
+        wishes["expect"] = {**out.pop("expect"), "hotel_name": hotel_name}
         out.update({"hotel": hotel_name, "wishes": wishes, "filters_used": filters + [f"Guests: {adults} adults (operator)"], "nights": (check_out - check_in).days})
         return await server_first(NAME, "BENSAUDE_READ_IN_SERVER", "https://bensaude.e-gds.com", out)

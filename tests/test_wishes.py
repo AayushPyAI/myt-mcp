@@ -158,6 +158,7 @@ async def test_compose_answer_judges_the_stars_and_distance_of_every_hotel_row_a
     assert hotels["ok"], hotels.get("problems")
     best = hotels["answer"].split("Best fit")[1].split("\n")[0]
     assert "Czar Lisbon Hotel" in best and "NEAT" not in best and "not confirmed: stars, distance from the centre" in hotels["answer"] and "Far hotel" not in hotels["answer"].split("Pick")[0]
+    assert "Distances are the sources' own, measured from the centre of the city" in hotels["answer"]
     assert transfers["ok"], transfers.get("problems")
     best = transfers["answer"].split("Best fit")[1].split("\n")[0]
     assert "Comfort (Sedan comfort" in best and "Micro" not in best and "not confirmed: vehicle comfort" in transfers["answer"] and "A comfortable vehicle was asked" in transfers["answer"]

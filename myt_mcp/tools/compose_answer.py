@@ -230,7 +230,10 @@ def register(mcp: MCPServer) -> None:
         if kind == "activities":      # the wishes of all the recipes of this answer are judged on every row (a maximum per person, hours, a rating), not only on the list they were given to
             judge_activities(offers, shared_wishes(carried, wishes))
         if kind == "hotels":      # the stars and the distance asked on any hotel recipe are judged on every hotel row, also the source that cannot take them
-            judge_hotels(offers, shared_wishes(carried, wishes))
+            shared = shared_wishes(carried, wishes)
+            judge_hotels(offers, shared)
+            if shared.get("max_distance_km") is not None:
+                notes = (notes + " Distances are the sources' own, measured from the centre of the city each source uses, not from a particular square, station or hotel the operator may have named.").strip()
         if kind == "transfers" and (any(c["wishes"].get("vehicle") == "comfortable" for c in carried.values()) or (wishes or {}).get("vehicle") == "comfortable"
                                     or any("comfortable" in f.lower() for f in (filters_used or []))):
             comfort_note = comfort_unconfirmed(offers)

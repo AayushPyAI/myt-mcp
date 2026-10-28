@@ -136,7 +136,7 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
         if any(b in low for b in BANNED_REASONS):
             problems.append(f"{n.name}: '{n.reason}' is not an allowed reason; read it, or use: no browser tool, login/captcha/block, route not served, did not answer")
         elif not any(w in low for w in ALLOWED_REASON_WORDS):
-            problems.append(f"{n.name}: the reason must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, place not found in the source's From/To box (say which place), source did not answer, 'could not be read: <the script's own error>', or 'operator asked for <sources> only' when the operator named the sources to use")
+            problems.append(f"{n.name}: the reason '{n.reason[:100]}' is not one of the allowed ones; it must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, place not found in the source's From/To box (say which place), source did not answer, 'could not be read: <the script's own error>', or 'operator asked for <sources> only' when the operator named the sources to use")
     if kind in NEEDS_FILTERS:
         if not filters_used:
             problems.append("filters_used is empty: write each filter with its source, e.g. 'direct only (trip default)'")
@@ -359,12 +359,37 @@ def group_key(group: str) -> tuple[str, ...]:
     return tuple(w for w in words if w != "to")
 
 
-def unify_groups(offers: list[Offer]) -> None:
+_DATE_IN_GROUP = re.compile(r"\b(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?,?\s+(\d{4})\b")
+
+
+def group_date(group: str) -> tuple[str, str, str] | None:
+    m = _DATE_IN_GROUP.search(str(group))
+    return (m.group(1).lstrip("0") or "0", m.group(2).lower(), m.group(3)) if m else None
+
+
+def unify_groups(offers: list[Offer], by_date: bool = False) -> None:
     """Rows of one leg written with different spellings of its name become one group, so there is one table and one set of Picks (28 Oct 2026: Kiwitaxi's rows typed by the chat and iWay's rows
     from the recipe came as two tables, 'Best fit' in one and 'not determined' in the other). The first spelling seen is kept."""
     first: dict[tuple[str, ...], str] = {}
     for o in offers:
         o.group = first.setdefault(group_key(o.group), o.group)
+    if not by_date:
+        return
+    # transfers: the two sources name a leg with different words ('LIS to Pousada de Lisboa, 12 Jan 2027' / 'LIS -> Praça do Comércio 12 Jan 2027'); on one date it is one leg, but only when no single source has two
+    # legs on that date (then the direction matters and the names are left as they are)
+    by_day: dict[tuple[str, str, str], dict[str, set[str]]] = {}
+    for o in offers:
+        day = group_date(o.group)
+        if day:
+            by_day.setdefault(day, {}).setdefault(o.source, set()).add(o.group)
+    rename: dict[str, str] = {}
+    for day, sources in by_day.items():
+        if any(len(g) > 1 for g in sources.values()):
+            continue
+        names = [next(iter(g)) for g in sources.values()]
+        rename.update({n: names[0] for n in names})
+    for o in offers:
+        o.group = rename.get(o.group, o.group)
 
 
 def nothing_found_answer(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], pickup_time: str | None, notes: str) -> dict[str, Any]:
@@ -387,7 +412,7 @@ def nothing_found_answer(kind: str, filters_used: list[str], sources_read: list[
 
 def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
             myt_supplier: dict[str, str], pickup_time: str | None, sorted_by_price: bool, notes: str, max_rows: int | None = None, checked_at: str | None = None) -> dict[str, Any]:
-    unify_groups(offers)
+    unify_groups(offers, by_date=(kind == "transfers"))
     # every source was excused or read nothing (28 Oct 2026: CP had no trains on sale, RateHawk has no Lisbon station; a chat listed CP as '0 of 0 read' and the answer was refused): the server writes "nothing found" itself
     empty = not offers and bool(sources_read or not_checked) and all(not s.read for s in sources_read)
     problems = validate(kind, filters_used, sources_read, not_checked, offers, myt_supplier, pickup_time, nothing_found=empty)

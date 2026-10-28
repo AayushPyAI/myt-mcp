@@ -388,6 +388,7 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
     by_price = False
     reads: dict[str, set[str]] = {}
     counted: dict[str, dict[str | None, tuple[int, int]]] = {}
+    searched: dict[str, dict[Any, int]] = {}
     links: dict[str, dict[str | None, str]] = {}      # one link per leg: a trip's outbound and return pages are both sources
     problems += check_parts(site_results)
     carried = carried_wishes(site_results)
@@ -402,13 +403,15 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
             problems.append(narrow)
             continue
         item_wishes = item.get("wishes") or carried.get(_run_key(item), {}).get("wishes") or wishes or {}
+        search_of = getattr(mod, "search_of", None)
+        search = search_of(item_wishes.get("expect") or {}) if search_of else None      # (key, label) of the search this answer is for, when a source is read several times for different things
         rows = mod.convert(expand(item.get("result", "")), item_wishes, (group_for or {}).get(site, getattr(mod, "GROUP", "Options")))
         problems += rows.problems
         notes += rows.extra_notes
         by_price = by_price or rows.sorted_by_price
-        seen = reads.setdefault(site, {f"{o.link}|{o.name}|{o.price_total}" for o in offers if o.source == getattr(mod, "SOURCE", site)})
+        seen = reads.setdefault(site, {f"{o.group}|{o.link}|{o.name}|{o.price_total}" for o in offers if o.source == getattr(mod, "SOURCE", site)})
         for o in rows.offers:
-            key = f"{o.link}|{o.name}|{o.price_total}"      # the options of one activity share its page link: the name and the price tell them apart
+            key = f"{o.group}|{o.link}|{o.name}|{o.price_total}"      # the options of one activity share its page link: the name and the price tell them apart; the same car at the same price on the way back is another row
             if key not in seen:
                 seen.add(key)
                 offers.append(o)
@@ -420,10 +423,14 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
             prev = legs.get(leg, (0, 0))
             legs[leg] = (prev[0] + (rows.read or 0), max(prev[1], rows.total or 0) if rows.total_absolute else prev[1] + (rows.total or 0))
             read, of = sum(v[0] for v in legs.values()), sum(v[1] for v in legs.values())
+        elif search and rows.total is not None:      # one source, several searches (two Bensaude hotels, the two legs of a transfer): each search has its own total and they add up (28 Oct 2026: "18 of 9 read", "29 of 24 read")
+            totals = searched.setdefault(site, {})
+            totals[search[0]] = max(totals.get(search[0], 0), rows.total or 0)
+            read, of = len(seen) or None, sum(totals.values())
         else:
             read, of = len(seen) or None, rows.total or (cur.of if cur else None)
         if item.get("url"):
-            links.setdefault(site, {})[(item_wishes.get("expect") or {}).get("leg")] = item["url"]
+            links.setdefault(site, {})[search[1] if search else (item_wishes.get("expect") or {}).get("leg")] = item["url"]
         mine = links.get(site) or {}
         link = (next(iter(mine.values())) if len(mine) == 1 else "; ".join(f"{leg}: {url}" if leg else url for leg, url in mine.items())) if mine else (cur.link if cur else None)
         sources[site] = SourceRead(name=src_name, read=read, of=of, link=link)
