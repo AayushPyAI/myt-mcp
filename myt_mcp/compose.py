@@ -152,6 +152,10 @@ def distance_km(text: Any) -> float | None:
     return value if m.group(2).lower() == "km" else value / 1000
 
 
+# columns only some sources have (which sort tab a row came from): a source without it is not "hiding" it
+NOT_A_GAP = {"from_tab"}
+
+
 def meets_limits(price: float | None, distance_text: Any, wishes: dict[str, Any]) -> bool:
     """The operator's budget (whole stay) and distance limits; a row that cannot show the number does not meet a limit that was asked."""
     if wishes.get("max_total") is not None and (price is None or price > float(wishes["max_total"])):
@@ -342,7 +346,7 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
             cells = []
             for k in keys:
                 v = o.details.get(k)
-                if v is None or v == "":
+                if (v is None or v == "") and k not in NOT_A_GAP:
                     gaps[k] = gaps.get(k, 0) + 1
                 cells.append(_cell(v))
             tag = " (connecting)" if o.connecting else ""

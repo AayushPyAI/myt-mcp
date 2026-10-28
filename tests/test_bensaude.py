@@ -141,3 +141,18 @@ def test_the_script_is_valid_javascript(tmp_path):
     path.write_text(script, encoding="utf-8")
     result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
+
+
+def test_a_room_only_plan_named_in_its_title_does_not_meet_a_breakfast_wish_even_with_free_cancellation(frozen):
+    """27 Oct 2026, seen live: 'Executive - FLEX (ROOM-ONLY)' (no meal words in its description) became the Best fit of a breakfast search because the free-cancellation check turned the unknown meal into a yes."""
+    rows = convert(_data([_row(plan="FLEX (ROOM-ONLY)", price=231.0, description="Book Now, Pay Later At The Hotel! All prices with VAT"),
+                          _row(plan="FLEX", price=279.0, description="Book Now, Pay Later At The Hotel! Breakfast included All prices with VAT")]),
+                   {**WISHES, "breakfast": True, "free_cancellation": True}, "Hotels")
+    by = {o.name.split(" - ")[-1]: o for o in rows.offers}
+    assert by["FLEX (ROOM-ONLY)"].details["meal"] == "Room only" and by["FLEX (ROOM-ONLY)"].fits is False
+    assert by["FLEX"].fits is True
+
+
+def test_an_unknown_meal_is_never_turned_into_a_yes_by_a_later_check(frozen):
+    rows = convert(_data([_row(plan="FLEX", price=250.0, description="Book Now, Pay Later At The Hotel! All prices with VAT")]), {**WISHES, "breakfast": True, "free_cancellation": True}, "Hotels")
+    assert rows.offers[0].details["meal"] == "not shown" and rows.offers[0].fits is None

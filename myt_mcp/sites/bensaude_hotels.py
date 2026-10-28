@@ -85,7 +85,7 @@ def _day(text: Any) -> date | None:
 
 
 def _meal(description: str) -> str | None:
-    low = (description or "").lower()
+    low = re.sub(r"[-_]+", " ", (description or "").lower())      # "ROOM-ONLY" and "room only" are the same
     return next((label for key, label in MEALS if key in low), None)
 
 
@@ -143,14 +143,15 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         if key in seen:
             continue
         seen.add(key)
-        meal = _meal(r.get("description") or "")
+        meal = _meal(r.get("description") or "") or _meal(plan)      # a plan called "FLEX (ROOM-ONLY)" says it in its name, not in its description
         free, terms = _cancellation(r.get("cancel"), check_in, today)
         no_terms += free is None
-        fits: bool | None = True
+        checks: list[bool | None] = []                  # False beats None beats True: an unknown answer is never turned into a yes by a later check
         if wishes.get("breakfast"):
-            fits = None if meal is None else (meal != "Room only")
-        if fits is not False and wishes.get("free_cancellation"):
-            fits = None if free is None else free
+            checks.append(None if meal is None else (meal != "Room only"))
+        if wishes.get("free_cancellation"):
+            checks.append(free)
+        fits: bool | None = False if False in checks else (None if None in checks else True)
         if wishes.get("max_total") is not None and price > float(wishes["max_total"]):
             fits = False
         if fits is not False and wishes.get("stars_min"):

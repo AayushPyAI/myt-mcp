@@ -1670,3 +1670,11 @@ def test_a_filter_line_the_server_wrote_with_agency_rule_is_not_refused():
     src = [SourceRead(name="Bensaude", read=1, of=1, link="https://bensaude.e-gds.com/webfrontendcorporate/shoppingcart/availability.aspx?hotelid=29")]
     ok = compose(kind="hotels", filters_used=["Best and Cheapest sorts read together (agency rule)"], sources_read=src, not_checked=[], offers=rows, myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
     assert ok["ok"] is True, ok
+
+
+def test_a_tab_column_only_some_sources_have_is_not_reported_as_not_shown():
+    """27 Oct 2026: 'from tab (in 16 row(s))' was listed as hidden by the sources; only Booking.com rows carry it, Skyscanner rows cannot."""
+    rows = offers() + [Offer(group="FLR -> LIS", source="Booking.com flights", name="X", price_total=300, currency="EUR", details={"from_tab": "Best and Cheapest", "stops": 1})]
+    booking = SourceRead(name="Booking.com flights", read=1, of=1, link="https://flights.booking.com/flights/TLV.AIRPORT-LIS.AIRPORT/?depart=2027-03-06")
+    text = run(offers=rows, sources_read=SRC + [booking])["answer"]
+    assert "| from tab |" in text and "from tab" not in text.split("Not shown by the sources:")[1].split("\n")[0]
