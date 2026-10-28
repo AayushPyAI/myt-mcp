@@ -153,3 +153,21 @@ def test_parts_that_fail_twice_make_the_server_say_stop_and_a_whole_pass_starts_
     assert not any("STOP" in p for p in check_parts(broken))
     other = check_parts([{"site": "getyourguide_find", "result": '{"run":"c","part":1,"parts":2,"rows":[]}'}])
     assert not any("STOP" in p for p in other)               # another site has its own count
+
+
+def test_every_part_is_ascii_only_so_what_the_model_sees_is_exactly_what_it_passes_and_the_server_reads_the_same_characters_back():
+    """28 Oct 2026: RateHawk hotel names carry U+00A0 (no-break space) and U+200A (hair space); the browser tool showed plain spaces, the model typed plain spaces, and the checksum failed on about every other run."""
+    from myt_mcp.sites import check_parts, checksum_problem
+    nasty = ["Hotel Açores Lisboa", "Café — Zürich ½", "emoji \U0001F600 end", "quote \" and backslash \\ and tab \t", "plain"]
+    rows = [{"name": nasty[i % len(nasty)] + f" {i}", "price": 100 + i, "note": nasty[(i + 1) % len(nasty)]} for i in range(80)]
+    parts = _parts_from_emit(rows)
+    assert len(parts) >= 2
+    assert all(p.isascii() for p in parts) and "\\u00a0" in parts[0]
+    assert all(checksum_problem(p) is None for p in parts) and check_parts([{"site": "ratehawk_hotels", "result": p} for p in parts]) == []
+    first = json.loads(parts[0])
+    names = [r[first["cols"].index("name")] for r in first["rows"]]
+    assert "Hotel Açores Lisboa 0" in names                              # the escapes read back as the original characters
+    from myt_mcp.sites import expand
+    assert "Hotel\u00a0Açores\u200aLisboa 0" in [r["name"] for r in json.loads(expand(parts[0]))["rows"]]       # the server's own decoder gives the plain rows back
+    typed = parts[0].replace("\\u00a0", " ", 1)                                  # a no-break space typed as a plain space is still caught (and now it cannot be mistaken for one)
+    assert checksum_problem(typed) is not None

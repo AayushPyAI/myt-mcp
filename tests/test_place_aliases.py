@@ -49,3 +49,13 @@ async def test_every_recipe_with_a_script_says_to_open_the_url_in_a_new_tab(monk
     assert "NEW tab" in flights["tab"] and "never in the operator's current tab" in flights["tab"]
     assert "OWN iWay tab" in iway["tab"] and "NEW tab" not in iway["tab"]      # iWay is the one exception: its page does not draw in a background tab (28 Oct 2026)
     assert "tab" not in asked      # a question has no page to open
+
+
+def test_the_window_width_rule_and_the_ratehawk_hotels_description_say_what_is_true():
+    """28 Oct 2026: the recipes said 'you cannot resize' while resize_window exists (and reported success without changing a side panel's width); the hotels tool said the server reads the page while it returned a script."""
+    from pathlib import Path
+    sites = Path(__file__).parent.parent / "myt_mcp" / "sites"
+    text = (sites / "__init__.py").read_text(encoding="utf-8")
+    assert "You cannot resize the window" not in text and "can report success and change nothing" in text and "read window.innerWidth again" in text
+    hotels = (sites / "ratehawk_hotels.py").read_text(encoding="utf-8")
+    assert "when the server's own logged-in browser is switched on for RateHawk" in hotels and "pass its PARTS to compose_answer" in hotels

@@ -125,5 +125,5 @@ def register(mcp: MCPServer) -> None:
         out["filters_used"] = [("Direct flights only (operator)" if direct_only else "Connections allowed (" + ("operator" if direct_only is not None else "default: no preference") + ")"),
                                f"{CABINS[cabin or 'economy'][1]} cabin (" + ("operator" if cabin else "default") + ")", "Best and Cheapest tabs read together (agency rule)"]
         out["more"] = f"For the next {limit} tickets of each tab call this tool again with the same values and offset={offset + limit}."
-        # the server's own Chrome reads it first (28 Oct 2026, from the VPS: 36 tickets in 8 s, no check page); in auto mode the chat refuses a script that posts page data, so this one needs no script in the chat
-        return await server_first(NAME, "SKYSCANNER_READ_IN_SERVER", "https://www.skyscanner.net", out)
+        # OFF unless SKYSCANNER_READ_IN_SERVER=1: it read fine from the VPS once (8 s) and then showed a PerimeterX check page (28 Oct 2026); it is read in the operator's Chrome, which the site does not stop
+        return await server_first(NAME, "SKYSCANNER_READ_IN_SERVER", "https://www.skyscanner.net", out, default=False)

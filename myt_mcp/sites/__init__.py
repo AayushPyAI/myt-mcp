@@ -86,6 +86,8 @@ PAUSE_FILE = Path(os.environ.get("MYT_PAUSE_FILE", "/tmp/myt-mcp/paused_sites.js
 SITE_MIN_SECONDS = {"viator_find": 15.0, "viator_activity": 15.0}      # Viator flagged the server's IP once (15 Oct 2026): slower and fewer reads there
 SITE_MAX_PER_HOUR = {"viator_find": 20, "viator_activity": 20}
 SITE_PAUSE_SECONDS = {"rentalcars_cars": 6 * 3600}      # Rentalcars.com showed "Human Verification" to the server's IP on 27 Oct 2026: it is tried again only every 6 hours, the operator's Chrome reads it meanwhile
+SERVER_READ_SECONDS = 120.0      # the whole server read of one page, slot queue included: claude.ai ends a tool call after 180 s
+DEFINITIVE = re.compile(r"do not retry|lists no flights?|no flights? available|has no flights|no results were found|no trains", re.I)      # the site's own "nothing for this search" answers
 BLOCK_WORDS = re.compile(r"human check|human verification|confirm you are human|verify you are human|refuses|block page|captcha|access denied|unusual traffic|blocked by", re.I)
 
 
@@ -177,7 +179,7 @@ async def read_in_server_browser(site: str, origin: str, url: str, out: dict[str
                 await page.wait_for_url(f"**{ready_path}*", timeout=25000)
             except Exception:
                 pass               # the script says what is on the page
-        blocked = await page.evaluate("() => /Ray ID|Access denied|Pardon Our Interruption|unusual traffic|An error occurred\\.\\s+We.ll be right back|Request blocked|403 Forbidden|Human Verification|confirm you are human|verify you are human/i.test((document.title + ' ' + document.body.innerText).slice(0, 900))")
+        blocked = await page.evaluate("() => /Ray ID|Access denied|Pardon Our Interruption|unusual traffic|An error occurred\\.\\s+We.ll be right back|Request blocked|403 Forbidden|Human Verification|confirm you are human|verify you are human/i.test((document.title + ' ' + document.body.innerText).slice(0, 900)) || /captcha/i.test(location.href)")
         if blocked is True:
             return json.dumps({"ok": False, "error": f"{site} shows a block page (it refuses the server's browser). Stop: do not retry and do not work around it."})
         return await page.evaluate("async () => (" + script + ")")
@@ -205,13 +207,21 @@ async def server_first(site: str, flag: str, origin: str, out: dict[str, Any], r
     with the reason in `server_read`. Nothing is ever worked around: a block only means the other way is used."""
     if not server_reads(flag, default):      # default False: the site is read in the operator's Chrome unless the flag is set to 1 (Rentalcars.com: its prices follow the visitor's country)
         return out
+    import asyncio
+    budget = float(os.environ.get("SERVER_READ_SECONDS", str(SERVER_READ_SECONDS)))
     try:
-        result = await read_in_server_browser(site, origin, out["url"], out, ready_path)
+        result = await asyncio.wait_for(read_in_server_browser(site, origin, out["url"], out, ready_path), timeout=budget)
+    except asyncio.TimeoutError:      # claude.ai ends a tool call after 180 s (28 Oct 2026: Skyscanner sat on a check page and the whole call was lost): the recipe goes back in time
+        result = {"ok": False, "error": f"the server's browser did not finish within {budget:.0f} s (a slow page or a check page)"}
     except Exception as e:      # whatever went wrong in the server's browser, the operator's Chrome is still there
         result = {"ok": False, "error": f"the server's browser failed ({type(e).__name__})"}
     if result.get("ok"):
         return result
-    out["server_read"] = {"tried": True, "ok": False, "why": str(result.get("error") or "the server's browser could not read the page")[:300]}
+    why = str(result.get("error") or "the server's browser could not read the page")
+    if DEFINITIVE.search(why) and not BLOCK_WORDS.search(why):      # the site itself said there is nothing for this search (TAP, SATA, CP): reading it again in Chrome only finds the same (28 Oct 2026)
+        return {"ok": False, "source": site, "server_read": {"tried": True, "ok": False, "why": why[:300]}, "error": why[:300],
+                "next": "The site itself answered that it has nothing for this search (see `error`). Do NOT read it in Claude in Chrome: put it in not_checked with that reason (route not served / not available) and go on; never type a row."}
+    out["server_read"] = {"tried": True, "ok": False, "why": why[:300]}
     out["how_to_read"] = ("The server's own browser could not read this page (see server_read.why). Read it in Claude in Chrome instead: open the url, run the script with the javascript tool, then call compose_answer with the receipt as the other recipes do. "
                           "Do not retry the server's read and never type a row.")
     return out
@@ -258,7 +268,7 @@ def embed_wishes(out: Any, site: str | None = None) -> Any:
             token = STORE.new_run(site, out.get("wishes") or {}, out.get("filters_used"))
             out["script"] = out["script"].replace(head, head + f"  const INGEST = {json.dumps({'url': f'{base}/ingest/{token}', 'token': token})};\n", 1)
             out["ingest"] = token
-            out["before_you_run"] = "The page must be at least 1200 px wide (the script reports window.innerWidth): in a narrow page (side panel open) RateHawk and Skyscanner show a mobile layout in which the scripts find nothing. You cannot resize the window or a tab: ask the operator to close or shrink the side panel or to zoom the page out (Ctrl and minus, about 67%), then run the script."
+            out["before_you_run"] = "The page must be at least 1200 px wide (the script reports window.innerWidth): in a narrow page (side panel open) RateHawk and Skyscanner show a mobile layout in which the scripts find nothing. A resize_window call can report success and change nothing while the side panel is open (28 Oct 2026: it said done and the width stayed 720): read window.innerWidth again after it. If it is still under 1200, ask the operator to close or shrink the side panel or to zoom the page out (Ctrl and minus, about 67%), then run the script."
             out["finish"] = f"After the script's receipt call compose_answer with runs=[\"{token}\"] (no site_results, no typed rows)."
         elif out.get("wishes"):
             out["warning"] = "This server has no public address (PUBLIC_BASE_URL or a tunnel host in ALLOWED_HOSTS): the script returns its answer in parts the browser tool cuts at about 1,000 characters. Tell the operator before using it."

@@ -32,7 +32,10 @@
     const MORE = 'This answer is only part 1: run the expression in `more` with the javascript tool for each next part and pass EVERY part, unchanged, as its own item of compose_answer site_results.';
     // each part ends with the CRC32 of its own text: a part that was cut, re-typed or changed on its way through the model fails the server's check
     const crc32 = (str) => { let crc = 0xFFFFFFFF; for (const x of new TextEncoder().encode(str)) { crc ^= x; for (let k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1)); } return ((crc ^ 0xFFFFFFFF) >>> 0).toString(16).padStart(8, '0'); };
-    const mk0 = (part, parts, chunk) => JSON.stringify({ ...head, run: RUN, rows_read: rows.length, part, parts, ...(part === 1 && typeof WISHES !== 'undefined' ? WISHES : {}), ...(part === 1 && parts > 1 ? { more: 'window.__mytParts[1] (then [2], [3] ... up to parts-1)', note: MORE } : {}), cols, common, path_base: base, rows: chunk });
+    // a part holds ASCII only: every other character is written as \uXXXX (28 Oct 2026: RateHawk's names carry U+00A0 and U+200A spaces that the model saw as plain spaces and typed back as plain spaces, so the checksum failed on about every
+    // other run). The server reads the escapes back as the same characters, and the checksum is made on the text exactly as the model sees it.
+    const asciiOnly = (str) => str.replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+    const mk0 = (part, parts, chunk) => asciiOnly(JSON.stringify({ ...head, run: RUN, rows_read: rows.length, part, parts, ...(part === 1 && typeof WISHES !== 'undefined' ? WISHES : {}), ...(part === 1 && parts > 1 ? { more: 'window.__mytParts[1] (then [2], [3] ... up to parts-1)', note: MORE } : {}), cols, common, path_base: base, rows: chunk }));
     const mk = (part, parts, chunk) => { const t = mk0(part, parts, chunk); return t.slice(0, -1) + ',"crc":"' + crc32(t) + '"}'; };
     const chunks = []; let cur = [];
     for (const a of arr) { cur.push(a); if (cur.length > 1 && mk(1, 9, cur).length > PART_CHARS) { cur.pop(); chunks.push(cur); cur = [a]; } }

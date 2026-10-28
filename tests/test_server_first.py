@@ -101,6 +101,7 @@ async def test_a_human_verification_page_pauses_rentalcars_for_six_hours_and_oth
 async def test_every_one_of_the_six_tools_gives_the_receipt_when_the_server_read_and_the_recipe_with_the_reason_when_not(tool, monkeypatch):
     monkeypatch.setattr(sites, "server_reads", switch)
     monkeypatch.setenv("RENTALCARS_READ_IN_SERVER", "1")      # Rentalcars is off by default; the switch turns it on
+    monkeypatch.setenv("SKYSCANNER_READ_IN_SERVER", "1")      # so is Skyscanner (check page from the server's IP, 28 Oct 2026)
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://mcp.example.test")
     calls = []
 
@@ -196,3 +197,58 @@ async def test_rentalcars_is_read_in_the_operators_chrome_only_unless_its_switch
         tool = next(t for t in (await c.list_tools()).tools if t.name == "rentalcars_cars_recipe")
     assert called == [] and got["script"] and "server_read" not in got
     assert "OPERATOR'S CHROME ONLY" in tool.description and "SERVER FIRST" not in tool.description
+
+
+async def test_a_server_read_that_does_not_finish_in_time_gives_the_recipe_back_in_time_not_a_lost_tool_call(monkeypatch):
+    """28 Oct 2026: Skyscanner sat on a check page and claude.ai ended the whole tool call after 180 s; no recipe came back."""
+    import asyncio
+    monkeypatch.setattr(sites, "server_reads", switch)
+    monkeypatch.setenv("SKYSCANNER_READ_IN_SERVER", "1")
+    monkeypatch.setenv("SERVER_READ_SECONDS", "0.05")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://mcp.example.test")
+
+    async def hangs(site, origin, url, out, ready_path=None):
+        await asyncio.sleep(5)
+    monkeypatch.setattr(sites, "read_in_server_browser", hangs)
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        back = (await c.call_tool("skyscanner_recipe", ARGS["skyscanner_recipe"])).structured_content
+    assert back["script"] and back["server_read"]["ok"] is False and "did not finish within" in back["server_read"]["why"]
+
+
+async def test_when_the_site_itself_says_it_has_nothing_the_chat_is_not_sent_to_read_it_again_in_chrome(monkeypatch):
+    """28 Oct 2026: TAP's own 'No flights available ... do not retry' came with 'Read it in Claude in Chrome instead'."""
+    monkeypatch.setattr(sites, "server_reads", switch)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://mcp.example.test")
+
+    async def nothing(site, origin, url, out, ready_path=None):
+        return {"ok": False, "error": "TAP itself says: \"No flights available on Sat., 6th Mar for this route\". TAP has no flight on this leg that day: report that, do not retry."}
+    monkeypatch.setattr(sites, "read_in_server_browser", nothing)
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        got = (await c.call_tool("tap_recipe", ARGS["tap_recipe"])).structured_content
+        assert "script" not in got and "No flights available" in got["error"] and "Do NOT read it in Claude in Chrome" in got["next"] and got["server_read"]["tried"] is True
+
+        async def blocked(site, origin, url, out, ready_path=None):
+            return {"ok": False, "error": "tap shows a block page (it refuses the server's browser). Stop: do not retry and do not work around it."}
+        monkeypatch.setattr(sites, "read_in_server_browser", blocked)
+        back = (await c.call_tool("tap_recipe", ARGS["tap_recipe"])).structured_content
+        assert back["script"] and "block page" in back["server_read"]["why"]          # a block is not an answer: the operator's own Chrome still reads it
+
+
+async def test_skyscanner_is_read_in_the_operators_chrome_unless_its_switch_is_on_and_a_captcha_address_is_a_block(monkeypatch):
+    monkeypatch.setattr(sites, "server_reads", switch)
+    monkeypatch.delenv("SKYSCANNER_READ_IN_SERVER", raising=False)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://mcp.example.test")
+    called = []
+
+    async def spy(site, origin, url, out, ready_path=None):
+        called.append(site)
+        return dict(RECEIPT)
+    monkeypatch.setattr(sites, "read_in_server_browser", spy)
+    settings = Settings()
+    async with Client(create_server(settings, Services(settings))) as c:
+        got = (await c.call_tool("skyscanner_recipe", ARGS["skyscanner_recipe"])).structured_content
+    assert got["script"] and "server_read" not in got and called == []
+    from pathlib import Path
+    assert "/captcha/i.test(location.href)" in Path(sites.__file__).read_text(encoding="utf-8")      # the PerimeterX page (skyscanner.net/sttc/px/captcha-v2) is a block, seen from its address
