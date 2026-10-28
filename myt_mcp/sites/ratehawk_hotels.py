@@ -24,6 +24,7 @@ NAME = "ratehawk_hotels"
 SOURCE = "RateHawk"
 NEEDS_WIDE_WINDOW = True       # a narrow window shows the mobile layout, which the script cannot read
 GROUP = "Hotels"
+RESIDENCY = "en-il"      # RateHawk's residency / citizenship value for Israel
 
 RECIPES = Path(__file__).parent
 # the sort values RateHawk's own list uses (tested 21 Oct 2026): URL value -> the label the page shows
@@ -52,7 +53,9 @@ def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: d
         raise ValueError("children's ages must be 0-17")
     # RateHawk writes guests as "<adults>and<age>and<age>" (seen 21 Oct 2026 with 2 adults and one child of 6: guests=2and6); one child is tested, more are the same pattern
     guests = "and".join([str(adults)] + [str(a) for a in ages])
-    params: list[tuple[str, str]] = [("dates", f"{check_in:%d.%m.%Y}-{check_out:%d.%m.%Y}"), ("guests", guests)]
+    # the guests' citizenship changes RateHawk's prices: Israel is assumed (the agency's customers are Israeli) and the playbook's address for it is residency=en-il (recorded 15 Oct 2026; the page's form showed Israel
+    # but the address had none, 28 Oct 2026)
+    params: list[tuple[str, str]] = [("dates", f"{check_in:%d.%m.%Y}-{check_out:%d.%m.%Y}"), ("guests", guests), ("residency", RESIDENCY)]
     if breakfast:
         params.append(("meal_types", "breakfast"))
     if free_cancellation:
@@ -173,6 +176,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         notes.append(f"These are options {offset + 1} to {offset + len(offers)} of the list (cheaper ones were shown before): the Cheapest here is not the cheapest overall.")
     if by_price and not offset_given(result_json):
         notes.append(f"RateHawk's list was read sorted by price (low to high): {sources[0].read} of {sources[0].of or 'its'} hotels, the cheapest first.")
+    notes.append("Citizenship used for RateHawk's prices: Israel (assumed: the agency's customers are Israeli and the operator named no other); the address carries residency=en-il. RateHawk's prices depend on it.")
     return SiteRows(offers=offers, read=sources[0].read, total=sources[0].of, problems=problems, sorted_by_price=by_price, extra_notes=notes)
 
 

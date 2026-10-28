@@ -50,6 +50,7 @@ class Offer(BaseModel):
     supplier: str | None = Field(None, description="The company to check in MYT (airline, hotel, rental company, provider).")
     preferred_reason: str | None = Field(None, description="Why this option suits the trip better, from a source or the trip data (for example 'departs 12:20, the trip plans 12:10'). Used for Best fit.")
     link: str | None = None
+    unconfirmed: list[str] = Field(default_factory=list, description="Wishes of the operator this row could not be checked against (set by the server, never typed): the row stays in the table and is never a pick.")
 
     @field_validator("details")
     @classmethod
@@ -58,8 +59,14 @@ class Offer(BaseModel):
         out: dict = {}
         for k, val in v.items():
             key = re.sub(r"[\s\-]+", "_", str(k).strip().lower())
+            key = KEY_ALIASES.get(key, key)
             if key not in out or out[key] in (None, ""):
                 out[key] = val
+        if "capacity" not in out and (out.get("max_passengers") is not None or out.get("max_bags") is not None or out.get("max_standard_bags") is not None):
+            people, bags = out.get("max_passengers"), out.get("max_bags") if out.get("max_bags") is not None else out.get("max_standard_bags")
+            out["capacity"] = "up to " + " / ".join(x for x in (f"{people} people" if people is not None else "", f"{bags} bags" if bags is not None else "") if x)
+            for k in ("max_passengers", "max_bags", "max_standard_bags"):
+                out.pop(k, None)      # said once, in the column the other sources use
         return out
 
 
@@ -87,6 +94,14 @@ def directory_status(name: str) -> str:
 
 def _money(v: float | None, cur: str | None) -> str:
     return "not shown" if v is None else f"{v:,.2f} {cur or ''}".strip()
+
+
+def _quotable_cell(o: "Offer") -> str:
+    base = "yes" if o.quotable else "comparison only"
+    return f"{base} (not confirmed: {', '.join(o.unconfirmed)})" if o.unconfirmed else base
+
+
+KEY_ALIASES = {"free_cancellation": "cancellation", "free_cancel": "cancellation", "waiting": "waiting_time", "meeting": "meeting_point"}      # the words a chat writes for the columns the server asks for (28 Oct 2026: Kiwitaxi rows)
 
 
 DETAIL_CAP = 200      # characters of one detail cell (includes, know before, meeting point...): a longer text is cut at a word and ends with "…" (28 Oct 2026: cells were cut in the middle of a word and the answers were so long that the chat shortened them by hand)
@@ -236,6 +251,14 @@ def price_gap_notes(kind: str, rows: list[Offer]) -> list[str]:
     return [f"Big price gap between sources: the cheapest {low} row is {best[low]:,.2f} {cur} and the cheapest {high} row is {best[high]:,.2f} {cur}. The vehicle class, the pick-up or drop-off point and what is included can differ: compare them row by row before quoting the cheapest."]
 
 
+def flexible_reason(priced: list["Offer"]) -> str:
+    """Why there is no 'Most flexible': say when only comparison rows (not quotable) show free cancellation (28 Oct 2026: 'no free-cancellation option was read' next to rows that carry the flag)."""
+    cmp_flex = [o for o in priced if o.flexible and not o.quotable]
+    if cmp_flex:
+        return f"not determined: no quotable option shows free cancellation (only {len(cmp_flex)} comparison-only row(s) do, from {', '.join(sorted({o.source for o in cmp_flex}))})"
+    return "not determined: no refundable or free-cancellation option was read"
+
+
 def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = False) -> tuple[list[tuple[str, str, str]], list[str]]:
     """Cheapest, Best fit, Most flexible, Recommended for one group: (label, option, reason) rows and notes. All reasons come from the rows' own numbers."""
     notes: list[str] = []
@@ -255,7 +278,7 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
     quotable = [o for o in priced if o.quotable and not o.connecting]
     if not quotable:
         quotable = [o for o in priced if o.quotable]
-    wishes_given = any(o.fits is not None for o in rows)
+    wishes_given = any(o.fits is not None or o.unconfirmed for o in rows)
     fitting = [o for o in quotable if o.fits] if wishes_given else list(quotable)
     if wishes_given and cheapest.fits is False:
         cheap_reason += "; it does NOT meet every wish of the operator"
@@ -268,7 +291,8 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
         best_reason = "cheapest option that meets every wish of the operator" if wishes_given else "no extra wishes were given: the cheapest quotable option"
     else:
         best = None
-        best_reason = "no quotable option meets every wish"
+        unchecked = [o for o in quotable if o.unconfirmed]
+        best_reason = ("no quotable option is confirmed to meet every wish (" + f"{len(unchecked)} could not be checked for: {', '.join(dict.fromkeys(w for o in unchecked for w in o.unconfirmed))})") if unchecked else "no quotable option meets every wish"
     flex = [o for o in fitting if o.flexible] or [o for o in quotable if o.flexible]
     flexible = min(flex, key=lambda o: o.price_total) if flex else None
     cheapest_fitting = min(fitting, key=lambda o: o.price_total) if fitting else None
@@ -313,9 +337,16 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
             gaps = [w for key, w in (("refund_change", "refund terms"), ("checked_bag", "checked-bag terms")) if str(o.details.get(key) or "").lower().startswith("not shown")]
             if gaps:
                 notes.append(f"Caution on the {title} ({o.source}: {o.name}): its {' and '.join(gaps)} are not shown on the list: confirm them on the airline's page before quoting.")
+    if kind == "cars":      # a pick that is not at the airport terminal (28 Oct 2026: the Best fit was an Ofran station outside the airport and only a table cell said so)
+        said: set[int] = set()
+        for title, o in (("Best fit", best), ("Recommended", rec)):
+            where = str((o.details or {}).get("pickup_place") or "") if o is not None else ""
+            if o is not None and id(o) not in said and re.search(r"not at the terminal|outside the airport", where, re.I):
+                said.add(id(o))
+                notes.append(f"Caution on the {title} ({o.source}: {o.name}): its pick-up is not at the airport terminal ({where}): the operator should know before quoting.")
     rows_out = [("Cheapest", label(cheapest), cheap_reason),
                 ("Best fit", label(best), best_reason),
-                ("Most flexible", label(flexible), "the cheapest option the source says is refundable or free to cancel" if flexible else "not determined: no refundable or free-cancellation option was read"),
+                ("Most flexible", label(flexible), "the cheapest option the source says is refundable or free to cancel" if flexible else flexible_reason(priced)),
                 ("Recommended", label(rec), rec_reason)]
     return rows_out, notes
 
@@ -412,12 +443,12 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
             cells = []
             for k in keys:
                 v = o.details.get(k)
-                if (v is None or v == "") and k not in NOT_A_GAP:
+                if (v is None or v == "") and k not in NOT_A_GAP and (k in required or k in o.details):      # a column this kind of row never has (the exact-price columns next to list rows) is not a gap
                     gaps[k] = gaps.get(k, 0) + 1
                 cells.append(_cell(v, DETAIL_CAP))
             tag = " (connecting)" if o.connecting else ""
             lines.append(f"| {o.source} | {_cell(o.name)}{tag} | " + " | ".join(cells)
-                         + f" | {_money(o.price_total, o.currency)} | {_cell(o.price_basis)} | {'yes' if o.quotable else 'comparison only'} | {o.link or 'see Sources'} |")
+                         + f" | {_money(o.price_total, o.currency)} | {_cell(o.price_basis)} | {_quotable_cell(o)} | {o.link or 'see Sources'} |")
         if show_note:
             lines += ["", show_note]
         lines += ["", "| Pick | Option | Reason |", "|---|---|---|"] + [f"| {a} | {b} | {c} |" for a, b, c in pk] + [f"- {n}" for n in pnotes]
@@ -436,12 +467,35 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
     return {"ok": True, "answer": "\n".join(lines), "next": "Call check_answer with this `answer` (and this kind) BEFORE you send it, then show `answer` to the operator exactly as written. Do not retype, reword or reorder a row, and do not change a number, a pick or a reason. You may add questions after it."}
 
 
+def mark_unconfirmed(o: "Offer", what: str) -> None:
+    """A wish this row cannot be checked against: it stays in the table (marked), is never a pick, and is never counted as 'does not meet' (that is for a row that clearly misses a wish)."""
+    if what not in o.unconfirmed:
+        o.unconfirmed.append(what)
+    if o.fits is not False:
+        o.fits = None
+
+
+def tracking_unconfirmed(offers: list["Offer"]) -> str | None:
+    """Flight tracking was asked: a transfer row that does not say 'yes' is unconfirmed ('no' is a clear miss)."""
+    unsure = [o for o in offers if o.quotable and o.fits is not False and str((o.details or {}).get("flight_tracking") or "").lower() != "yes"]
+    for o in unsure:
+        if str((o.details or {}).get("flight_tracking") or "").lower() == "no":
+            o.fits = False
+        else:
+            mark_unconfirmed(o, "flight tracking")
+    unsure = [o for o in unsure if o.fits is not False]
+    if not unsure:
+        return None
+    sources = sorted({o.source for o in unsure})
+    return f"Flight tracking was asked: the rows of {', '.join(sources)} do not say whether it is included, so they are in the table marked 'not confirmed' and are not picks."
+
+
 def bag_unconfirmed(offers: list[Offer]) -> str | None:
     """The operator asked for a checked bag: a quotable row whose list does not say whether one is included does not meet that wish (never assumed). Marks them and returns the note
     (24 Oct 2026: El Al's list shows no bag and was still picked as 'meets every wish')."""
     unsure = [o for o in offers if o.quotable and o.fits is not False and str((o.details or {}).get("checked_bag") or "").lower().startswith("not shown")]
     for o in unsure:
-        o.fits = False
+        mark_unconfirmed(o, "checked bag")
     if not unsure:
         return None
     best = min((o for o in unsure if o.price_total is not None), key=lambda o: o.price_total, default=None)
@@ -459,7 +513,7 @@ def refund_unconfirmed(offers: list[Offer]) -> str | None:
     (26 Oct 2026: a RateHawk fare with 'not shown on the list (open More rates)' became the Best fit of a 'refundable only' search)."""
     unsure = [o for o in offers if o.quotable and o.fits is not False and str((o.details or {}).get("refund_change") or "").lower().startswith("not shown")]
     for o in unsure:
-        o.fits = False
+        mark_unconfirmed(o, "refund terms")
     if not unsure:
         return None
     best = min((o for o in unsure if o.price_total is not None), key=lambda o: o.price_total, default=None)

@@ -25,7 +25,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from myt_mcp.compose import Offer
+from myt_mcp.compose import Offer, mark_unconfirmed
 from myt_mcp.errors import tool_errors
 from myt_mcp.sites import SiteRows, server_first, with_emit
 from myt_mcp.sites.ratehawk_hotels import limits
@@ -162,6 +162,9 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                      "pay": "pay later at the hotel (a credit card is needed to confirm)" if re.search(r"pay later", r.get("description") or "", re.I) else None,
                      "local_tax": _tax(r.get("tax")), "special_offer": bool(r.get("special"))},
             flexible=free, fits=fits, quotable=True, supplier=SUPPLIER, link=None))
+    if wishes.get("max_distance_km") is not None:
+        for o in offers:
+            mark_unconfirmed(o, "distance from the centre")      # the hotel's own site shows no distance: a limit it cannot show is never met by assumption (28 Oct 2026)
     notes = ["Bensaude rows are the hotel group's own website rates for one room."]
     if not data.get("agent_login"):
         notes.append("This is the public website rate: the operator's Chrome is not logged in to Bensaude's agency (corporate) sign-in, whose rates may differ.")

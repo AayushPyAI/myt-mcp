@@ -156,3 +156,10 @@ def test_a_room_only_plan_named_in_its_title_does_not_meet_a_breakfast_wish_even
 def test_an_unknown_meal_is_never_turned_into_a_yes_by_a_later_check(frozen):
     rows = convert(_data([_row(plan="FLEX", price=250.0, description="Book Now, Pay Later At The Hotel! All prices with VAT")]), {**WISHES, "breakfast": True, "free_cancellation": True}, "Hotels")
     assert rows.offers[0].details["meal"] == "not shown" and rows.offers[0].fits is None
+
+
+def test_a_distance_limit_the_hotels_own_site_cannot_show_leaves_every_room_not_confirmed(frozen):
+    """28 Oct 2026: a 2 km limit was asked, Bensaude shows no distance, and Hotel Açores (3.3 km on RateHawk) still 'met every wish'."""
+    rows = convert(_data([_row()]), {**WISHES, "max_distance_km": 2}, "Hotels")
+    assert rows.offers and all(o.unconfirmed == ["distance from the centre"] and o.fits is not True for o in rows.offers)
+    assert all(not o.unconfirmed for o in convert(_data([_row()]), WISHES, "Hotels").offers)

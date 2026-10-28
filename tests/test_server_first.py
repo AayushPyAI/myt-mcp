@@ -22,10 +22,12 @@ ARGS = {
     "rentalcars_cars_recipe": {"pickup": "Lisbon Airport", "pickup_date": "2027-03-06", "pickup_time": "10:00", "dropoff_date": "2027-03-08", "dropoff_time": "10:00", "gearbox": "automatic", "min_seats": 5, "zero_excess": False, "max_total": 300},
     "booking_flights_recipe": {"origin": "TLV", "destination": "LIS", "day": "2027-03-06", "direct_only": False, "cabin": "economy"},
     "booking_attractions_recipe": {"place": "Lisbon", "day": "2027-03-07"},
+    "skyscanner_recipe": {"origin": "tlv", "destination": "lis", "day": "2027-03-06", "direct_only": False, "cabin": "economy"},
+    "tap_recipe": {"origin": "TLV", "destination": "LIS", "day": "2027-03-06", "direct_only": False, "checked_bag": False, "refundable": False},
     "booking_attraction_recipe": {"url": "https://www.booking.com/attractions/pt/pr4z1zrjq9hl-skip-the-queue-tickets-into-the-lisbon-oceanarium.html", "day": "2026-11-10", "adults": 2, "children_ages": []},
 }
 SITE_OF = {"bensaude_hotels_recipe": "bensaude_hotels", "europcar_cars_recipe": "europcar_cars", "rentalcars_cars_recipe": "rentalcars_cars", "booking_flights_recipe": "booking_flights",
-           "booking_attractions_recipe": "booking_attractions", "booking_attraction_recipe": "booking_attraction"}
+           "booking_attractions_recipe": "booking_attractions", "booking_attraction_recipe": "booking_attraction", "skyscanner_recipe": "skyscanner", "tap_recipe": "tap"}
 
 
 def switch(flag, default=True):

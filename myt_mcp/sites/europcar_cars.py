@@ -25,7 +25,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from myt_mcp.compose import Offer
+from myt_mcp.compose import Offer, mark_unconfirmed
 from myt_mcp.errors import tool_errors
 from myt_mcp.fx import basis_note, eur_factors, to_eur
 from myt_mcp.sites import SiteRows, server_first, place_matches, with_emit
@@ -159,6 +159,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         notes.append(f"Europcar priced this search in {', '.join(unconverted)} (its price currency follows the driver's country of residence {data.get('residency') or '?'}) and no euro rate was available: "
                      "those rows are shown in their own currency and never compared with euro prices. Do not convert them yourself.")
     if wishes.get("min_large_bags"):
+        for o in offers:
+            mark_unconfirmed(o, "large bags")
         notes.append(f"The operator needs room for {wishes['min_large_bags']} large bags: Europcar's list shows only a number of luggages without saying which are large, so no Europcar car was checked for it.")
     if wishes.get("zero_excess"):
         notes.append("Zero excess was asked: Europcar's list shows only the basic protection (with an excess); the zero-excess upgrade is priced after selecting a car, which is not done here, so no Europcar row meets it.")

@@ -123,7 +123,7 @@ def test_ratehawk_recipe_url_and_script_are_built_from_the_search():
     from myt_mcp.recipes import ratehawk_hotels_recipe
 
     r = ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "price_asc", True, True, 4, 2)
-    assert r["url"] == ("https://www.ratehawk.com/hotel/portugal/lisbon/?dates=03.05.2027-05.05.2027&guests=2&meal_types=breakfast&payment=freecancellation"
+    assert r["url"] == ("https://www.ratehawk.com/hotel/portugal/lisbon/?dates=03.05.2027-05.05.2027&guests=2&residency=en-il&meal_types=breakfast&payment=freecancellation"
                         "&stars=4.5&sort=price.asc&page=1")
     assert r["expect_sort"] == "Price (low to high)" and "__MAX_PAGES__" not in r["script"] and "const MAX_PAGES = 2;" in r["script"]
     assert "zenpagination-button-next" in r["script"] and "page counter says" in r["script"]
@@ -1789,3 +1789,34 @@ def test_a_place_the_sources_box_does_not_offer_is_an_allowed_reason_so_it_need_
     r = run(not_checked=[NotChecked(name="RateHawk Transfers", reason="place not found in RateHawk's drop-off box: no 'Praça do Comércio, Lisbon' suggestion")])
     assert r["ok"] is True, r
     assert "RateHawk Transfers (place not found" in r["answer"]
+
+
+def test_the_words_a_chat_types_for_the_columns_become_the_columns_the_other_sources_use():
+    """28 Oct 2026: Kiwitaxi rows (typed) said 'free cancellation', 'max bags', 'max passengers': false 'not shown' gaps next to RateHawk's cancellation and capacity."""
+    o = Offer(source="Kiwitaxi", name="Comfort", price_total=40, currency="EUR", details={"free cancellation": "16 hours before", "max bags": 3, "max passengers": 4, "meeting point": None})
+    assert o.details == {"cancellation": "16 hours before", "meeting_point": None, "capacity": "up to 4 people / 3 bags"}
+    keep = Offer(source="RateHawk Transfers", name="Micro", price_total=14, currency="EUR", details={"capacity": "up to 3 people / 2 bags", "cancellation": "free 24h"})
+    assert keep.details == {"capacity": "up to 3 people / 2 bags", "cancellation": "free 24h"}
+
+
+def test_most_flexible_says_when_only_comparison_rows_show_free_cancellation_and_a_pick_outside_the_terminal_gets_a_caution():
+    """28 Oct 2026, cars: 'no free-cancellation option was read' beside Rentalcars rows that carry the flag; the Best fit was an Ofran station outside the airport."""
+    from myt_mcp.compose import picks
+    cmp_row = Offer(group="g", source="Rentalcars.com", name="Golf", price_total=19, currency="EUR", quotable=False, flexible=True, fits=True)
+    best = Offer(group="g", source="Ofran", name="Qashqai", price_total=165.72, currency="EUR", quotable=True, fits=True, details={"pickup_place": "Pick-up station outside the airport (not at the terminal)"})
+    rows, notes = picks("cars", [cmp_row, best], False)
+    d = {a: c for a, _, c in rows}
+    assert d["Most flexible"].startswith("not determined: no quotable option shows free cancellation (only 1 comparison-only row(s) do, from Rentalcars.com)")
+    assert any("Caution on the Best fit (Ofran: Qashqai)" in n and "not at the airport terminal" in n for n in notes) and sum("Caution on the" in n for n in notes) == 1      # Best fit and Recommended are the same row: said once
+    none = Offer(group="g", source="Ofran", name="x", price_total=9, currency="EUR", quotable=True, fits=True)
+    assert {a: c for a, _, c in picks("cars", [none], False)[0]}["Most flexible"] == "not determined: no refundable or free-cancellation option was read"
+
+
+def test_a_column_only_some_kinds_of_row_have_is_not_counted_as_not_shown_for_the_others():
+    """28 Oct 2026, activities: 'includes (in 13 rows), pay, ticket, option state' counted the list rows for columns only the exact-price rows have."""
+    lst = Offer(group="g", source="Viator", name="Walk", price_total=3, currency="EUR", quotable=False, details={"duration": "2h", "start_times": "check", "language": "x", "meeting_point": "x", "cancellation": "free", "private_or_group": "x"})
+    exact = Offer(group="g", source="Viator", name="Walk - English", price_total=6, currency="EUR", quotable=True, details={"duration": "2h", "start_times": "10:00", "language": "x", "meeting_point": "x", "cancellation": "free",
+                                                                                                                              "private_or_group": "x", "includes": None, "pay": None})
+    text = compose("activities", ["Free cancellation (operator)"], [SourceRead(name="Viator", read=2, of=2, link="https://www.viator.com/searchResults/all?text=Lisbon+tours")], [], [lst, exact], {}, None, False, "")["answer"]
+    gap_line = next(l for l in text.splitlines() if l.startswith("Not shown by the sources:"))
+    assert "includes (in 1 row(s))" in gap_line and "pay (in 1 row(s))" in gap_line

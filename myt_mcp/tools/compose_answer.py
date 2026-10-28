@@ -14,9 +14,10 @@ from mcp.types import ToolAnnotations
 from myt_mcp import answer_watch
 from myt_mcp.composed import COMPOSED
 from myt_mcp.ingest import STORE
-from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, bag_unconfirmed, compose, refund_unconfirmed
+from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, bag_unconfirmed, compose, refund_unconfirmed, tracking_unconfirmed
 from myt_mcp.sites import carried_wishes, convert_all, register_all, resolve_site_names
 from myt_mcp.errors import tool_errors
+from myt_mcp.wishes import judge_activities, shared_wishes
 
 log = logging.getLogger("myt_mcp")
 
@@ -110,7 +111,15 @@ def wishes_as_filters(wishes: dict[str, Any]) -> list[str]:
 
 
 def _filter_key(line: str) -> str:
-    return re.sub(r"\s+", " ", re.sub(r"\(.*?\)|\b(?:only|fares?)\b", " ", line.lower())).strip()
+    """The filter without its source in brackets, its source note after a colon and the small words that differ between recipes: 'Max 50 EUR per person' and 'At most 50 EUR per person' are one line."""
+    low = line.lower().split(":")[0] if re.match(r"[^:]*\([^)]*\):", line) or re.match(r"[^:(]*:", line) and not re.search(r"\d:\d", line) else line.lower()
+    low = re.sub(r"\(.*?\)", " ", low)
+    low = re.sub(r"\bat most\b|\bmax(?:imum)?\b|\bbudget up to\b", "max", low)
+    low = re.sub(r"\bbaggage\b", "bag", low)
+    low = re.sub(r"\b(?:only|fares?|included|tabs?|sorts?|read together)\b", " ", low)
+    if low.strip().startswith("prices") and "convert" in low:
+        return "prices converted"
+    return re.sub(r"\s+", " ", low).strip()
 
 
 def merge_filters(own: list[str], more: list[str]) -> list[str]:
@@ -128,6 +137,11 @@ def asks_refundable(filters_used: list[str]) -> bool:
     """A filter line says the operator wants refundable fares (28 Oct 2026: the answer said 'Refundable fares only (operator)' but only TAP and SATA, both not read, had been given the wish, so a fare
     with no refund terms became the Best fit)."""
     return any(re.search(r"refundable", f, re.I) and not re.search(r"not required|not needed|no preference|any fare|not asked", f, re.I) for f in filters_used or [])
+
+
+def asks_flight_tracking(filters_used: list[str]) -> bool:
+    """A filter line says flight tracking was wanted (the wish may be in the filters only, not carried by any recipe)."""
+    return any(re.search(r"flight tracking", f, re.I) and not re.search(r"not required|not needed|no preference|not asked|unknown", f, re.I) for f in filters_used or [])
 
 
 def register(mcp: MCPServer) -> None:
@@ -213,9 +227,11 @@ def register(mcp: MCPServer) -> None:
         if kind == "flights" and (any((c["wishes"].get("expect") or {}).get("refundable") for c in carried.values()) or asks_refundable(filters_used) or (wishes or {}).get("refundable")):
             refund_note = refund_unconfirmed(offers)
             notes = (notes + " " + refund_note).strip() if refund_note else notes
-        tracking_unknown = sorted({o.source for o in offers if (o.details or {}).get("flight_tracking") not in ("yes", "no")}) if kind == "transfers" and (wishes or any(c["wishes"].get("flight_tracking") for c in carried.values())) else []
-        if tracking_unknown and any(c["wishes"].get("flight_tracking") for c in carried.values()):
-            notes = (notes + f" Flight tracking was asked: only RateHawk shows it per row. {', '.join(tracking_unknown)} do not, so their rows are in the table with their flight tracking unknown.").strip()
+        if kind == "activities":      # the wishes of all the recipes of this answer are judged on every row (a maximum per person, hours, a rating), not only on the list they were given to
+            judge_activities(offers, shared_wishes(carried, wishes))
+        if kind == "transfers" and (any(c["wishes"].get("flight_tracking") for c in carried.values()) or (wishes or {}).get("flight_tracking") or asks_flight_tracking(filters_used)):
+            tracking_note = tracking_unconfirmed(offers)      # a row that does not say 'yes' is marked not confirmed and is never a pick (28 Oct 2026: Kiwitaxi became 'Best fit, meets every wish')
+            notes = (notes + " " + tracking_note).strip() if tracking_note else notes
         out = compose(kind, filters_used, sources_read, not_checked, offers, myt_supplier or {}, pickup_time, sorted_by_price, notes, max_rows=MAX_ROWS_BY_KIND.get(kind))
         log.info("CHECK compose_answer kind=%s ok=%s items=%s offers=%s carried=%s passed=%s problems=%s", kind, out.get("ok"), [(i.get("site"), len(i.get("result", ""))) for i in items], len(offers),
                  {k[0]: {w: (c["wishes"].get("expect") or {}).get(w) for w in ("direct_only", "checked_bag", "refundable")} for k, c in carried.items()},

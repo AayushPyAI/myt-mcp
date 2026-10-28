@@ -172,3 +172,10 @@ async def test_a_refused_value_reaches_the_assistant_as_its_own_message_not_as_a
     async with Client(create_server(settings, Services(settings))) as c:
         bad = await c.call_tool("europcar_cars_recipe", base)
     assert bad.is_error and "times must be HH:MM" in bad.content[0].text and "unexpectedly" not in bad.content[0].text
+
+
+def test_a_row_whose_large_bags_the_list_cannot_show_is_marked_not_confirmed_and_never_a_pick():
+    """28 Oct 2026: Ofran's 'x/y' bags and Europcar's luggage count cannot say which are large, and the Best fit still 'met every wish'."""
+    offers = convert(_data(), {**WISHES, "min_large_bags": 2}, "Cars").offers
+    assert offers and all(o.unconfirmed == ["large bags"] and o.fits is not True for o in offers)
+    assert all(not o.unconfirmed for o in convert(_data(), WISHES, "Cars").offers)

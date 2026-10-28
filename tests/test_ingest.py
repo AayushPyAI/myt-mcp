@@ -488,3 +488,11 @@ def test_the_part_notes_of_a_list_read_in_parts_become_one_note_with_the_sum():
     assert merge_part_notes([one.format(12), other, one.format(13), other, one.format(5)]) == [one.format(30), other]
     assert merge_part_notes([one.format(12), "RateHawk's list was read sorted by price (low to high): 9 of its hotels, the cheapest first."]) == [one.format(12), "RateHawk's list was read sorted by price (low to high): 9 of its hotels, the cheapest first."]
     assert merge_part_notes([]) == []
+
+
+def test_the_ratehawk_hotels_address_carries_israel_as_the_guests_citizenship_and_the_answer_says_so():
+    """28 Oct 2026: the form showed Israel but the address had no residency; the playbook's value for Israel is residency=en-il."""
+    from datetime import date
+    from myt_mcp.sites.ratehawk_hotels import ratehawk_hotels_recipe
+    url = ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 3, 6), date(2027, 3, 8), 2, breakfast=True, free_cancellation=True, stars=4)["url"]
+    assert "residency=en-il" in url and "dates=06.03.2027-08.03.2027" in url and "guests=2" in url and "meal_types=breakfast" in url

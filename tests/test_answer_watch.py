@@ -132,3 +132,18 @@ def test_a_flight_pick_whose_refund_or_bag_terms_are_not_shown_gets_a_caution_wh
     assert any("Caution on the Best fit (RateHawk Air: Sky Express SKY ENJOY)" in n and "refund terms are not shown" in n and "checked-bag" not in n for n in notes)
     ok = row.model_copy(update={"details": {"refund_change": "refundable", "checked_bag": "23 kg checked bag included"}})
     assert not any("Caution" in n for n in picks("flights", [ok], False)[1])
+
+
+def test_the_same_filter_in_other_words_is_listed_once():
+    """28 Oct 2026, cars: 'room for 2 large bags' three times, 'Zero excess' three times, the currency line twice; 'Max 50 EUR' next to 'At most 50 EUR'."""
+    from myt_mcp.tools.compose_answer import merge_filters
+    own = ["Automatic gearbox (operator)"]
+    more = ["room for 2 large bags (operator): NOT checkable on Ofran, its list shows only 'x/y' bags", "room for 2 large bags (operator): NOT checkable on Europcar", "room for 2 large bags (operator)",
+            "Zero excess (operator): not met by any Europcar list row", "Zero excess (operator): only a damage excess listed as 0", "Excess cancelled / zero excess (operator)",
+            "prices in other currencies converted to EUR by the server at the Bank of Israel representative rates of 2026-10-26 (USD 1 = EUR 0.8932)", "prices converted to EUR by the server at the Bank of Israel representative rates of 2026-10-26",
+            "At most 50 EUR per person (operator)", "Max 50 EUR per person (operator)", "Checked bag included (operator)", "Checked baggage (operator)",
+            "Best and Cheapest tabs read together (agency rule)", "Best and Cheapest sorts read together (agency rule)", "Free cancellation only (operator)", "Free cancellation (operator)"]
+    merged = merge_filters(own, more)
+    assert merged == ["Automatic gearbox (operator)", "room for 2 large bags (operator): NOT checkable on Ofran, its list shows only 'x/y' bags", "Zero excess (operator): not met by any Europcar list row",
+                      "Excess cancelled / zero excess (operator)", "prices in other currencies converted to EUR by the server at the Bank of Israel representative rates of 2026-10-26 (USD 1 = EUR 0.8932)",
+                      "At most 50 EUR per person (operator)", "Checked bag included (operator)", "Best and Cheapest tabs read together (agency rule)", "Free cancellation only (operator)"]

@@ -17,7 +17,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp.compose import Offer
+from myt_mcp.compose import Offer, mark_unconfirmed
 from myt_mcp.errors import tool_errors
 from myt_mcp.sites import SiteRows, place_matches, with_emit
 from myt_mcp.sites.ratehawk_cars import cars_ask_gate
@@ -142,6 +142,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                      "cancellation": "not shown on the list", "pickup_place": station_text(r.get("station")), "score": r.get("supplier_score")}))
     n = len(data.get("rows", []))
     if wishes.get("min_large_bags"):
+        for o in offers:
+            mark_unconfirmed(o, "large bags")      # the list shows only 'x/y' bags: never a pick on a wish it cannot show (28 Oct 2026: Best fit, 'meets every wish')
         notes.append(f"The operator needs room for {wishes['min_large_bags']} large bags: Ofran's list shows only 'x/y' bags without saying which are large, so no Ofran car was checked for it: open the car's page before quoting an Ofran car.")
     if exp.get("driver_years") and form.get("age"):
         notes.append(f"Ofran's page says the driver age is '{form['age']}' (the operator's driver is {exp['driver_years']}).")

@@ -21,7 +21,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, server_first, with_emit
 from myt_mcp.tap.client import search_link
 
 NAME = "tap"
@@ -142,4 +142,5 @@ def register(mcp: MCPServer) -> None:
                                ("Fares with a checked bag only (operator)" if checked_bag else f"Any bag option ({src(checked_bag)})"),
                                ("Refundable fares only (operator)" if refundable else f"Any refund option ({src(refundable)})")]
         out["more"] = f"For the next {limit} flights call this tool again with the same values and offset={offset + limit}."
-        return out
+        # the server's own Chrome reads it first (28 Oct 2026, from the VPS: TAP's own "No flights available" in 6 s)
+        return await server_first(NAME, "TAP_READ_IN_SERVER", "https://booking.flytap.com", out)

@@ -76,7 +76,7 @@ def test_a_checked_bag_the_row_cannot_show_is_not_a_pick_and_the_note_names_the_
     mk = lambda src, price, bag: Offer(group="g", source=src, name="x", price_total=price, currency="EUR", price_basis="b", fits=True, details={"checked_bag": bag})
     rows = [mk("TAP Air Portugal", 980.42, "yes"), mk("El Al", 846.0, "not shown on the list (fare rules on elal.com)"), mk("El Al", 900.0, "not shown on the list")]
     note = bag_unconfirmed(rows)
-    assert [o.fits for o in rows] == [True, False, False] and "El Al 846.00 EUR" in note and "not picks" in note
+    assert [o.fits for o in rows] == [True, None, None] and [o.unconfirmed for o in rows] == [[], ["checked bag"], ["checked bag"]] and "El Al 846.00 EUR" in note and "not picks" in note      # unconfirmed: in the table, marked, never a pick
     assert bag_unconfirmed([mk("TAP Air Portugal", 1.0, "yes"), mk("RateHawk", 2.0, "no")]) is None
 
 
@@ -221,7 +221,7 @@ def test_a_refundable_wish_makes_a_flight_row_with_unknown_refund_terms_not_a_pi
     rows = [mk("RateHawk Air", 343.72, "not shown on the list (open More rates)"), mk("RateHawk Air", 388.72, "not shown on the list"), mk("RateHawk Air", 411.0, "refundable"),
             mk("SATA / Azores Airlines", 380.72, "refund: Penalty \u20ac65 (chargeable)"), mk("Skyscanner", 254.0, "not shown on the list", quotable=False), mk("TAP Air Portugal", 315.72, "not refundable", fits=False)]
     note = refund_unconfirmed(rows)
-    assert [o.fits for o in rows] == [False, False, True, True, True, False]          # only the quotable, undecided rows with unknown terms change; a comparison row and a decided row are left alone
+    assert [o.fits for o in rows] == [None, None, True, True, True, False] and [bool(o.unconfirmed) for o in rows] == [True, True, False, False, False, False]          # only the quotable, undecided rows with unknown terms change (to "not confirmed"); a comparison row and a decided row are left alone
     assert "RateHawk Air (2 of its 3 rows)" in note and "RateHawk Air 343.72 EUR" in note and "not picks" in note and "Skyscanner" not in note
     assert refund_unconfirmed([mk("TAP Air Portugal", 1.0, "refundable"), mk("SATA / Azores Airlines", 2.0, "refund: Without penalties (included)")]) is None
 
@@ -279,3 +279,31 @@ def test_a_draft_with_fewer_table_rows_than_the_composed_answer_is_warned_not_re
     assert len(w) == 1 and "2 of the 4 table rows" in w[0] and "2 missing" in w[0] and "unchanged and in full" in w[0]
     assert shortened_warnings(short, "general", store) == [] and shortened_warnings(short, "cars", store) == []
     assert shortened_warnings("Sources checked: none returned an option | Not checked: CP", "trains", store) == []
+
+
+def test_a_row_with_an_unconfirmed_wish_stays_in_the_table_marked_and_is_never_the_best_fit():
+    """28 Oct 2026: RateHawk Air rows with refund terms 'not shown' vanished from a 'refundable only' table; the operator needs to see them, marked, to check them."""
+    from myt_mcp.compose import Offer, SourceRead, compose, picks
+    mk = lambda p, refund: Offer(group="g", source="RateHawk Air", name=f"Sky {p}", price_total=p, currency="EUR", quotable=True, fits=True,
+                                 details={"stops": "1", "fare": "x", "checked_bag": "bag", "refund_change": refund, "per_person": "x"})
+    from myt_mcp.compose import refund_unconfirmed
+    rows = [mk(446.7, "not shown on the list (open More rates)"), mk(500.0, "refundable")]
+    refund_unconfirmed(rows)
+    rows_out, notes = picks("flights", rows, False)
+    d = {a: b for a, b, _ in rows_out}
+    assert "500.00" in d["Best fit"] and rows[0].fits is None and rows[0].unconfirmed == ["refund terms"]
+    only = [mk(446.7, "not shown on the list")]
+    refund_unconfirmed(only)
+    p, _ = picks("flights", only, False)
+    assert dict((a, c) for a, _, c in p)["Best fit"].startswith("no quotable option is confirmed to meet every wish (1 could not be checked for: refund terms)")
+    text = compose("flights", ["Refundable fares only (operator)"], [SourceRead(name="RateHawk Air", read=2, of=2, link="https://www.ratehawk.com/air/?route=TLVa06032027LISa")], [], rows, {}, None, False, "")["answer"]
+    assert "not confirmed: refund terms" in text and "Sky 446.7" in text
+
+
+def test_flight_tracking_that_a_transfer_row_does_not_confirm_is_marked_and_a_clear_no_is_a_miss():
+    from myt_mcp.compose import Offer, tracking_unconfirmed
+    mk = lambda src, ft: Offer(group="g", source=src, name="x", price_total=40, currency="EUR", quotable=True, fits=True, details={"flight_tracking": ft})
+    rows = [mk("RateHawk Transfers", "yes"), mk("Kiwitaxi", None), mk("Other", "no")]
+    note = tracking_unconfirmed(rows)
+    assert [o.fits for o in rows] == [True, None, False] and rows[1].unconfirmed == ["flight tracking"] and "Kiwitaxi" in note and "Other" not in note
+    assert tracking_unconfirmed([mk("RateHawk Transfers", "yes")]) is None
