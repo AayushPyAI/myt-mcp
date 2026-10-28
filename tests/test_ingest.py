@@ -478,3 +478,13 @@ def test_a_page_that_blocks_posts_gets_a_script_with_no_post_address_but_the_rec
     assert {r.site for r in STORE.issued(0)} == {"getyourguide_find", "viator_activity", "ratehawk_hotels"}
     posting = sites.embed_wishes({"script": head + "return 1;", "wishes": {}}, "arbitrip_hotels")
     assert "const INGEST" in posting["script"] and posting["ingest"]
+
+
+def test_the_part_notes_of_a_list_read_in_parts_become_one_note_with_the_sum():
+    """28 Oct 2026: RateHawk hotels (3 parts) printed 'sorted by price: 12 of 256', '13 of 256' and '5 of 256' as three notes."""
+    from myt_mcp.sites import merge_part_notes
+    one = "RateHawk's list was read sorted by price (low to high): {} of 256 hotels, the cheapest first."
+    other = "Arbitrip's list was read sorted by price (low to high), the cheapest first."
+    assert merge_part_notes([one.format(12), other, one.format(13), other, one.format(5)]) == [one.format(30), other]
+    assert merge_part_notes([one.format(12), "RateHawk's list was read sorted by price (low to high): 9 of its hotels, the cheapest first."]) == [one.format(12), "RateHawk's list was read sorted by price (low to high): 9 of its hotels, the cheapest first."]
+    assert merge_part_notes([]) == []

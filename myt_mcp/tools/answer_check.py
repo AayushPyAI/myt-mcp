@@ -57,7 +57,9 @@ def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
     if "sources checked:" not in low or "not checked:" not in low:
         missing.append('the first line "Sources checked: ... | Not checked: ... (why)"')
     urls = URL.findall(text)
-    if not urls:
+    if not urls and "sources checked: none returned an option" in low:
+        pass      # the server's own "nothing found" answer: no source was read, so there is no page to link
+    elif not urls:
         missing.append("a link for every source you read (the tool's source/url, or the address of the Chrome page)")
     elif all(re.sub(r"^https?://[^/]+/?$", "", u) == "" for u in urls):
         missing.append("exact links: only home pages were given (flytap.com is not a link; give the search or results page)")
@@ -71,7 +73,7 @@ def check_answer_text(text: str, kind: str = "general") -> dict[str, Any]:
             missing.append('"Filters used: ..." with the source of each filter (operator or trip)')
         elif not any(w in line.lower() for w in ("operator", "trip", "your answer", "you said", "default")):
             warnings.append("Filters used: say where each filter comes from (operator, the trip, or the operator's answer to your question)")
-    if kind in COMPARING and not re.search(r"\b\d+\s+of\s+\d+\b", low):
+    if kind in COMPARING and "sources checked: none returned an option" not in low and not re.search(r"\b\d+\s+of\s+\d+\b", low):
         missing.append('how many results you read per source: "N of M"')
     if kind in NEEDS_SUPPLIER_CHECK and "myt supplier" not in low:
         missing.append('"In MYT supplier?" for the Cheapest, Best fit and Recommended supplier (yes / no / not checked: why)')

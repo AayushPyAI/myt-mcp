@@ -95,6 +95,9 @@ def _days(pickup: str | None, dropoff: str | None) -> int | None:
     return max(1, math.ceil((b - a).total_seconds() / 86400))
 
 
+LOW_PER_DAY = 15.0      # EUR a day: below it the total looks like a mistake to a reader, and it is not one
+
+
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     try:
         data = json.loads(result_json)
@@ -161,6 +164,9 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                      "pickup_place": f"{r.get('place') or 'not shown'} ({PLACE_TYPES.get(str(r.get('place_type')), r.get('place_type') or 'type not shown')}): {r.get('address') or 'address not shown'}",
                      "other_fees": r.get("other_fees"), "original_price": f"{cur} {total:,.2f}" if factor else None}))
     notes = ["Rentalcars rows are the broker's public website price (no negotiated or agency rate), so they are comparison only; the supplier of each car is named in its row."]
+    cheap = [o.price_total for o in offers if o.currency == "EUR" and o.price_total and days and o.price_total / days < LOW_PER_DAY]
+    if cheap:
+        notes.append(f"Some Rentalcars totals are very low ({min(cheap):,.2f} EUR for {days} days): that is the page's own price, in euro as the address asks, not a currency mistake (the operator compared a Mazda 2 on the page at about 18 EUR for 2 days on 27 Oct 2026). Say so; the cars are comparison only.")
     foreign = sorted(c for c in currencies if c != "EUR")
     if foreign and converted:
         notes.append(f"Rentalcars showed its prices in {', '.join(foreign)}: the server converted them to euro at the {fx.get('source')} of {fx.get('date')} and each row's price basis shows the original price and the rate. Do not convert them yourself.")

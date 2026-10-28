@@ -17,6 +17,7 @@ import pkgutil
 import re
 import time
 import zlib
+from datetime import date
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
@@ -333,6 +334,37 @@ def carried_wishes(site_results: list[dict[str, Any]]) -> dict[tuple[str, str], 
     return found
 
 
+def group_title(activity: str | None, day: date) -> str:
+    """'<activity>, 07 Mar 2027': the date is added only when the activity's name does not already say it (28 Oct 2026: 'Lisbon activities 7 Mar 2027, 07 Mar 2027')."""
+    name = (activity or "Activity").strip()
+    said = {f"{day:%d %b %Y}", f"{day.day} {day:%b %Y}", f"{day.day} {day:%B %Y}", f"{day:%d %B %Y}", day.isoformat()}
+    return name if any(x.lower() in name.lower() for x in said) else f"{name}, {day:%d %b %Y}"
+
+
+_PART_NOTE = re.compile(r"^(?P<head>.+?sorted by price \(low to high\): )(?P<read>\d+) of (?P<of>\S+) (?P<tail>hotels, the cheapest first\.)$")
+
+
+def merge_part_notes(notes: list[str]) -> list[str]:
+    """A list passed in parts (RateHawk hotels: 3 parts) says 'read sorted by price: 12 of 256 hotels', '13 of 256', '5 of 256': one note with the sum (28 Oct 2026), and an identical note once."""
+    out: list[str] = []
+    merged: dict[tuple[str, str, str], int] = {}
+    slot: dict[tuple[str, str, str], int] = {}
+    for n in notes:
+        m = _PART_NOTE.match(n)
+        if not m:
+            if n not in out:
+                out.append(n)
+            continue
+        key = (m["head"], m["of"], m["tail"])
+        merged[key] = merged.get(key, 0) + int(m["read"])
+        if key not in slot:
+            slot[key] = len(out)
+            out.append(n)
+    for key, i in slot.items():
+        out[i] = f"{key[0]}{merged[key]} of {key[1]} {key[2]}"
+    return out
+
+
 def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | None, group_for: dict[str, str] | None = None) -> tuple[list[Offer], list[SourceRead], list[str], bool, list[str]]:
     """site_results: [{"site": "ratehawk_hotels", "result": "<the script's answer text>", "url": "<the page address>"}]."""
     mods = modules()
@@ -382,7 +414,7 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
         mine = links.get(site) or {}
         link = (next(iter(mine.values())) if len(mine) == 1 else "; ".join(f"{leg}: {url}" if leg else url for leg, url in mine.items())) if mine else (cur.link if cur else None)
         sources[site] = SourceRead(name=src_name, read=read, of=of, link=link)
-    return offers, list(sources.values()), problems, by_price, notes
+    return offers, list(sources.values()), problems, by_price, merge_part_notes(notes)
 
 
 

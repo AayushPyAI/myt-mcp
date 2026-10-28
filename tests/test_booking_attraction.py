@@ -124,3 +124,26 @@ async def test_the_tool_returns_the_address_and_wishes_and_refuses_a_link_that_i
         assert bad.is_error and "never guess it" in bad.content[0].text
         nobody = await c.call_tool("booking_attraction_recipe", {"url": URL, "day": "2027-03-07", "adults": 0, "children_ages": [5]})
         assert nobody.is_error and "at least one adult" in nobody.content[0].text
+
+
+def test_every_priced_activity_row_names_its_own_page_so_three_rows_do_not_share_one_link():
+    """28 Oct 2026: three activities were priced, the rows said 'see Sources' and Sources held only the first page's link."""
+    path = f"/attractions/pt/{SLUG}.html"
+    withpath = json.loads(answer())
+    withpath["form"]["path"] = path
+    o = convert(json.dumps(withpath), {"expect": EXPECT}, "Activities").offers[0]
+    assert o.link == f"https://www.booking.com{path}?date=2027-03-07&selected_currency=EUR"
+    assert convert(answer(), {"expect": EXPECT}, "Activities").offers[0].link is None          # an older script that did not report the path: the row falls back to 'see Sources'
+    withpath["form"]["path"] = "/somewhere/else.html"
+    assert convert(json.dumps(withpath), {"expect": EXPECT}, "Activities").offers[0].link is None
+
+
+def test_the_group_title_does_not_say_the_date_twice():
+    """28 Oct 2026: the chat named the activity 'Lisbon activities 7 Mar 2027' and the title became 'Lisbon activities 7 Mar 2027, 07 Mar 2027'."""
+    from datetime import date
+    from myt_mcp.sites import group_title
+    d = date(2027, 3, 7)
+    assert group_title("Oceanarium", d) == "Oceanarium, 07 Mar 2027" and group_title(None, d) == "Activity, 07 Mar 2027"
+    for said in ("Lisbon activities 7 Mar 2027", "Fado night 07 Mar 2027", "Walk on 7 March 2027", "Walk 2027-03-07"):
+        assert group_title(said, d) == said
+    assert group_title("Walk 6 Mar 2027", d) == "Walk 6 Mar 2027, 07 Mar 2027"

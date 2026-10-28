@@ -1687,3 +1687,46 @@ def test_detail_keys_typed_with_spaces_or_capitals_are_one_column():
     r = run(kind="transfers", pickup_time="10:00", offers=[Offer(group="A to B", source="TAP", name="Comfort", price_total=40, currency="EUR", details={"meeting point": "hall", "waiting time": "60 min", "capacity": "4", "cancellation": "free", "provider": "x"})])
     header = next(line for line in r["answer"].splitlines() if line.startswith("| Source |"))
     assert header.lower().count("meeting point") == 1 and header.lower().count("waiting time") == 1
+
+
+def test_a_filter_the_assistant_chose_and_says_so_is_accepted_and_a_bare_judgement_is_not():
+    """28 Oct 2026: '(assistant: no hotel picked yet)' and '(my judgement)' were refused, each costing the chat a retry."""
+    ok = run(filters_used=["direct (trip default)", "Drop-off at Rossio Square until a hotel is chosen (assistant: no hotel picked yet)"])
+    assert ok["ok"] is True, ok
+    bad = run(filters_used=["direct (trip default)", "The 3 chosen: highest rating with most reviews (my judgement)"])
+    assert bad["ok"] is False and any("where it comes from" in p for p in bad["problems"])
+
+
+def test_the_title_filter_line_of_the_viator_and_getyourguide_lists_names_its_source():
+    """28 Oct 2026: the recipes wrote 'Titles holding any of: lisbon (the wish's own words)', which compose_answer itself refused."""
+    import re
+    from pathlib import Path
+    from myt_mcp.compose import SOURCE_WORDS
+    for name in ("viator_find.py", "getyourguide_find.py"):
+        src = (Path(__file__).parent.parent / "myt_mcp" / "sites" / name).read_text()
+        bracket = re.search(r"Titles holding any of: \{[^\"]*\} \(([^)]*)\)\"", src).group(1)
+        assert any(w in bracket.lower() for w in SOURCE_WORDS), (name, bracket)
+
+
+def test_when_every_source_is_excused_the_server_writes_the_nothing_found_answer_itself():
+    """28 Oct 2026, trains: CP had none on sale and RateHawk has no Lisbon station; compose refused ('sources_read is empty') and the chat wrote the section by hand, '0 of 0 trains shown'."""
+    r = compose(kind="trains", filters_used=["2nd class (operator)", "Changes allowed (operator)"], sources_read=[],
+                not_checked=[NotChecked(name="CP", reason="not available: CP has no trains on sale for this date"), NotChecked(name="RateHawk Train tickets", reason="route not served: no Lisboa station")],
+                offers=[], myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert r["ok"] is True, r
+    text = r["answer"]
+    assert text.startswith("Sources checked: none returned an option | Not checked: CP (not available: CP has no trains on sale for this date); RateHawk Train tickets (route not served: no Lisboa station)")
+    assert "Filters used: 2nd class (operator); Changes allowed (operator)" in text and "0 of 0" not in text
+    assert text.count("not determined: no source returned an option for this search") == 4 and "In MYT supplier?" not in text and "Sources: none read" in text      # trains never had that line
+    assert "| Cheapest | not determined |" in text
+    t = compose(kind="transfers", filters_used=["2 passengers (operator)"], sources_read=[], not_checked=[NotChecked(name="iWay", reason="no browser tool in this chat")], offers=[], myt_supplier={}, pickup_time="10:00", sorted_by_price=False, notes="")
+    assert t["ok"] is True and "In MYT supplier? not checked: there was no option to check." in t["answer"] and "Pick-up time used on every source: 10:00" in t["answer"]
+
+
+def test_nothing_found_still_needs_allowed_reasons_filters_with_a_source_and_no_sources_at_all_is_still_refused():
+    bad = compose(kind="trains", filters_used=["2nd class (operator)"], sources_read=[], not_checked=[NotChecked(name="CP", reason="skipped for time")], offers=[], myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert bad["ok"] is False and any("not an allowed reason" in p for p in bad["problems"])
+    nofilter = compose(kind="trains", filters_used=["2nd class"], sources_read=[], not_checked=[NotChecked(name="CP", reason="not available: no trains on sale")], offers=[], myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert nofilter["ok"] is False and any("where it comes from" in p for p in nofilter["problems"])
+    nothing = compose(kind="trains", filters_used=["2nd class (operator)"], sources_read=[], not_checked=[], offers=[], myt_supplier={}, pickup_time=None, sorted_by_price=False, notes="")
+    assert nothing["ok"] is False and any("sources_read is empty" in p for p in nothing["problems"])

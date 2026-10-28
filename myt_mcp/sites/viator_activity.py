@@ -20,7 +20,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, group_title, with_emit
 
 NAME = "viator_activity"
 SOURCE = "Viator"
@@ -44,7 +44,7 @@ def viator_activity_recipe(url: str, day: date, adults: int, children_ages: list
     total = adults + len(ages)
     link = clean_url(url)
     path = "/" + link.split("viator.com/", 1)[1]
-    expect = {"day": day.isoformat(), "adults": adults, "children": len(ages), "ages": ages, "total": total, "path": path, "group": f"{(activity or 'Activity').strip()}, {day:%d %b %Y}"}
+    expect = {"day": day.isoformat(), "adults": adults, "children": len(ages), "ages": ages, "total": total, "path": path, "group": group_title(activity, day)}
     steps = [f"Open {link} in the operator's Chrome. The prices must be in EUR: if the page shows another currency, open the globe menu (top right), choose EUR and reload. If a cookie banner is in the way, decline non-essential cookies.",
              f"Date: click the Date field and move the calendar with its arrow (two months are shown) to {day:%B %Y}, then click the day {day.day}. (The address cannot carry the date.)",
              f"Travelers: open the Travelers box and set {total} traveller(s): each in the age band that contains their age (the bands are listed with their ages and differ per activity; adults {adults}" + (f", children's ages {ages}" if ages else "") +

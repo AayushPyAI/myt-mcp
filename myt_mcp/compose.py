@@ -31,7 +31,7 @@ MAX_ROWS_BY_KIND = {"flights": 20, "hotels": 20, "cars": 20, "transfers": 20, "t
 PER_SOURCE_MIN_ROWS = 3
 ALLOWED_REASON_WORDS = ("browser", "chrome", "login", "captcha", "block", "not served", "does not sell", "doesn't sell", "does not fly", "did not answer",
                         "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded", "operator asked for", "operator named")      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
-SOURCE_WORDS = ("operator", "trip", "default", "server", "agency")      # "server": a filter the server itself wrote, e.g. the euro conversion
+SOURCE_WORDS = ("operator", "trip", "default", "server", "agency", "assistant")      # "server": a filter the server itself wrote, e.g. the euro conversion; "assistant": a choice the assistant made and says so (28 Oct 2026: "(assistant: no hotel picked)" and "(my judgement)" were refused)
 
 
 class Offer(BaseModel):
@@ -97,11 +97,11 @@ def _cell(v: Any) -> str:
 
 
 def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
-             myt_supplier: dict[str, str], pickup_time: str | None) -> list[str]:
+             myt_supplier: dict[str, str], pickup_time: str | None, nothing_found: bool = False) -> list[str]:
     problems: list[str] = []
     if kind not in REQUIRED_DETAILS:
         problems.append(f"kind must be one of {sorted(REQUIRED_DETAILS)}")
-    if not sources_read:
+    if not sources_read and not nothing_found:
         problems.append("sources_read is empty: list every source you read")
     for s in sources_read:
         urls = re.findall(r"https?://[^\s;|]+", s.link or "")      # one link, or one per leg ("TLV to LIS, 10 Dec 2026: https://...; LIS to TLV, ...: https://...")
@@ -121,7 +121,7 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
         for f in filters_used:
             if not any(w in f.lower() for w in SOURCE_WORDS):
                 problems.append(f"filter '{f}': say where it comes from (operator / trip / default)")
-    if not offers:
+    if not offers and not nothing_found:
         problems.append("offers is empty: pass the site script's answer parts in site_results (or the rows you read in offers)")
     names = {s.name.lower() for s in sources_read}
     if kind == "hotels":      # one stay is ONE group, so Cheapest / Best fit / Recommended compare every source; a group of one source each hides the better site
@@ -304,11 +304,31 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
     return rows_out, notes
 
 
+def nothing_found_answer(kind: str, filters_used: list[str], not_checked: list[NotChecked], pickup_time: str | None, notes: str) -> dict[str, Any]:
+    """No source returned an option and every one has an allowed reason: the answer says exactly that (no '0 of 0 read'), with the same lines and an empty pick table."""
+    why = "no source returned an option for this search"
+    lines = ["Sources checked: none returned an option | Not checked: " + "; ".join(f"{n.name} ({n.reason})" for n in not_checked)]
+    if filters_used:
+        lines.append("Filters used: " + "; ".join(filters_used))
+    if pickup_time:
+        lines.append(f"Pick-up time used on every source: {pickup_time}")
+    lines += ["", "No options to show: " + why + ".", "", "| Pick | Option | Reason |", "|---|---|---|"] + [f"| {p} | not determined | not determined: {why} |" for p in ("Cheapest", "Best fit", "Most flexible", "Recommended")]
+    if kind in NEEDS_SUPPLIER_CHECK:
+        lines += ["", "In MYT supplier? not checked: there was no option to check."]
+    lines += ["", "Sources: none read"]
+    if notes.strip():
+        lines += ["", "Notes (assistant's judgement, not from a source): " + notes.strip()]
+    return {"ok": True, "answer": "\n".join(lines), "next": "Call check_answer with this `answer` (and this kind) BEFORE you send it, then show `answer` to the operator exactly as written. Do not retype, reword or reorder it. You may add questions after it."}
+
+
 def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
             myt_supplier: dict[str, str], pickup_time: str | None, sorted_by_price: bool, notes: str, max_rows: int | None = None, checked_at: str | None = None) -> dict[str, Any]:
-    problems = validate(kind, filters_used, sources_read, not_checked, offers, myt_supplier, pickup_time)
+    empty = not offers and not sources_read and bool(not_checked)      # every source was excused (28 Oct 2026: CP had no trains on sale, RateHawk has no Lisbon station): the server writes "nothing found" itself
+    problems = validate(kind, filters_used, sources_read, not_checked, offers, myt_supplier, pickup_time, nothing_found=empty)
     if problems:
         return {"ok": False, "problems": problems, "next": "Fix every problem (read the source, or write an allowed reason / the missing field) and call compose_answer again. Do not write the answer yourself."}
+    if empty:
+        return nothing_found_answer(kind, filters_used, not_checked, pickup_time, notes)
     required = REQUIRED_DETAILS[kind]
     if kind == "hotels":      # the agency usually compares RateHawk and Arbitrip: when neither read nor excused (the operator asked for one source, e.g. a hotel's own website) the answer SAYS so; it is not a refusal
         covered = {s.name.lower() for s in sources_read} | {n.name.lower() for n in not_checked}

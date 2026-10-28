@@ -64,3 +64,37 @@ async def test_compose_answer_starts_the_count_and_check_answer_clears_it():
         assert "flights" in answer_watch._PENDING
         await c.call_tool("check_answer", {"draft": done["answer"], "kind": "flights"})
         assert answer_watch._PENDING == {}
+
+
+def test_a_filter_line_that_asks_for_refundable_fares_is_read_as_the_wish():
+    from myt_mcp.tools.compose_answer import asks_refundable
+    assert asks_refundable(["Economy cabin (operator)", "Refundable fares only (operator)"]) is True
+    assert asks_refundable(["Refundable fares not required (operator)", "No preference on refunds"]) is False
+    assert asks_refundable(["Connections allowed (operator)"]) is False and asks_refundable(None) is False
+
+
+@pytest.mark.anyio
+async def test_compose_answer_checks_refund_terms_when_only_the_filter_line_says_refundable(monkeypatch):
+    """28 Oct 2026: the sources read had been given no refundable wish (only TAP and SATA, both not read, had), so a fare with no refund terms was the Best fit of a 'refundable only' answer."""
+    from tests.test_booking_flights import RECIPE, answer
+    import myt_mcp.tools.compose_answer as ca
+    monkeypatch.setattr(ca, "refund_unconfirmed", lambda offers: "REFUND TERMS WERE NOT CONFIRMED")
+    async with Client(create_server(Settings())) as c:
+        item = {"site": "booking_flights", "result": answer(), "url": RECIPE["url"]}
+        args = {"kind": "flights", "site_results": [item], "wishes": {"expect": RECIPE["expect"]}, "not_checked": [{"name": "TAP", "reason": "operator asked for Booking.com only"}], "myt_supplier": {"SKY express": "not checked: test"}}
+        on = (await c.call_tool("compose_answer", {**args, "filters_used": ["Connections allowed (operator)", "Refundable fares only (operator)"]})).structured_content
+        off = (await c.call_tool("compose_answer", {**args, "filters_used": ["Connections allowed (operator)", "Best and Cheapest sorts read together (agency rule)"]})).structured_content
+        assert on["ok"] is True and "REFUND TERMS WERE NOT CONFIRMED" in on["answer"], on
+        assert off["ok"] is True and "REFUND TERMS WERE NOT CONFIRMED" not in off["answer"]
+
+
+@pytest.mark.anyio
+async def test_the_nothing_found_answer_goes_through_the_tool_and_check_answer_passes_it():
+    """28 Oct 2026, trains: the tool refused ('sources_read is empty'), the chat wrote the section itself."""
+    async with Client(create_server(Settings())) as c:
+        done = (await c.call_tool("compose_answer", {"kind": "trains", "filters_used": ["2nd class (operator)", "Changes allowed (operator)"],
+                                                     "not_checked": [{"name": "CP", "reason": "not available: CP has no trains on sale for this date"}, {"name": "RateHawk Train tickets", "reason": "route not served: no Lisboa station"}]})).structured_content
+        assert done["ok"] is True, done
+        assert done["answer"].startswith("Sources checked: none returned an option")
+        checked = (await c.call_tool("check_answer", {"draft": done["answer"], "kind": "trains"})).structured_content
+        assert checked["ok"] is True, checked

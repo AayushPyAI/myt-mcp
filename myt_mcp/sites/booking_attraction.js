@@ -19,7 +19,7 @@ await (async () => {
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const boxText = () => clean(box().innerText);
   const title = clean((document.querySelector('h1') || {}).innerText);
-  const form = { slug, date: new URLSearchParams(location.search).get('date'), currency: new URLSearchParams(location.search).get('selected_currency') };
+  const form = { slug, path: location.pathname, date: new URLSearchParams(location.search).get('date'), currency: new URLSearchParams(location.search).get('selected_currency') };
   const chosen = [...document.querySelectorAll('[data-testid="datepicker-item"]')].filter((e) => e.getAttribute('aria-pressed') === 'true').map((e) => clean(e.innerText));
   const unavailable = (boxText().match(/Your selected date is unavailable[^.]*/i) || [null])[0];
   const head = { form, title, chosen_day: chosen[0] || null, operated_by: ((document.body.innerText.match(/Operated by ([^\n]+)/) || [])[1] || null) };

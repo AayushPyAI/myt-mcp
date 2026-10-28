@@ -186,3 +186,11 @@ def test_the_script_is_valid_javascript(tmp_path):
     path.write_text(script, encoding="utf-8")
     result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
+
+
+def test_a_very_low_total_in_euro_is_explained_as_the_pages_own_price_and_a_normal_one_is_not():
+    """28 Oct 2026: the chat twice called 16-28 EUR for 2 days 'probably a currency problem'; the operator had checked 18 EUR on the page."""
+    low = convert(json.dumps({**json.loads(_data()), "rows": rows_from(api_answer([match(1, cur="EUR", total=16.52, base=15.0, damage=1800.0, theft=1800.0, deposit=2100.0)]))}), WISHES, "Cars")
+    assert any("not a currency mistake" in n and "16.52 EUR for 2 days" in n for n in low.extra_notes)
+    normal = convert(json.dumps({**json.loads(_data()), "rows": rows_from(api_answer([match(1, cur="EUR", total=96.0, base=90.0, damage=1800.0, theft=1800.0, deposit=2100.0)]))}), WISHES, "Cars")
+    assert not any("currency mistake" in n for n in normal.extra_notes)

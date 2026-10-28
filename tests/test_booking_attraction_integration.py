@@ -74,7 +74,7 @@ def test_the_real_script_sets_two_adults_reads_the_pages_own_total_the_times_and
     rec = booking_attraction_recipe(URL, DAY, 2, [], "Oceanarium")
     data = json.loads(run_script(page(), rec))
     assert data["ok"] is True and data["title"] == "Tickets into The Lisbon Oceanarium" and data["chosen_day"] == "Sun 7 Mar" and data["operated_by"] == "Musement" and data["includes"] == "Admission" and data["unavailable"] is None
-    assert data["form"] == {"slug": SLUG, "date": "2027-03-07", "currency": "EUR"} and data["steppers"] == 4
+    assert data["form"] == {"slug": SLUG, "path": f"/attractions/pt/{SLUG}.en-gb.html", "date": "2027-03-07", "currency": "EUR"} and data["steppers"] == 4      # the page's own path: the row's link
     r = data["rows"][0]
     assert r["ticket"] == "Non-refundable" and len(r["times"]) == 18 and r["times"][0] == "10:00" and r["times"][-1] == "18:00" and r["time_chosen"] == "10:00"
     assert [(k["label"], k["count"], k["wanted"]) for k in r["kinds"]] == [("Adult (age 13-64)", 2, 2), ("Child (age 3-12)", 0, 0), ("Senior (age 65+)", 0, 0), ("Infant (age 0-2)", 0, 0)]

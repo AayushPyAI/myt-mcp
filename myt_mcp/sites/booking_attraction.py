@@ -22,7 +22,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, clock24, server_first, with_emit
+from myt_mcp.sites import SiteRows, clock24, group_title, server_first, with_emit
 
 NAME = "booking_attraction"
 SOURCE = "Booking.com attractions (public website price)"
@@ -44,7 +44,7 @@ def booking_attraction_recipe(url: str, day: date, adults: int, children_ages: l
     cc, slug = m.group(1), m.group(2)
     link = f"https://www.booking.com/attractions/{cc}/{slug}.html?date={day.isoformat()}&selected_currency=EUR"
     expect = {"slug": slug, "day": day.isoformat(), "day_label": f"{day:%a} {day.day} {day:%b}", "adults": adults, "children": len(ages), "ages": ages, "total": adults + len(ages), "currency": "EUR",
-              "group": f"{(activity or 'Activity').strip()}, {day:%d %b %Y}"}
+              "group": group_title(activity, day)}
     page_expect = {k: expect[k] for k in ("slug", "day_label", "adults", "ages")}
     script = with_emit((HERE / "booking_attraction.js").read_text(encoding="utf-8")).replace("__EXPECT__", json.dumps(page_expect))
     return {"url": link, "script": script, "expect": expect}
@@ -52,6 +52,15 @@ def booking_attraction_recipe(url: str, day: date, adults: int, children_ages: l
 
 def _num(v: float | None) -> str:
     return "not shown" if v is None else f"{v:,.2f}"
+
+
+def _page_link(form: dict[str, Any]) -> str | None:
+    """The activity's own page with the date and the euro in the address, from the path the page itself reported."""
+    path = str(form.get("path") or "")
+    if not re.fullmatch(r"/attractions/[a-z]{2}/[a-z0-9-]+(\.[a-z-]+)?\.html", path, re.I):
+        return None
+    q = "&".join(x for x in (f"date={form['date']}" if form.get("date") else "", f"selected_currency={form['currency']}" if form.get("currency") else "") if x)
+    return f"https://www.booking.com{path}" + (f"?{q}" if q else "")
 
 
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
@@ -103,7 +112,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         offers.append(Offer(
             group=exp.get("group") or group, source=SOURCE, name=(data.get("title") or "Booking.com activity") + (f" ({ticket})" if ticket != "not shown" else ""), price_total=r["total"], currency="EUR",
             price_basis=f"whole group ({pax} travellers; {breakdown}), " + ("taxes and charges included (the page says so)" if r.get("taxes") else "taxes not stated") + f", for {exp.get('day', 'the date asked')}",
-            flexible=True if free else (False if nonref else None), fits=fits, quotable=False, supplier=data.get("operated_by") or "Booking.com",
+            flexible=True if free else (False if nonref else None), fits=fits, quotable=False, supplier=data.get("operated_by") or "Booking.com", link=_page_link(form),      # each row names its own activity page (28 Oct 2026: three rows, one link in Sources)
+            
             details={"duration": "not shown on the ticket box", "start_times": start + (f" (first chosen: {chosen_time}; the price is for the chosen time)" if chosen_time else ""), "language": "not shown on the ticket box",
                      "meeting_point": "not shown on the ticket box (see Location on the page)", "cancellation": ticket, "private_or_group": "not shown", "includes": data.get("includes") or "not shown",
                      "operated_by": data.get("operated_by") or "not shown", "know_before": data.get("additional") or "not shown"}))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any, Literal
 
@@ -99,6 +100,12 @@ def split_problems(carried: dict[tuple[str, str], dict[str, Any]]) -> list[str]:
     return out
 
 
+def asks_refundable(filters_used: list[str]) -> bool:
+    """A filter line says the operator wants refundable fares (28 Oct 2026: the answer said 'Refundable fares only (operator)' but only TAP and SATA, both not read, had been given the wish, so a fare
+    with no refund terms became the Best fit)."""
+    return any(re.search(r"refundable", f, re.I) and not re.search(r"not required|not needed|no preference|any fare|not asked", f, re.I) for f in filters_used or [])
+
+
 def register(mcp: MCPServer) -> None:
     @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
@@ -179,7 +186,7 @@ def register(mcp: MCPServer) -> None:
         if any((c["wishes"].get("expect") or {}).get("checked_bag") for c in carried.values()):
             bag_note = bag_unconfirmed(offers)
             notes = (notes + " " + bag_note).strip() if bag_note else notes
-        if kind == "flights" and any((c["wishes"].get("expect") or {}).get("refundable") for c in carried.values()):
+        if kind == "flights" and (any((c["wishes"].get("expect") or {}).get("refundable") for c in carried.values()) or asks_refundable(filters_used)):
             refund_note = refund_unconfirmed(offers)
             notes = (notes + " " + refund_note).strip() if refund_note else notes
         tracking_unknown = sorted({o.source for o in offers if (o.details or {}).get("flight_tracking") not in ("yes", "no")}) if kind == "transfers" and (wishes or any(c["wishes"].get("flight_tracking") for c in carried.values())) else []

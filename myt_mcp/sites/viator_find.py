@@ -139,7 +139,7 @@ def register(mcp: MCPServer) -> None:
         src = lambda v: "operator" if v is not None else "default: no preference"       # noqa: E731
         out["filters_used"] = [("Free cancellation only (operator)" if free_cancellation else f"Any cancellation ({src(free_cancellation)})"),
                                (f"At most {max_price:g} EUR per person (operator)" if max_price is not None else f"No price limit ({src(max_price)})"),
-                               (f"At most {max_hours:g} hours (operator)" if max_hours is not None else f"No duration limit ({src(max_hours)})"), f"Titles holding any of: {', '.join(out['expect']['title_contains'])} (the wish's own words)"]
+                               (f"At most {max_hours:g} hours (operator)" if max_hours is not None else f"No duration limit ({src(max_hours)})"), f"Titles holding any of: {', '.join(out['expect']['title_contains'])} (operator: the wish's own words)"]
         out["more"] = f"For the next 24 results call this tool again with the same values and page={page + 1}."
         # viator.com's pages carry a Content-Security-Policy in a <meta> tag that stops the page from sending data to this server (24 Oct 2026): the server reads the list itself, slowly (15 s apart, 20 an hour);
         # when it cannot (27 Oct 2026: "not a Viator search page" twice) the recipe comes back for the operator's Chrome, whose script returns the rows in parts

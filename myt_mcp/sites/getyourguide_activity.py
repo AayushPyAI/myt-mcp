@@ -20,7 +20,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, with_emit
+from myt_mcp.sites import SiteRows, group_title, with_emit
 
 NAME = "getyourguide_activity"
 SOURCE = "GetYourGuide"
@@ -45,7 +45,7 @@ def getyourguide_activity_recipe(url: str, day: date, adults: int, children_ages
     total = adults + len(ages)
     link = clean_url(url, day)
     path = "/" + link.split("getyourguide.com/", 1)[1].split("?")[0].rstrip("/")
-    expect = {"day": day.isoformat(), "adults": adults, "children": len(ages), "ages": ages, "total": total, "path": path, "group": f"{(activity or 'Activity').strip()}, {day:%d %b %Y}"}
+    expect = {"day": day.isoformat(), "adults": adults, "children": len(ages), "ages": ages, "total": total, "path": path, "group": group_title(activity, day)}
     steps = [f"Open {link} in the operator's Chrome. The header menu (EN/...) must show EUR; if it shows another currency (for example ILS), open it, choose Euro (EUR), save, and open the url again (this only changes the display currency). "
              "If a cookie banner is in the way, decline non-essential cookies.",
              f"Open the traveller box and set {total} traveller(s): put each traveller in the category whose age range contains their age (ages: adults {adults}" + (f", children {ages}" if ages else "") +
