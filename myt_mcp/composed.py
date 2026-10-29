@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import re
 import time
+from typing import Any
 
 TTL_SECONDS = 3 * 3600
 MAX_KEPT = 12
 _AMOUNT = re.compile(r"^(?:[€$£₪]\s?)?\d[\d,]*\.\d\d(?:\s?[A-Z]{3})?(?:\s\(.*\))?$")       # a price cell: "794.50 EUR", "€19.00", "13.00 EUR (per vehicle)"; never a link with a date in it
 MIN_CELL = 6          # shorter cells ("yes", "no", "4/3") are too common to prove anything
+
+
+MAX_OFFERS = 4000
 
 
 class ComposedStore:
@@ -34,6 +38,33 @@ class ComposedStore:
 
 
 COMPOSED = ComposedStore()
+
+
+class OfferStore:
+    """The rows of every successful compose_answer, as the server itself held them (29 Oct 2026). A row the operator chooses is found again from what the answer shows (source, name, price), so its
+    price, currency and group are never retyped by the assistant (plan_from_answer)."""
+
+    def __init__(self) -> None:
+        self._items: list[tuple[float, str, Any]] = []
+
+    @staticmethod
+    def _key(o: Any) -> tuple:
+        return (o.group, o.source, o.name, o.price_total)
+
+    def remember(self, kind: str, offers: list[Any]) -> None:
+        now = time.time()
+        fresh = {self._key(o) for o in offers}
+        kept = [i for i in self._items if now - i[0] < TTL_SECONDS and not (i[1] == kind and self._key(i[2]) in fresh)]
+        self._items = (kept + [(now, kind, o) for o in offers])[-MAX_OFFERS:]
+
+    def recent(self, kind: str) -> list[Any]:
+        return [o for ts, k, o in self._items if k == kind and time.time() - ts < TTL_SECONDS]
+
+    def clear(self) -> None:
+        self._items = []
+
+
+OFFERS = OfferStore()
 
 
 def _norm(text: str) -> str:

@@ -13,9 +13,11 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from myt_mcp.checks import ensure, with_checked_at
+from myt_mcp.composed import OFFERS
 from myt_mcp.errors import tool_errors
 from myt_mcp.myt import supplier_directory
 from myt_mcp.myt.paperwork import paperwork_check
+from myt_mcp.myt.plan_from_answer import lines_from_choices
 from myt_mcp.myt.reservation_plan import build_plan, line_note
 from myt_mcp.myt.summaries import _amount, _date
 from myt_mcp.myt.reservations import (CATEGORY_NOTE, KNOWN_CREATE_CATEGORIES, SUPPLIER_KIND, _key, build_create_product, build_update_row,
@@ -68,6 +70,19 @@ class PlanLine(BaseModel):
     supplier_id: int | None = Field(default=None, description="Only when the name matches several suppliers (from find_supplier)")
     arrival_time: str | None = Field(default=None, description="HH:MM, 24-hour")
     comments: str | None = None
+
+
+class AnswerChoice(BaseModel):
+    """A row of a composed answer the operator chose to reserve."""
+
+    source: str = Field(description="The row's Source cell, as shown")
+    name: str = Field(description="The row's Option cell (its words, any order)")
+    price: float | None = Field(default=None, description="The row's Price number, as shown")
+    group: str | None = Field(default=None, description="The leg's date when the same row is in two legs")
+    start_date: date | None = Field(default=None, description="Day of the service; needed for a hotel and a car")
+    nights: int | None = Field(default=None, description="Hotel nights or car days")
+    quantity: float = Field(default=1, description="Rooms or vehicles")
+    supplier: str | None = Field(default=None, description="Supplier name or id, when the row's source is not it (a hotel: Arbitrip or the hotel's own)")
 
 
 def register(mcp: MCPServer, services: Services) -> None:
@@ -213,6 +228,27 @@ def register(mcp: MCPServer, services: Services) -> None:
         return {**base, "sent": True, "created": results, "all_supplier_types_ok": all(r["supplier_type_ok"] for r in results),
                 "next_step": "Status starts at Ready To Send; confirm or voucher it on the MYT screen (never Send Request: it emails the supplier). "
                              "Then the quote is made from these reservations."}
+
+    @mcp.tool(annotations=READ_ONLY)
+    @tool_errors
+    @with_checked_at
+    async def plan_from_answer(trip_id: int, kind: Literal["flights", "hotels", "transfers", "cars", "activities", "trains"], choices: list[AnswerChoice]) -> dict[str, Any]:
+        """RESERVATION LINES FROM CHOSEN ANSWER ROWS. After compose_answer, when the operator says which rows to reserve, give each row as the answer shows it (source, name, price): the server finds its own
+        row (price, leg, supplier) and returns `lines` plus a `plan`. Reads only. Comparison rows, rows missing a wish and suppliers not in the directory are refused. Show the plan; after a clear yes call
+        plan_supplier_reservations with these `lines` and confirm=true. Test trips only unless the operator names another."""
+        services.check_trip(trip_id)
+        built = lines_from_choices(kind, [c.model_dump(mode="json") for c in choices], OFFERS.recent(kind))
+        out: dict[str, Any] = {"trip_id": trip_id, "kind": kind, "lines": built["lines"], "problems": list(built["problems"]), "warnings": list(built["warnings"]), "sent": False}
+        if built["lines"]:
+            before = await trip_v3(trip_id, fresh=True)
+            plan_lines = [{**l, "start_date": date.fromisoformat(l["start_date"])} for l in built["lines"]]
+            plan = build_plan(plan_lines, before.get("reservations") or [], _today())
+            out["plan"] = plan
+            out["problems"] += plan["problems"]
+            out["warnings"] += plan["warnings"]
+        out["next"] = ("Fix these problems first (ask the operator where it is a choice), then call plan_from_answer again." if out["problems"] else
+                       "Nothing was sent. Show this plan to the operator; after a clear yes call plan_supplier_reservations with these `lines` and confirm=true.")
+        return out
 
     @mcp.tool(annotations=WRITE)
     @tool_errors
