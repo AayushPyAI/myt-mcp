@@ -74,7 +74,8 @@ async def test_tool_gives_the_rate_where_to_enter_it_and_changes_nothing(monkeyp
     d = r.structured_content
     assert not r.is_error and d["currency"] == "EUR" and d["ils_per_1"] == 3.4769 and "warning" not in d
     assert "Fixing the exchange rate" in d["enter_in_myt_at"] and "Nothing was changed in MYT" in d["prepare_only"]
-    assert d["against_myt"] == {"myt_rate": 3.53, "difference": -0.0531, "difference_pct": -1.5, "note": "Positive = the bank's rate is higher than the rate in MYT."}
+    assert d["against_myt"] == {"myt_rate": 3.53, "difference": -0.0531, "difference_pct": -1.5, "compared_with": "Bank of Israel representative rate", "note": "Positive = the bank's rate is higher than the rate in MYT."}
+    assert "Hapoalim's cash sale" in d["client_wants"] and "hapoalim_cash_sale" not in d
     assert d["checked_at"].endswith("UTC") and d["source"].startswith("Bank of Israel")
 
 
@@ -88,3 +89,25 @@ async def test_tool_warns_when_the_newest_rate_is_old():
 async def test_tool_validates_input(args, expected):
     r = await call(client_for(), **args)
     assert r.is_error and expected in r.content[0].text
+
+
+async def test_tool_checks_the_hapoalim_cash_sale_and_compares_it_with_myt(monkeypatch):
+    import myt_mcp.tools.rates as rates
+    monkeypatch.setattr(rates, "parse_rate", lambda row: parse_rate(row, NOW))
+    d = (await call(client_for(), hapoalim_cash_sale=3.58, myt_current_rate=3.53)).structured_content       # representative 3.4769 in the fixture
+    assert d["hapoalim_cash_sale"]["value"] == 3.58 and d["hapoalim_cash_sale"]["pct_above_representative"] == 2.97
+    assert "client_wants" not in d and "warning_cash_sale" not in d
+    assert d["against_myt"] == {"myt_rate": 3.53, "difference": 0.05, "difference_pct": 1.42, "compared_with": "Hapoalim cash sale", "note": "Positive = the bank's rate is higher than the rate in MYT."}
+
+
+@pytest.mark.parametrize("cash", [3.4769, 3.9, 3.3])
+async def test_tool_warns_when_the_cash_sale_is_not_believably_above_the_representative_rate(monkeypatch, cash):
+    import myt_mcp.tools.rates as rates
+    monkeypatch.setattr(rates, "parse_rate", lambda row: parse_rate(row, NOW))
+    d = (await call(client_for(), hapoalim_cash_sale=cash)).structured_content
+    assert "Read the cell again" in d["warning_cash_sale"]
+
+
+async def test_tool_refuses_an_impossible_cash_sale():
+    r = await call(client_for(), hapoalim_cash_sale=358)
+    assert r.is_error and "hapoalim_cash_sale" in r.content[0].text
