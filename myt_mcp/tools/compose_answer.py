@@ -207,7 +207,11 @@ def register(mcp: MCPServer) -> None:
             offers += extra
             via_model = sorted({str(i.get("site")) for i in items if _is_parts(i)})
             if via_model:       # the page refused to send these to the server: the rows went through the assistant (their checksums matched); the answer says so itself
-                notes = (notes + f" Passed through the assistant in parts, not received by the server directly: {', '.join(via_model)} (every part matched its checksum).").strip()
+                n_parts = sum(1 for i in items if _is_parts(i))
+                n_fixed = sum(1 for i in items if _is_parts(i) and i.get("repaired"))
+                checked = (f"every part matches its checksum; {n_fixed} of {n_parts} had characters the assistant wrote another way (an escape written as the character) and the server put them back: the checksum proves the data is the script's own"
+                           if n_fixed else "every part matched its checksum")
+                notes = (notes + f" Passed through the assistant in parts, not received by the server directly: {', '.join(via_model)} ({checked}).").strip()
             names = {x.name.lower() for x in srcs}
             sources_read = [x for x in sources_read if x.name.lower() not in names] + srcs
             sorted_by_price = by_price
