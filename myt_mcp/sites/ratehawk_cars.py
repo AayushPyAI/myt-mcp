@@ -131,7 +131,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         notes.append(f"The driver is {wishes['driver_outside_band']}, outside RateHawk's searchable 26-69 band: these prices may leave out a young- or senior-driver fee, so none is a pick for this driver. Compare them only; use a source searched with the driver's real age.")
     form = data.get("form") or {}
     notes.append(f"RateHawk's form showed: pick-up '{form.get('pickup')}', drop-off '{form.get('dropoff')}', times {form.get('times')}, {form.get('dates')}, driver {form.get('age_residency')}.")
-    return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=False, extra_notes=notes)
+    return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=False, extra_notes=notes, more_exist=bool(data.get("reached_cap")))
 
 
 ASK_CARS = {"gearbox": "Gearbox: automatic, manual, or no preference?", "seats": "How many people (minimum seats) and how many LARGE suitcases must the car hold (minimum large bags), or no preference?",

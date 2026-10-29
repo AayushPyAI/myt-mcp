@@ -44,6 +44,12 @@ def hotels() -> dict[str, tuple[int, str]]:
     return {k: (v[0], v[1]) for k, v in data.items() if not k.startswith("_")}
 
 
+def known_stars(hotel_id: Any) -> int | None:
+    """The star rating a hotel's own page states in its title (bensaude_hotels.json, 5th number); None for the others, whose pages say nothing."""
+    data = json.loads((HERE / "bensaude_hotels.json").read_text(encoding="utf-8"))
+    return next((v[4] for k, v in data.items() if not k.startswith("_") and len(v) >= 5 and v[0] == hotel_id), None)
+
+
 def search_of(expect: dict[str, Any]) -> tuple[Any, str | None] | None:
     """Every hotel is its own search: its total and its link are kept apart (28 Oct 2026: two hotels read gave '18 of 9 read' and only the first link)."""
     return (expect["hotel_id"], expect.get("hotel_name") or f"hotel {expect['hotel_id']}") if expect.get("hotel_id") else None
@@ -159,6 +165,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     check_in = _day(data.get("check_in"))
     today = date.today()
     hotel = str(data.get("hotel") or "Bensaude hotel").strip()
+    stars = known_stars(expect.get("hotel_id") or data.get("hotel_id"))
     offers: list[Offer] = []
     seen: set[str] = set()
     no_terms = 0
@@ -183,10 +190,13 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         if wishes.get("max_total") is not None and price > float(wishes["max_total"]):
             fits = False
         if fits is not False and wishes.get("stars_min"):
-            fits = None                                   # the page shows no star rating: a stars wish cannot be met from it
+            if stars is None:
+                fits = None                               # the page shows no star rating: a stars wish cannot be met from it
+            elif stars < float(wishes["stars_min"]):
+                fits = False
         offers.append(Offer(
             group=group, source=SOURCE, name=name, price_total=float(price), currency="EUR", price_basis="whole stay for the room, VAT included, local tax excluded",
-            details={"stars": None, "score": None, "reviews": None, "distance_from_centre": None, "meal": meal or "not shown", "cancellation": terms, "room_bed": r.get("room_desc"),
+            details={"stars": stars, "score": None, "reviews": None, "distance_from_centre": None, "meal": meal or "not shown", "cancellation": terms, "room_bed": r.get("room_desc"),
                      "pay": "pay later at the hotel (a credit card is needed to confirm)" if re.search(r"pay later", r.get("description") or "", re.I) else None,
                      "local_tax": _tax(r.get("tax")), "special_offer": bool(r.get("special"))},
             flexible=free, fits=fits, quotable=True, supplier=SUPPLIER, link=None))
@@ -198,7 +208,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         notes.append("This is the public website rate: the operator's Chrome is not logged in to Bensaude's agency (corporate) sign-in, whose rates may differ.")
     if no_terms:
         notes.append(f"The cancellation terms of {no_terms} rate plan(s) were not readable: they are never counted as free cancellation.")
-    if wishes.get("stars_min"):
+    if wishes.get("stars_min") and stars is None:
         notes.append("The Bensaude page shows no star rating, so a minimum-stars wish could not be checked on these rows.")
     return SiteRows(offers=offers, read=len(offers), total=len(offers), problems=problems, sorted_by_price=False, extra_notes=notes)
 

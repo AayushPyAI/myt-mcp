@@ -31,7 +31,8 @@ BANNED_REASONS = ("for time", "out of scope", "this pass", "keep it short", "say
 MAX_ROWS_BY_KIND = {"flights": 20, "hotels": 20, "cars": 20, "transfers": 20, "trains": 20, "activities": 30}      # rows the table shows per group; the picks always use every row read
 PER_SOURCE_MIN_ROWS = 3
 ALLOWED_REASON_WORDS = ("browser", "chrome", "login", "captcha", "block", "not served", "does not sell", "doesn't sell", "does not fly", "did not answer",
-                        "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded", "operator asked for", "operator named", "place not found", "place not offered", "no matching place")      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
+                        "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded", "operator asked for", "operator named", "place not found", "place not offered", "no matching place",
+                        "went wrong", "error", "did not load", "not loading", "timed out", "unavailable", "empty page")      # a site's own failure said in plain words (29 Oct 2026: "showed 'Something went wrong'" was refused)      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
 SOURCE_WORDS = ("operator", "trip", "default", "server", "agency", "assistant")      # "server": a filter the server itself wrote, e.g. the euro conversion; "assistant": a choice the assistant made and says so (28 Oct 2026: "(assistant: no hotel picked)" and "(my judgement)" were refused)
 
 
@@ -74,6 +75,7 @@ class SourceRead(BaseModel):
     name: str
     read: int | None = Field(None, description="How many results you read.")
     of: int | None = Field(None, description="How many exist after the filters (M in 'N of M').")
+    more: bool = Field(False, description="True when more exist than `of` says (the list was cut): shown as 'N of M+'.")
     link: str | None = Field(None, description="The exact search or results page (the tool's `source`/`url`, or the Chrome page address).")
 
 
@@ -293,8 +295,18 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
         best = None
         unchecked = [o for o in quotable if o.unconfirmed]
         best_reason = ("no quotable option is confirmed to meet every wish (" + f"{len(unchecked)} could not be checked for: {', '.join(dict.fromkeys(w for o in unchecked for w in o.unconfirmed))})") if unchecked else "no quotable option meets every wish"
-    flex = [o for o in fitting if o.flexible] or [o for o in quotable if o.flexible]
+    flex_why = "the cheapest option the source says is refundable or free to cancel"
+    flex = [o for o in fitting if o.flexible]
     flexible = min(flex, key=lambda o: o.price_total) if flex else None
+    if flexible is None:       # no flexible row meets every wish: a row is named only with what is wrong with it (29 Oct 2026: a Micro car and a ROOM-ONLY rate were 'Most flexible' with no word, and not in the table)
+        unsure = [o for o in quotable if o.flexible and o.fits is None]
+        missed = [o for o in quotable if o.flexible and o.fits is False]
+        if unsure:
+            flexible = min(unsure, key=lambda o: o.price_total)
+            flex_why += "; not every wish is confirmed for it" + (f" ({', '.join(flexible.unconfirmed)})" if flexible.unconfirmed else "")
+        elif missed:
+            flexible = min(missed, key=lambda o: o.price_total)
+            flex_why += "; it does NOT meet every wish of the operator"
     cheapest_fitting = min(fitting, key=lambda o: o.price_total) if fitting else None
     if best is None:
         rec, rec_reason = None, "not determined: " + best_reason
@@ -341,12 +353,12 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
         said: set[int] = set()
         for title, o in (("Best fit", best), ("Recommended", rec)):
             where = str((o.details or {}).get("pickup_place") or "") if o is not None else ""
-            if o is not None and id(o) not in said and re.search(r"not at the terminal|outside the airport", where, re.I):
+            if o is not None and id(o) not in said and re.search(r"not at the terminal|outside the airport|transfer to the rental place", where, re.I):
                 said.add(id(o))
                 notes.append(f"Caution on the {title} ({o.source}: {o.name}): its pick-up is not at the airport terminal ({where}): the operator should know before quoting.")
     rows_out = [("Cheapest", label(cheapest), cheap_reason),
                 ("Best fit", label(best), best_reason),
-                ("Most flexible", label(flexible), "the cheapest option the source says is refundable or free to cancel" if flexible else flexible_reason(priced)),
+                ("Most flexible", label(flexible), flex_why if flexible else flexible_reason(priced)),
                 ("Recommended", label(rec), rec_reason)]
     return rows_out, notes
 
@@ -426,7 +438,7 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
         not_checked = list(not_checked) + [NotChecked(name=src, reason="not read in this answer: not compared") for src in ("RateHawk", "Arbitrip") if not any(c.startswith(src.lower()) for c in covered)]
     complete_sources = {s.name.lower() for s in sources_read if s.of and s.read == s.of}
     lines: list[str] = []
-    lines.append("Sources checked: " + "; ".join(f"{s.name} ({s.read} of {s.of} read)" for s in sources_read)
+    lines.append("Sources checked: " + "; ".join(f"{s.name} ({s.read} of {s.of}{'+' if s.more else ''} read)" for s in sources_read)
                  + " | Not checked: " + ("; ".join(f"{n.name} ({n.reason})" for n in not_checked) or "none"))
     if filters_used:
         lines.append("Filters used: " + "; ".join(filters_used))
@@ -500,9 +512,22 @@ def mark_unconfirmed(o: "Offer", what: str) -> None:
         o.fits = None
 
 
+def is_airport(text: Any) -> bool:
+    return bool(re.search(r"airport|aeroport|flughafen|\([A-Za-z]{3}\)", str(text or ""), re.I) or re.fullmatch(r"\s*[A-Za-z]{3}\s*", str(text or "")))
+
+
+def tracking_applies(group: str) -> bool:
+    """Flight tracking belongs to a pick-up AT AN AIRPORT (29 Oct 2026: on the leg from the hotel RateHawk shows no such option and all 24 of its rows were dropped as 'no tracking'). A group that names its direction
+    ('A -> B', 'A to B') is judged on its pick-up; a group with no direction keeps the wish."""
+    parts = re.split(r"\s*(?:->|\u2192|\bto\b)\s*", str(group or ""), maxsplit=1)
+    return len(parts) < 2 or is_airport(parts[0])
+
+
 def tracking_unconfirmed(offers: list["Offer"]) -> str | None:
     """Flight tracking was asked: a transfer row that does not say 'yes' is unconfirmed ('no' is a clear miss)."""
-    unsure = [o for o in offers if o.quotable and o.fits is not False and str((o.details or {}).get("flight_tracking") or "").lower() != "yes"]
+    skipped = sorted({o.group for o in offers if o.quotable and not tracking_applies(o.group)})
+    skipped_note = (f" Flight tracking belongs to a pick-up at an airport: it was not judged on {'the leg ' if len(skipped) == 1 else 'the legs '}{'; '.join(skipped)} (the pick-up is not at an airport).") if skipped else ""
+    unsure = [o for o in offers if o.quotable and o.fits is not False and tracking_applies(o.group) and str((o.details or {}).get("flight_tracking") or "").lower() != "yes"]
     for o in unsure:
         if str((o.details or {}).get("flight_tracking") or "").lower() == "no":
             o.fits = False
@@ -510,9 +535,9 @@ def tracking_unconfirmed(offers: list["Offer"]) -> str | None:
             mark_unconfirmed(o, "flight tracking")
     unsure = [o for o in unsure if o.fits is not False]
     if not unsure:
-        return None
+        return skipped_note.strip() or None
     sources = sorted({o.source for o in unsure})
-    return f"Flight tracking was asked: the rows of {', '.join(sources)} do not say whether it is included, so they are in the table marked 'not confirmed' and are not picks."
+    return f"Flight tracking was asked: the rows of {', '.join(sources)} do not say whether it is included, so they are in the table marked 'not confirmed' and are not picks.{skipped_note}"
 
 
 def bag_unconfirmed(offers: list[Offer]) -> str | None:
