@@ -485,7 +485,11 @@ def test_a_page_that_blocks_posts_gets_a_script_with_no_post_address_but_the_rec
     head = "await (async () => {\n"
     for site in ("getyourguide_find", "viator_activity", "ratehawk_hotels"):
         out = sites.embed_wishes({"script": head + "return 1;", "wishes": {"free_cancellation": True}, "filters_used": ["x"]}, site)
-        assert "INGEST" not in out["script"] and "trycloudflare" not in out["script"] and "const WISHES" in out["script"] and "ingest" not in out and "parts" in out["how_the_answer_comes_back"]
+        assert "INGEST" not in out["script"] and "trycloudflare" not in out["script"] and "ingest" not in out and "parts" in out["how_the_answer_comes_back"]
+        if site == "ratehawk_hotels":      # slim parts: only a token travels in the script, the server keeps the wishes
+            assert "const SLIM = true" in out["script"] and "const WK = " in out["script"] and "const WISHES" not in out["script"] and "ONE output" in out["how_the_answer_comes_back"]
+        else:
+            assert "const WISHES" in out["script"] and "const SLIM" not in out["script"]
     assert {r.site for r in STORE.issued(0)} == {"getyourguide_find", "viator_activity", "ratehawk_hotels"}
     posting = sites.embed_wishes({"script": head + "return 1;", "wishes": {}}, "arbitrip_hotels")
     assert "const INGEST" in posting["script"] and posting["ingest"]

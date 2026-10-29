@@ -54,6 +54,11 @@ class IngestStore:
     def clear(self) -> None:
         self._runs.clear()
 
+    def wishes_of(self, token: str) -> tuple[dict[str, Any], list[str]] | None:
+        """The wishes and filters a recipe call was issued with, by its token (a script that cannot post carries only the token: its parts stay short)."""
+        run = self._runs.get(str(token or ""))
+        return (dict(run.wishes), list(run.filters_used)) if run else None
+
     def issued(self, since: float) -> list[Run]:
         """Runs a recipe call issued after `since` (wall-clock seconds), oldest first."""
         self._sweep()

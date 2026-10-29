@@ -37,6 +37,21 @@
     const asciiOnly = (str) => str.replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
     const mk0 = (part, parts, chunk) => asciiOnly(JSON.stringify({ ...head, run: RUN, rows_read: rows.length, part, parts, ...(part === 1 && typeof WISHES !== 'undefined' ? WISHES : {}), ...(part === 1 && parts > 1 ? { more: 'window.__mytParts[1] (then [2], [3] ... up to parts-1)', note: MORE } : {}), cols, common, path_base: base, rows: chunk }));
     const mk = (part, parts, chunk) => { const t = mk0(part, parts, chunk); return t.slice(0, -1) + ',"crc":"' + crc32(t) + '"}'; };
+    if (typeof SLIM !== 'undefined' && SLIM) {
+      // SLIM parts (RateHawk hotels, 29 Oct 2026): the browser tool shows the model only about 1,000 characters, and the page's security policy stops the post, so the answer has to pass through the model. Every part is
+      // made to fit in ONE output (SLIM_CHARS): part 1 carries the head, the columns and a token for the wishes (the server keeps them), the others only their rows. The server joins the parts of a run before it reads them.
+      const SLIM_CHARS = 850;
+      const slimHead = { ...head, next: 'Pass every part, unchanged, to compose_answer.' };
+      const slim0 = (part, parts, chunk) => asciiOnly(JSON.stringify(part === 1
+        ? { fmt: 'slim', ...slimHead, run: RUN, rows_read: rows.length, part, parts, wk: typeof WK !== 'undefined' ? WK : null, viewport: window.innerWidth, ...(parts > 1 ? { more: 'window.__mytParts[1] .. [parts-1]' } : {}), cols, common, path_base: base, rows: chunk }
+        : { fmt: 'slim', run: RUN, part, parts, rows: chunk }));
+      const slim = (part, parts, chunk) => { const t = slim0(part, parts, chunk); return t.slice(0, -1) + ',"crc":"' + crc32(t) + '"}'; };
+      const groups = []; let now = [];
+      for (const a of arr) { now.push(a); if ((now.length > 1 || groups.length === 0) && slim(groups.length + 1, 9, now).length > SLIM_CHARS) { now.pop(); groups.push(now); now = [a]; } }      // part 1 may hold no row at all when its head is all that fits
+      groups.push(now);
+      window.__mytParts = groups.map((c, i) => slim(i + 1, groups.length, c));
+      return window.__mytParts[0];
+    }
     const chunks = []; let cur = [];
     for (const a of arr) { cur.push(a); if (cur.length > 1 && mk(1, 9, cur).length > PART_CHARS) { cur.pop(); chunks.push(cur); cur = [a]; } }
     chunks.push(cur);

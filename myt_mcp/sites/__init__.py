@@ -251,6 +251,7 @@ def day_month(text: Any) -> str | None:
 
 # Pages whose security policy blocks a post to another address (seen: ingest received nothing from them): their scripts return the answer in parts, with no address to post to
 NO_POST = {"getyourguide_find", "getyourguide_activity", "viator_find", "viator_activity", "ratehawk_hotels", "cp_trains", "sata"}
+SLIM_SITES = {"ratehawk_hotels"}      # their parts are made short enough for ONE tool output (emit.js SLIM) and joined by the server before they are read (join_slim_parts)
 
 
 def embed_wishes(out: Any, site: str | None = None) -> Any:
@@ -262,11 +263,17 @@ def embed_wishes(out: Any, site: str | None = None) -> Any:
         head = "await (async () => {\n"
         base = public_base()
         if base and site in NO_POST:     # the page's security policy stops the post, so the script gets no address to post to (once the chat's Claude declined to run a GetYourGuide script that posts to this server: "sends page data to an unfamiliar outside web address", 26 Oct 2026; a model's choice, not a block)
-            STORE.new_run(site, out.get("wishes") or {}, out.get("filters_used"))      # kept only so compose_answer can tell a recipe was issued and not used
-            if out.get("wishes"):
-                carried = {"wishes": out.get("wishes") or {}, **({"filters_used": out["filters_used"]} if out.get("filters_used") else {})}
-                out["script"] = out["script"].replace(head, head + f"  const WISHES = {json.dumps(carried, ensure_ascii=False)};\n", 1)
-            out["how_the_answer_comes_back"] = "This page cannot send its answer to the server: the script returns it in parts (window.__mytParts). Pass each part to compose_answer exactly as it is, with the recipe's own `site` key."
+            token = STORE.new_run(site, out.get("wishes") or {}, out.get("filters_used"))      # compose_answer tells from it that a recipe was issued and not used; a slim script carries only this token
+            if site in SLIM_SITES:
+                out["script"] = out["script"].replace(head, head + f"  const SLIM = true;\n  const WK = {json.dumps(token)};\n", 1)
+                out["how_the_answer_comes_back"] = ("This page cannot send its answer to the server: the script returns it in short parts (window.__mytParts), each small enough to show in ONE output of the browser tool (it cuts at about 1,000 characters). "
+                                                    "The script's answer is part 1 and says how many parts there are: run `window.__mytParts[1]`, `window.__mytParts[2]` ... one by one, and pass EVERY part to compose_answer exactly as it is (no slicing, no retyping), "
+                                                    "each as its own item of `site_results` with the recipe's own `site` key. A part you did not see whole is run again, never completed by hand.")
+            else:
+                if out.get("wishes"):
+                    carried = {"wishes": out.get("wishes") or {}, **({"filters_used": out["filters_used"]} if out.get("filters_used") else {})}
+                    out["script"] = out["script"].replace(head, head + f"  const WISHES = {json.dumps(carried, ensure_ascii=False)};\n", 1)
+                out["how_the_answer_comes_back"] = "This page cannot send its answer to the server: the script returns it in parts (window.__mytParts). Pass each part to compose_answer exactly as it is, with the recipe's own `site` key."
         elif base and site:       # the answer goes from the page straight to this server (myt_mcp/ingest.py); the wishes stay here
             token = STORE.new_run(site, out.get("wishes") or {}, out.get("filters_used"))
             out["script"] = out["script"].replace(head, head + f"  const INGEST = {json.dumps({'url': f'{base}/ingest/{token}', 'token': token})};\n", 1)
@@ -344,7 +351,51 @@ def carried_wishes(site_results: list[dict[str, Any]]) -> dict[tuple[str, str], 
             continue
         if isinstance(data, dict) and isinstance(data.get("wishes"), dict) and data.get("run"):
             found[_run_key(item)] = {"wishes": data["wishes"], "filters_used": data.get("filters_used") or []}
+        elif isinstance(data, dict) and data.get("wk") and data.get("run"):        # a slim part 1: the server kept the wishes of that recipe call
+            kept = STORE.wishes_of(data["wk"])
+            if kept:
+                found[_run_key(item)] = {"wishes": kept[0], "filters_used": kept[1]}
     return found
+
+
+SLIM_ONLY_KEYS = {"fmt", "cols", "common", "path_base", "rows", "part", "parts", "wk", "more", "note", "crc"}
+
+
+def join_slim_parts(site_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The slim parts of one script run (emit.js SLIM: the head, the columns and the wishes' token in part 1, only rows in the others) become ONE answer, the plain rows the converter reads, with the wishes the server kept.
+    A run with a part missing is left out: check_parts has already said which part to run again."""
+    runs: dict[tuple[str, str], dict[int, tuple[dict[str, Any], dict[str, Any]]]] = {}
+    out: list[dict[str, Any]] = []
+    for item in site_results:
+        try:
+            data = json.loads(item.get("result", ""))
+        except (TypeError, ValueError):
+            data = None
+        if isinstance(data, dict) and data.get("fmt") == "slim" and data.get("run") and data.get("parts"):
+            runs.setdefault((str(item.get("site", "")), str(data["run"])), {})[int(data.get("part", 0))] = (data, item)
+        else:
+            out.append(item)
+    for (site, run), got in runs.items():
+        total = max(int(d["parts"]) for d, _ in got.values())
+        if sorted(got) != list(range(1, total + 1)):
+            continue
+        first = got[1][0]
+        cols, common, base = first.get("cols") or [], first.get("common") or {}, first.get("path_base") or ""
+        rows: list[dict[str, Any]] = []
+        for n in range(1, total + 1):
+            for values in got[n][0].get("rows") or []:
+                row = dict(common)
+                row.update(zip(cols, values))
+                if row.get("path") and "path" in cols:
+                    row["path"] = base + row["path"]
+                rows.append(row)
+        joined: dict[str, Any] = {"site": site, "result": json.dumps({**{k: v for k, v in first.items() if k not in SLIM_ONLY_KEYS}, "rows": rows}),
+                                  "url": next((str(i.get("url")) for _, i in got.values() if i.get("url")), "")}
+        kept = STORE.wishes_of(first.get("wk")) if first.get("wk") else None
+        if kept:
+            joined["wishes"], joined["filters_used"] = kept
+        out.append(joined)
+    return out
 
 
 def group_title(activity: str | None, day: date) -> str:
@@ -391,6 +442,7 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
     searched: dict[str, dict[Any, int]] = {}
     links: dict[str, dict[str | None, str]] = {}      # one link per leg: a trip's outbound and return pages are both sources
     problems += check_parts(site_results)
+    site_results = join_slim_parts(site_results)
     carried = carried_wishes(site_results)
     for item in site_results:
         site = item.get("site", "")
@@ -627,7 +679,8 @@ def check_parts(site_results: list[dict[str, Any]]) -> list[str]:
                 bad.append(f"{item.get('site')}: part {data.get('part')} of {data.get('parts')} {why} (the server received {len(received)} characters, {part_shape(received)}): run window.__mytParts[{int(data.get('part', 1)) - 1}] again in the same Chrome tab and pass it exactly as it is, from ONE output; never join an output that was cut ([TRUNCATED]) or retype it")
             key = (str(item.get("site", "")), str(data["run"]))
             runs.setdefault(key, {})[int(data.get("part", 0))] = len(data.get("rows") or [])
-            meta[key] = (int(data["parts"]), int(data.get("rows_read") or 0))
+            if data.get("rows_read") is not None or key not in meta:      # a slim part after the first carries only its rows: it must not wipe the count part 1 gave
+                meta[key] = (int(data["parts"]), int(data.get("rows_read") or 0))
     problems = list(dict.fromkeys(bad))
     for key, got in runs.items():
         parts, rows_read = meta[key]
