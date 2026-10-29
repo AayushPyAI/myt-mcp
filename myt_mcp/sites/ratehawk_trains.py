@@ -128,7 +128,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     notes += ["RateHawk shows 'from' prices (the cheapest fare of each class); the exact fare and its refund and change conditions are on its Select fare page."]
     if data.get("offset"):
         notes.append(f"These are trains {int(data['offset']) + 1} to {int(data['offset']) + n} of the list.")
-    return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=False, extra_notes=notes, read_rows=True)
+    return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=False, extra_notes=notes, read_rows=True, more_exist=bool(data.get("cards_total")) and not data.get("all_loaded"))
 
 
 def register(mcp: MCPServer) -> None:
