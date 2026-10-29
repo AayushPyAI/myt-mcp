@@ -1,5 +1,5 @@
 {
- "_note": "Bensaude Hotels group: the hotel ids of the booking engine (bensaude.e-gds.com ... hotelid=), read from the booking bar of www.bensaudehotels.com on 27 Oct 2026. Each hotel also has its town and island (or region) from the address data on its own page on bensaudehotels.com, read on 28 Oct 2026: only Hotel Açores Lisboa is in Lisbon, the other ten are in the Azores.",
+ "_note": "Bensaude Hotels group: the hotel ids of the booking engine (bensaude.e-gds.com ... hotelid=), read from the booking bar of www.bensaudehotels.com on 27 Oct 2026. Each hotel also has its town and island (or region) from the address data on its own page on bensaudehotels.com, read on 28 Oct 2026: only Hotel Açores Lisboa is in Lisbon, the other ten are in the Azores. The fifth number, where there is one, is the star rating the hotel's own page states in its title (read 28 Oct 2026): only Hotel Açores Lisboa and Caloura Hotel Resort say it.",
  "grand hotel acores atlantico": [
   33,
   "Grand Hotel Açores Atlântico",
@@ -28,7 +28,8 @@
   9880610,
   "Caloura Hotel Resort",
   "Água de Pau",
-  "São Miguel"
+  "São Miguel",
+  4
  ],
  "sao miguel park hotel": [
   28,
@@ -64,6 +65,7 @@
   30,
   "Hotel Açores Lisboa",
   "Lisboa",
-  "Lisboa"
+  "Lisboa",
+  4
  ]
 }

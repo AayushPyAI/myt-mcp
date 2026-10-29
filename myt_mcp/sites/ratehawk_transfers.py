@@ -16,7 +16,7 @@ from typing import Any
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp.compose import Offer
+from myt_mcp.compose import Offer, is_airport
 from myt_mcp.errors import tool_errors
 from myt_mcp.sites import SiteRows, place_matches, with_emit
 
@@ -111,7 +111,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         fit = (cap >= need) if need and cap else None
         if fit is not False and wishes.get("min_bags"):
             fit = bool(bags) and bags >= int(wishes["min_bags"])
-        if fit is not False and wishes.get("flight_tracking"):
+        tracking_applies = is_airport(exp.get("pickup")) if exp.get("pickup") else True      # flight tracking belongs to a pick-up at an airport: on the leg from a hotel RateHawk shows no such option (29 Oct 2026)
+        if fit is not False and wishes.get("flight_tracking") and tracking_applies:
             fit = bool(r.get("flight_tracking"))
         if fit is not False and wishes.get("max_total") is not None:
             fit = r.get("price") is not None and r["price"] <= float(wishes["max_total"])
@@ -120,7 +121,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                             flexible=cancel.lower().startswith("free cancellation") or None, fits=fit, supplier="RateHawk Transfers",
                             details={"capacity": f"up to {r.get('passengers')} people / {r.get('bags')} bags", "waiting_time": (r.get("waiting") or "").strip() or None,
                                      "cancellation": cancel or None, "provider": None, "meeting_point": (r.get("meeting") or "").strip() or None,
-                                     "flight_tracking": "yes" if r.get("flight_tracking") else "no"}))
+                                     "flight_tracking": "yes" if r.get("flight_tracking") else ("no" if tracking_applies else "not applicable (the pick-up is not at an airport)")}))
     n = int(data.get("rows_read") or len(offers))
     return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=data.get("price_order") == "ascending",
                     extra_notes=[f"RateHawk's page showed: {form.get('from')} to {form.get('to')}, {form.get('when')}, {form.get('passengers')}."])
