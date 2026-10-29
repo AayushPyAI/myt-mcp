@@ -1,5 +1,4 @@
 .venv/
-.env
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -7,7 +6,6 @@ __pycache__/
 *.log
 
 # secrets and local settings (only .env.example is tracked)
-.env.*
 !.env.example
 *.pem
 *.key
@@ -19,7 +17,6 @@ __pycache__/
 .coverage
 htmlcov/
 .idea/
-.vscode/
 
 # recordings, transcripts and exports that must never be pushed
 *.mp3
@@ -29,3 +26,5 @@ htmlcov/
 *.mov
 *transcript*
 *.zip
+config.bat
+node_modules

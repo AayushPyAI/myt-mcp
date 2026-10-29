@@ -39,6 +39,7 @@ class SiteRows:
     extra_notes: list[str] = field(default_factory=list)
     read_rows: bool = False           # True when `read` / `total` count rows (rooms of a hotel), not the offers that are kept
     total_absolute: bool = False      # True when `total` is the whole count every part repeats (flights of the day), not a share to add up
+    more_exist: bool = False          # True when the page has more than were loaded and the page's own total is not known: shown as 'N of N+' (29 Oct 2026: "30 of 30 read" next to "more cars exist")
 
 
 def modules() -> dict[str, Any]:
@@ -485,7 +486,7 @@ def convert_all(site_results: list[dict[str, Any]], wishes: dict[str, Any] | Non
             links.setdefault(site, {})[search[1] if search else (item_wishes.get("expect") or {}).get("leg")] = item["url"]
         mine = links.get(site) or {}
         link = (next(iter(mine.values())) if len(mine) == 1 else "; ".join(f"{leg}: {url}" if leg else url for leg, url in mine.items())) if mine else (cur.link if cur else None)
-        sources[site] = SourceRead(name=src_name, read=read, of=of, link=link)
+        sources[site] = SourceRead(name=src_name, read=read, of=of, link=link, more=rows.more_exist or bool(cur and cur.more))
     return offers, list(sources.values()), problems, by_price, merge_part_notes(notes)
 
 
@@ -672,6 +673,7 @@ def check_parts(site_results: list[dict[str, Any]]) -> list[str]:
             fixed = repaired_part(received) if why else None
             if fixed:
                 item["result"] = fixed          # the script's own checksum proves this is the text it made
+                item["repaired"] = True
                 log.info("PARTS %s part %s of %s: repaired a typed-back part (%s)", item.get("site"), data.get("part"), data.get("parts"), part_shape(received))
                 why = None
             if why:
