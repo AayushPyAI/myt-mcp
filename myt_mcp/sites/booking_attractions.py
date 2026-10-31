@@ -165,11 +165,14 @@ def register(mcp: MCPServer) -> None:
         """FOR BOOKING.COM ATTRACTIONS (COMPARISON ONLY; the LIST of a city's activities for one day; read in the operator's own Chrome with Claude in Chrome), next to GetYourGuide and Viator. `place` is the
         city (Lisbon is known; for another city give `place_path` as in the site's address, '<country code>/<city>', e.g. pt/porto, learned by searching it once on the site). Optional wishes, applied with the
         SITE'S OWN FILTERS in the address: `free_cancellation`, `skip_the_line`, `min_rating` (on the 10-point scale: 9, 8, 7 or 6 and up), `language` ('en', 'pt', 'es', 'fr', 'it', 'de', 'ru', 'uk', 'nl'); also
-        `title_contains` (words that must be in the title, e.g. ["sintra"]) and `max_price` (EUR per person), which the server judges on the cards read. It returns the results url (day, adults, euro and the filters in
+        `title_contains` (REQUIRED: 1-3 words the title must contain, e.g. ["sintra"]) and `max_price` (EUR per person), which the server judges on the cards read. It returns the results url (day, adults, euro and the filters in
         it) and a read-only SCRIPT: open the url, run the script with the javascript tool. The script reads the first `limit` cards (default 30, scrolling to load them) of 'Our top picks', then picks 'Best reviewed' in the page's sort box and
         reads the first `limit` of that (both are read together, the agency's rule), and sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call
         compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. The price is the lowest starting price per person: for the group price of a date call booking_attraction_recipe for the
         best two or three. A human check (captcha) is never worked around: stop and tell the operator. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
+        if not [w for w in (title_contains or []) if str(w).strip()]:
+            raise ToolError("title_contains is needed: Booking.com's list is the WHOLE city's activities (on 29 Oct 2026 57 of 60 cards were off-topic). Give 1-3 words that the wanted activity's title must contain, "
+                            "taken from what the operator asked for (for example [\"food\", \"tour\"] or [\"sintra\"]); the server leaves out the cards without them.")
         known = places().get(place.strip().lower())
         if place_path:
             path, name = place_path, place.strip() or place_path

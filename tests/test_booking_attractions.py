@@ -130,9 +130,19 @@ async def test_the_tool_knows_lisbon_asks_for_a_path_for_another_city_and_return
         for line in ("Free cancellation (operator; the site's own filter)", "Skip the line (operator; the site's own filter)", "Max 50 EUR per person (operator)", "Language en (operator; the site's own filter)"):
             assert line in got["filters_used"], got["filters_used"]
         assert any("sintra" in f for f in got["filters_used"]) and any("Rating 9 or more" in f for f in got["filters_used"]) and any("agency rule" in f for f in got["filters_used"])
-        other = (await c.call_tool("booking_attractions_recipe", {"place": "Porto", "day": "2027-03-07"})).structured_content
+        other = (await c.call_tool("booking_attractions_recipe", {"place": "Porto", "day": "2027-03-07", "title_contains": ["tour"]})).structured_content
         assert other["ok"] is False and other["searched"] is False and other["known_places"] == ["Lisbon"] and "place_path" in other["next"]
-        porto = (await c.call_tool("booking_attractions_recipe", {"place": "Porto", "day": "2027-03-07", "place_path": "pt/porto"})).structured_content
+        porto = (await c.call_tool("booking_attractions_recipe", {"place": "Porto", "day": "2027-03-07", "place_path": "pt/porto", "title_contains": ["tour"]})).structured_content
         assert "/pt/porto.html?" in porto["url"] and porto["wishes"]["expect"]["place"] == "pt/porto"
-        bad = await c.call_tool("booking_attractions_recipe", {"place": "X", "day": "2027-03-07", "place_path": "porto"})
+        bad = await c.call_tool("booking_attractions_recipe", {"place": "X", "day": "2027-03-07", "place_path": "porto", "title_contains": ["tour"]})
         assert bad.is_error and "country code" in bad.content[0].text
+
+
+
+@pytest.mark.anyio
+async def test_the_tool_needs_title_words_because_the_list_is_the_whole_city():
+    async with Client(create_server(Settings())) as c:
+        for words in (None, [], ["  "]):
+            args = {"place": "Lisbon", "day": "2027-03-07"} | ({} if words is None else {"title_contains": words})
+            r = await c.call_tool("booking_attractions_recipe", args)
+            assert r.is_error and "title_contains is needed" in r.content[0].text and "57 of 60" in r.content[0].text

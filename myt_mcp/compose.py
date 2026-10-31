@@ -525,7 +525,12 @@ def tracking_applies(group: str) -> bool:
 
 def tracking_unconfirmed(offers: list["Offer"]) -> str | None:
     """Flight tracking was asked: a transfer row that does not say 'yes' is unconfirmed ('no' is a clear miss)."""
-    skipped = sorted({o.group for o in offers if o.quotable and not tracking_applies(o.group)})
+    legs: dict[tuple[str, tuple[str, str, str] | None], str] = {}
+    for o in offers:
+        if o.quotable and not tracking_applies(o.group):
+            head = re.sub(r"[^a-z0-9]", "", re.split(r"\s+(?:to|->|\u2192)\s+", o.group, maxsplit=1)[0].lower())[:14]      # 'A -> B, 19 Jan' and 'A to B, 19 Jan' are one leg
+            legs.setdefault((head, group_date(o.group)), o.group)
+    skipped = sorted(legs.values())
     skipped_note = (f" Flight tracking belongs to a pick-up at an airport: it was not judged on {'the leg ' if len(skipped) == 1 else 'the legs '}{'; '.join(skipped)} (the pick-up is not at an airport).") if skipped else ""
     unsure = [o for o in offers if o.quotable and o.fits is not False and tracking_applies(o.group) and str((o.details or {}).get("flight_tracking") or "").lower() != "yes"]
     for o in unsure:

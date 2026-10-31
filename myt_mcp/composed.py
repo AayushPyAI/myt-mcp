@@ -67,6 +67,60 @@ class OfferStore:
 OFFERS = OfferStore()
 
 
+CARRY_SECONDS = 45 * 60          # an earlier answer of the same kind and the same request still counts for this long
+CARRY_SECONDS_NO_REQUEST = 20 * 60
+
+
+def _same_words(text: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(text or "").lower()).strip()
+
+
+def _source_key(name: str | None) -> str:
+    return _same_words(str(name or "").split(" (")[0])
+
+
+class CarryStore:
+    """The rows of the last composed answer of each kind, kept so that a second compose_answer of the same kind and the same request does not lose a source (30 Oct 2026: the GetYourGuide list of 14 parts
+    was composed once, then the activities were composed again with another source, and the list was gone: the chat would have had to pass every part again). A source the new call does not have, and did
+    not put in not_checked, comes back from here with its rows and its 'N of M', and the answer says so. A different request, another kind or an older answer carries nothing."""
+
+    def __init__(self) -> None:
+        self._last: dict[str, dict[str, Any]] = {}
+
+    def clear(self) -> None:
+        self._last.clear()
+
+    def remember(self, kind: str, request: str | None, offers: list[Any], sources_read: list[Any]) -> None:
+        self._last[kind] = {"time": time.time(), "request": _same_words(request), "offers": [o.model_copy(deep=True) for o in offers], "sources": [x.model_copy(deep=True) for x in sources_read]}
+
+    def carry(self, kind: str, request: str | None, offers: list[Any], sources_read: list[Any], skipped: list[str]) -> tuple[list[Any], list[Any], str | None]:
+        prev = self._last.get(kind)
+        want = _same_words(request)
+        if not prev or prev["request"] != want or time.time() - prev["time"] > (CARRY_SECONDS if want else CARRY_SECONDS_NO_REQUEST):
+            return [], [], None
+        have = {_source_key(x.name) for x in sources_read} | {_source_key(o.source) for o in offers}
+        skip = [_same_words(n) for n in skipped if _same_words(n)]
+        rows: list[Any] = []
+        sources: list[Any] = []
+        said: list[str] = []
+        for src in prev["sources"]:
+            key = _source_key(src.name)
+            if not key or key in have or any(key in n or n in key for n in skip):
+                continue
+            mine = [o.model_copy(deep=True) for o in prev["offers"] if _source_key(o.source) == key]
+            if not mine:
+                continue
+            rows += mine
+            sources.append(src.model_copy(deep=True))
+            said.append(f"{src.name} ({len(mine)} rows)")
+        if not said:
+            return [], [], None
+        return rows, sources, ("Carried from the earlier answer of this kind (the server kept these rows, nothing was read again): " + ", ".join(said) + ".")
+
+
+CARRY = CarryStore()
+
+
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[*`]", "", text)).strip().lower()
 

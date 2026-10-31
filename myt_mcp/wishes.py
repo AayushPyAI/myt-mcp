@@ -195,3 +195,57 @@ def comfort_unconfirmed(offers: list[Offer]) -> str | None:
     if unsure:
         parts.append(f"{unsure} row(s) of a class that says nothing about comfort (MPV, Minivan, Minibus, Bus...) are marked 'not confirmed' and are not picks")
     return "A comfortable vehicle was asked: " + "; ".join(parts) + "."
+
+
+TIP_BELOW_EUR = 5.0
+TIP_MIN_HOURS = 2.0
+
+
+def flag_tip_based(offers: list[Offer]) -> str | None:
+    """A tour that lasts two hours or more and costs under 5 EUR a person (or nothing) is a tip-based walking tour: the amount shown is the suggested tip, not what the guide earns (29 Oct 2026: '1.00 EUR' tours
+    became the Cheapest pick). The row stays in the table, is marked and is never a pick; the note says how many."""
+    flagged = 0
+    for o in offers:
+        basis = (o.price_basis or "").lower()
+        if o.price_total is None or (o.currency or "EUR") != "EUR" or not re.search(r"per person|from", basis):
+            continue
+        hours = hours_range((o.details or {}).get("duration"))
+        if o.price_total < TIP_BELOW_EUR and hours is not None and hours[1] >= TIP_MIN_HOURS:
+            mark_unconfirmed(o, "the real price (a tip-based tour: the amount shown is a tip, not the cost)")
+            flagged += 1
+    if not flagged:
+        return None
+    return (f"{flagged} tour(s) cost under {TIP_BELOW_EUR:g} EUR a person for {TIP_MIN_HOURS:g} hours or more: that is a tip-based tour (the amount is a suggested tip), so the row stays in the table, "
+            "marked, and is never the Cheapest or any other pick. Ask the guide or the page what the tour really costs before quoting it.")
+
+
+CABIN_WORDS = (("premium", r"premium economy|premium cabin|\bpremium\b"), ("executive", r"business class|business cabin|in business|\bexecutive\b|\bbusiness\b(?!\s+(?:trip|travel|meeting|people|purpose))"), ("first", r"first class|first cabin"),
+               ("economy", r"\beconomy\b|\bcoach\b"))
+
+
+def cabin_in(request: str | None) -> str | None:
+    """The one cabin the operator's message names ('economy', 'premium', 'executive', 'first'), else None (none named, or two: not guessed)."""
+    low = str(request or "").lower()
+    found = [key for key, pattern in CABIN_WORDS if re.search(pattern, low)]
+    if "premium" in found and "economy" in found:
+        found.remove("economy")           # 'premium economy' is one cabin
+    return found[0] if len(found) == 1 else None
+
+
+def judge_cabin(offers: list[Offer], wanted: str) -> str | None:
+    """The cabin comes from the request when the chat did not pass `cabin` to the TAP recipe (29 Oct 2026: a TAP Executive row stood in an Economy answer): a TAP row of another cabin is a miss,
+    a TAP row that does not name its cabin is unconfirmed. Other sources show no cabin on the list and are not judged."""
+    from myt_mcp.sites.tap import cabin_key
+    changed = False
+    for o in offers:
+        if "tap" not in o.source.lower().split() and not o.source.lower().startswith("tap"):
+            continue
+        fare = re.search(r"\(([^)]*)\)\s*$", str((o.details or {}).get("fare") or ""))
+        have = cabin_key(fare.group(1)) if fare else None
+        if have is None:
+            mark_unconfirmed(o, "cabin")
+            changed = True
+        elif have != wanted:
+            o.fits = False
+            changed = True
+    return (f"The cabin ({wanted}) was taken from the operator's message: TAP rows of another cabin are marked as not meeting it, and a TAP row that does not name its cabin is not confirmed.") if changed else None

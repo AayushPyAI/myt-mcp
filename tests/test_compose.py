@@ -1845,3 +1845,10 @@ def test_a_column_only_some_kinds_of_row_have_is_not_counted_as_not_shown_for_th
     text = compose("activities", ["Free cancellation (operator)"], [SourceRead(name="Viator", read=2, of=2, link="https://www.viator.com/searchResults/all?text=Lisbon+tours")], [], [lst, exact], {}, None, False, "")["answer"]
     gap_line = next(l for l in text.splitlines() if l.startswith("Not shown by the sources:"))
     assert "includes (in 1 row(s))" in gap_line and "pay (in 1 row(s))" in gap_line
+
+
+def test_ratehawk_cars_knows_the_lisbon_airport_id():
+    """Lisbon (Humberto Delgado) was read from the cars page on 19 and 29 Oct 2026: route=965847007,965847007; the recipe must not ask for the id again."""
+    from myt_mcp.sites.ratehawk_cars import known_locations
+    ids = known_locations()
+    assert ids["humberto delgado airport"] == ids["lisbon airport"] == 965847007

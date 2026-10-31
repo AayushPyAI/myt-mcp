@@ -110,15 +110,16 @@ def test_a_slim_part_typed_back_with_real_characters_is_repaired_and_a_changed_d
     assert any("checksum" in p for p in check_parts(broken))
 
 
-def test_the_other_parts_sites_keep_their_own_format():
+def test_every_page_that_cannot_post_is_slim_and_a_page_that_posts_is_not():
     import myt_mcp.sites as sites
     head = "await (async () => {\n"
     original = sites.public_base
     sites.public_base = lambda: "https://example.test"
     try:
-        gyg = sites.embed_wishes({"script": head + "return 1;", "wishes": {"x": 1}, "filters_used": []}, "getyourguide_find")
-        rh = sites.embed_wishes({"script": head + "return 1;", "wishes": {"x": 1}, "filters_used": []}, "ratehawk_hotels")
+        slim = {site: sites.embed_wishes({"script": head + "return 1;", "wishes": {"x": 1}, "filters_used": []}, site) for site in sorted(sites.NO_POST)}
+        posting = sites.embed_wishes({"script": head + "return 1;", "wishes": {"x": 1}, "filters_used": []}, "arbitrip_hotels")
     finally:
         sites.public_base = original
-    assert "const WISHES" in gyg["script"] and "const SLIM" not in gyg["script"]
-    assert "const SLIM = true" in rh["script"] and "const WISHES" not in rh["script"] and sites.SLIM_SITES == {"ratehawk_hotels"}
+    assert sites.SLIM_SITES == sites.NO_POST and {"getyourguide_find", "viator_find", "cp_trains", "sata", "ratehawk_hotels"} <= sites.SLIM_SITES
+    assert all("const SLIM = true" in o["script"] and "const WK = " in o["script"] and "const WISHES" not in o["script"] for o in slim.values())
+    assert "const INGEST" in posting["script"] and "const SLIM" not in posting["script"]

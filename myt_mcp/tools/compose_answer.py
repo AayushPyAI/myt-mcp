@@ -11,13 +11,14 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp import answer_watch
-from myt_mcp.composed import COMPOSED, OFFERS
+from myt_mcp import answer_watch, request_check as rc
+from myt_mcp.composed import CARRY, COMPOSED, OFFERS
 from myt_mcp.ingest import STORE
 from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, bag_unconfirmed, compose, refund_unconfirmed, tracking_unconfirmed
 from myt_mcp.sites import carried_wishes, convert_all, register_all, resolve_site_names
 from myt_mcp.errors import tool_errors
-from myt_mcp.wishes import comfort_unconfirmed, judge_activities, judge_hotels, shared_wishes
+from myt_mcp.tools.answer_check import check_answer_text
+from myt_mcp.wishes import cabin_in, comfort_unconfirmed, flag_tip_based, judge_activities, judge_cabin, judge_hotels, shared_wishes
 
 log = logging.getLogger("myt_mcp")
 
@@ -150,16 +151,14 @@ def register(mcp: MCPServer) -> None:
     async def compose_answer(kind: Kind, site_results: list[dict[str, str]] | None = None, wishes: dict[str, Any] | None = None, filters_used: list[str] | None = None,
                              sources_read: list[SourceRead] | None = None, not_checked: list[NotChecked] | None = None, offers: list[Offer] | None = None,
                              myt_supplier: dict[str, str] | None = None, pickup_time: str | None = None, sorted_by_price: bool = True, notes: str = "",
-                             ratehawk_results: list[str] | None = None, ratehawk_urls: list[str] | None = None, hotel_wishes: dict[str, Any] | None = None, runs: list[str] | None = None) -> dict[str, Any]:
+                             ratehawk_results: list[str] | None = None, ratehawk_urls: list[str] | None = None, hotel_wishes: dict[str, Any] | None = None, runs: list[str] | None = None, request: str | None = None) -> dict[str, Any]:
         """BUILD THE FINAL ANSWER with this tool for every price or comparison request and show its `answer` text as it is; never write the table or the
         picks yourself. SHORTEST CALL for a Chrome site with a recipe: compose_answer(kind, runs=[the `ingest` id of every recipe you ran: each script posts its answer to the
         server by itself and its receipt holds the id; NEVER type, decode or pass the rows yourself], not_checked=[a source you could not read, with an allowed reason]);
         `site_results` (script answer parts passed unchanged) is the old way, only for a recipe whose answer has no `ingest`; the server fills the rest and tells you in `problems` what is missing.
-        Longer form: pass the rows you
-        read (from the tools) as `offers`, the sources with how many you read (`read` of `of`) and their exact links, the sources you did not read
-        with an allowed reason, the filters with their source (operator / trip / default), and the MYT supplier check per pick (`myt_supplier`,
-        e.g. {"TAP AIR PORTUGAL": "yes"}). For a Chrome site that has a recipe tool (ratehawk_hotels_recipe, ...) pass the script's answer UNCHANGED in
-        `site_results`: [{"site": "<recipe site name>", "result": "<script answer text>", "url": "<page url>"}]; the server turns it into rows itself.
+        Longer form: pass the rows you read (from the tools) as `offers`, the sources with how many you read (`read` of `of`) and their exact links, the sources you did not read
+        with an allowed reason, the filters with their source (operator / trip / default), and the MYT supplier check per pick (`myt_supplier`, e.g. {"TAP AIR PORTUGAL": "yes"}).
+        `request` = the operator's message(s) AND their answers to your questions, word for word: each '(operator)' filter is checked against it; a limit they never said is not applied.
         `wishes` = the operator's wishes ({"breakfast": true, "free_cancellation": true, "stars_min": 4}). The server fills missing fields with "not
         shown", picks Cheapest, Best fit, Most flexible and Recommended by fixed rules (10% rule, one currency, quotable rows only), and writes the
         required lines and links. If something is missing it returns `problems`: fix them and call again. It reads no site and changes nothing."""
@@ -173,6 +172,9 @@ def register(mcp: MCPServer) -> None:
         sources_read = list(sources_read or [])
         not_checked = list(not_checked or [])
         wishes = wishes or hotel_wishes
+        hotel_wishes = None
+        request = (request or "").strip()
+        wishes, left_out = rc.drop_unsupported(wishes, request)      # a limit the operator never wrote would hide real rows
         wrote_own_filters = bool(filters_used)
         if not filters_used and wishes:       # the operator's own wishes are the filters: no need to type them again
             filters_used = wishes_as_filters(wishes)
@@ -196,8 +198,10 @@ def register(mcp: MCPServer) -> None:
             return {"ok": False, "problems": mixed, "next": "Fix this (search the odd source again with the same adults and children) and call compose_answer again. Do not write the answer yourself."}
         if not wrote_own_filters:          # each recipe handed over the filters it was given, inside its own script answer: they join the lines made from the wishes (28 Oct 2026: with `wishes` given, only 'Free cancellation' was listed)
             filters_used = merge_filters(filters_used, [f for c in carried.values() for f in c["filters_used"]])
+        filters_used, assumed = rc.relabel(filters_used, request)
+        real_filters = [f for f in filters_used if rc.ASSUMED not in f]      # a line the operator did not write asks for nothing below
         if items:
-            extra, srcs, problems, by_price, site_notes = convert_all(items, wishes or hotel_wishes)
+            extra, srcs, problems, by_price, site_notes = convert_all(items, wishes)
             if problems:
                 log.info("CHECK compose_answer site_results refused: %s", "; ".join(dict.fromkeys(problems))[:800])
                 stop = any(": STOP," in p for p in problems)
@@ -217,6 +221,11 @@ def register(mcp: MCPServer) -> None:
             sorted_by_price = by_price
             if site_notes:
                 notes = (notes + " " + " ".join(site_notes)).strip()
+        carried_rows, carried_sources, carry_note = CARRY.carry(kind, request, offers, sources_read, [n.name for n in not_checked])
+        if carried_rows:
+            offers += carried_rows
+            sources_read += carried_sources
+            notes = (notes + " " + carry_note).strip()
         unused = unused_recipes(kind, {str(i.get("site")) for i in items}, not_checked)
         if unused:
             log.info("CHECK compose_answer recipes issued but missing: %s", "; ".join(unused))
@@ -224,34 +233,55 @@ def register(mcp: MCPServer) -> None:
                                               "(block, could not be read: <the script's error>, route not served). A source is never dropped without a word."],
                     "next": "Fix this and call compose_answer again. Do not write the answer without these sources."}
         merge_default_group(offers, items)
-        apply_wishes(offers, wishes or hotel_wishes)
-        if any((c["wishes"].get("expect") or {}).get("checked_bag") for c in carried.values()) or (kind == "flights" and (wishes or {}).get("checked_bag")):
+        apply_wishes(offers, wishes)
+        if rc.says(request, "bag") and (any((c["wishes"].get("expect") or {}).get("checked_bag") for c in carried.values()) or (kind == "flights" and (wishes or {}).get("checked_bag"))):
             bag_note = bag_unconfirmed(offers)
             notes = (notes + " " + bag_note).strip() if bag_note else notes
-        if kind == "flights" and (any((c["wishes"].get("expect") or {}).get("refundable") for c in carried.values()) or asks_refundable(filters_used) or (wishes or {}).get("refundable")):
+        if kind == "flights" and rc.says(request, "cancellation") and (any((c["wishes"].get("expect") or {}).get("refundable") for c in carried.values()) or asks_refundable(real_filters) or (wishes or {}).get("refundable")):
             refund_note = refund_unconfirmed(offers)
             notes = (notes + " " + refund_note).strip() if refund_note else notes
+        if kind == "flights" and request and not any((c["wishes"].get("expect") or {}).get("cabin") for c in carried.values()) and cabin_in(request):
+            cabin_note = judge_cabin(offers, cabin_in(request))
+            notes = (notes + " " + cabin_note).strip() if cabin_note else notes
         if kind == "activities":      # the wishes of all the recipes of this answer are judged on every row (a maximum per person, hours, a rating), not only on the list they were given to
-            judge_activities(offers, shared_wishes(carried, wishes))
+            shared, gone = rc.drop_unsupported(shared_wishes(carried, wishes), request)
+            left_out += gone
+            judge_activities(offers, shared)
+            tip_note = flag_tip_based(offers)
+            notes = (notes + " " + tip_note).strip() if tip_note else notes
         if kind == "hotels":      # the stars and the distance asked on any hotel recipe are judged on every hotel row, also the source that cannot take them
-            shared = shared_wishes(carried, wishes)
+            shared, gone = rc.drop_unsupported(shared_wishes(carried, wishes), request)
+            left_out += gone
             judge_hotels(offers, shared)
             if shared.get("max_distance_km") is not None:
                 notes = (notes + " Distances are the sources' own, measured from the centre of the city each source uses, not from a particular square, station or hotel the operator may have named.").strip()
-        if kind == "transfers" and (any(c["wishes"].get("vehicle") == "comfortable" for c in carried.values()) or (wishes or {}).get("vehicle") == "comfortable"
-                                    or any("comfortable" in f.lower() for f in (filters_used or []))):
+        if kind == "transfers" and rc.says(request, "comfort") and (any(c["wishes"].get("vehicle") == "comfortable" for c in carried.values()) or (wishes or {}).get("vehicle") == "comfortable"
+                                                                      or any("comfortable" in f.lower() for f in real_filters)):
             comfort_note = comfort_unconfirmed(offers)
             notes = (notes + " " + comfort_note).strip() if comfort_note else notes
-        if kind == "transfers" and (any(c["wishes"].get("flight_tracking") for c in carried.values()) or (wishes or {}).get("flight_tracking") or asks_flight_tracking(filters_used)):
+        if kind == "transfers" and rc.says(request, "tracking") and (any(c["wishes"].get("flight_tracking") for c in carried.values()) or (wishes or {}).get("flight_tracking") or asks_flight_tracking(real_filters)):
             tracking_note = tracking_unconfirmed(offers)      # a row that does not say 'yes' is marked not confirmed and is never a pick (28 Oct 2026: Kiwitaxi became 'Best fit, meets every wish')
             notes = (notes + " " + tracking_note).strip() if tracking_note else notes
+        not_applied = rc.not_applied_line(left_out)
+        if not_applied:
+            filters_used = [*filters_used, not_applied]
+        if not request and any("(operator" in f for f in filters_used):
+            notes = (notes + " The operator's own message was not passed to the server (`request`), so the '(operator)' labels in the filters were not checked against it.").strip()
         out = compose(kind, filters_used, sources_read, not_checked, offers, myt_supplier or {}, pickup_time, sorted_by_price, notes, max_rows=MAX_ROWS_BY_KIND.get(kind))
         log.info("CHECK compose_answer kind=%s ok=%s items=%s offers=%s carried=%s passed=%s problems=%s", kind, out.get("ok"), [(i.get("site"), len(i.get("result", ""))) for i in items], len(offers),
                  {k[0]: {w: (c["wishes"].get("expect") or {}).get(w) for w in ("direct_only", "checked_bag", "refundable")} for k, c in carried.items()},
                  sorted((wishes or {}).keys()), "; ".join(out.get("problems", []))[:800])          # sizes and rule messages only, never the rows
         if out.get("ok") and out.get("answer"):
+            own = check_answer_text(out["answer"], kind)      # the server's own text is held to the same list the chat's draft is (the chat may still retype it: that is not visible here)
+            if not own["ok"]:
+                log.info("CHECK compose_answer own answer fails check_answer kind=%s: %s", kind, "; ".join(own["missing"])[:600])
+                out["answer_check_missing"] = own["missing"]
+        if assumed or left_out:
+            log.info("CHECK compose_answer not in the request: relabelled=%s not_applied=%s", assumed, left_out)
+        if out.get("ok") and out.get("answer"):
             COMPOSED.remember(kind, out["answer"])
             OFFERS.remember(kind, offers)
+            CARRY.remember(kind, request, offers, sources_read)
             answer_watch.composed(kind)
             if renamed:
                 out["site_names_fixed"] = renamed

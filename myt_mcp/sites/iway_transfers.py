@@ -63,6 +63,21 @@ IWAY_TAB = ("iWay draws its page only in a tab that is in front (27-28 Oct 2026:
             "Never press Order now.")
 
 
+def route_text(route: Any) -> str:
+    """'9 km, about 2h 0m' from iWay's list: a drive of 9 km that takes two hours is the page's own slip (29 Oct 2026), so a time that implies a walking pace is not written as a fact."""
+    if not route or not route[0]:
+        return "not shown"
+    text = f"{route[0]} km"
+    if len(route) > 1 and route[1]:
+        km = re.search(r"\d+(?:[.,]\d+)?", str(route[0]))
+        t = re.fullmatch(r"\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m(?:in)?)?\s*", str(route[1]))
+        hours = (int(t.group(1) or 0) + int(t.group(2) or 0) / 60) if t else None
+        if km and hours and hours >= 1.5 and float(km.group(0).replace(",", ".")) / hours < 6:
+            return f"{text} (the page's time, {route[1]}, does not fit that distance: not used)"
+        text += f", about {route[1]}"
+    return text
+
+
 def iway_transfers_recipe(origin: str, destination: str, day: date, time: str, adults: int = 2, children_ages: list[int] | None = None, bags: int | None = None,
                           max_total: float | None = None, from_place_id: str | None = None, to_place_id: str | None = None) -> dict[str, Any]:
     if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", time):
@@ -143,7 +158,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             fits=fit, quotable=False, supplier="iWay",
             details={"capacity": f"up to {pax} people / {bags} bags" if pax else "not shown", "waiting_time": "not shown on the list", "cancellation": "not shown on the list (iWay asks at its next step)",
                      "provider": "iWay (the agency's logged-in account)", "meeting_point": "not shown on the list",
-                     "route": (f"{form['route'][0]} km" + (f", about {form['route'][1]}" if form.get("route") and form["route"][1] else "")) if form.get("route") and form["route"][0] else "not shown",
+                     "route": route_text(form.get("route")),
                      "original_price": f"{cur} {total:,.2f}" if factor else None}))
     foreign = sorted(c for c in currencies if c != "EUR")
     if foreign and converted:

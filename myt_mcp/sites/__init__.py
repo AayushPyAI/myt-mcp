@@ -252,7 +252,8 @@ def day_month(text: Any) -> str | None:
 
 # Pages whose security policy blocks a post to another address (seen: ingest received nothing from them): their scripts return the answer in parts, with no address to post to
 NO_POST = {"getyourguide_find", "getyourguide_activity", "viator_find", "viator_activity", "ratehawk_hotels", "cp_trains", "sata"}
-SLIM_SITES = {"ratehawk_hotels"}      # their parts are made short enough for ONE tool output (emit.js SLIM) and joined by the server before they are read (join_slim_parts)
+SLIM_SITES = set(NO_POST)      # their parts are made short enough for ONE tool output (emit.js SLIM) and joined by the server before they are read (join_slim_parts): RateHawk hotels first (29 Oct 2026), then every other page that cannot post
+                              # (30 Oct 2026: the GetYourGuide list of 14 long parts came back repaired on every part, because the tool shows only about 1,000 characters of each)
 
 
 def embed_wishes(out: Any, site: str | None = None) -> Any:

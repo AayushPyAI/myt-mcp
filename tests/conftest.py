@@ -25,9 +25,11 @@ def _reset_server_read_state(tmp_path, monkeypatch):
     answer_watch._PENDING.clear()
     sites._SLOTS.clear()
     sites._CACHE.clear(); sites._READS.clear(); sites._PAUSED_UNTIL.clear(); sites._LAST_READ.clear()
-    from myt_mcp.composed import COMPOSED
+    from myt_mcp.composed import CARRY, COMPOSED, OFFERS
     from myt_mcp.ingest import STORE
     COMPOSED.clear()
+    CARRY.clear()
+    OFFERS.clear()
     STORE.clear()
     sites._PART_FAILS.clear()
     yield

@@ -106,3 +106,20 @@ def test_a_getyourguide_row_link_names_the_activity_page_with_the_date():
     exp = {"day": "2027-03-07", "path": "/lisbon-l42/best-of-lisbon-walking-tour-rossio-chiado-alfama-t600"}
     assert _page_link(exp) == "https://www.getyourguide.com/lisbon-l42/best-of-lisbon-walking-tour-rossio-chiado-alfama-t600/?date_from=2027-03-07&date_to=2027-03-07"
     assert _page_link({"day": "2027-03-07", "path": ""}) is None and _page_link({}) is None
+
+
+def test_a_tip_based_tour_is_marked_and_never_a_pick():
+    """29 Oct 2026: walking tours listed at 1.00 EUR for 3 hours became the Cheapest pick; the amount is a tip."""
+    from myt_mcp.compose import Offer
+    from myt_mcp.wishes import flag_tip_based
+
+    def tour(name, price, duration, basis="'from' price = the lowest starting price per person"):
+        return Offer(group="Walking tour", source="Booking.com attractions", name=name, price_total=price, currency="EUR", price_basis=basis, details={"duration": duration})
+    tip, free, real, short, total_row, usd = (tour("Free walking tour", 1.0, "3 hours"), tour("Free tour", 0.0, "2 hours 30 minutes"), tour("Old town walk", 25.0, "3 hours"),
+                                              tour("Quick look", 3.0, "1 hour"), tour("Group row", 2.0, "4 hours", "group total"), tour("Dollar tour", 1.0, "3 hours"))
+    usd.currency = "USD"
+    note = flag_tip_based([tip, free, real, short, total_row, usd])
+    assert tip.unconfirmed and free.unconfirmed and tip.fits is None
+    assert not real.unconfirmed and not short.unconfirmed and not total_row.unconfirmed and not usd.unconfirmed       # a real price, a short tour, a group total and another currency are left alone
+    assert note.startswith("2 tour(s)") and "tip-based" in note
+    assert flag_tip_based([real, short]) is None
