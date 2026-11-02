@@ -11,7 +11,7 @@ import re
 import unicodedata
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
 
 # the details every kind of offer must show ("not shown" when the source did not give them)
 REQUIRED_DETAILS: dict[str, list[str]] = {
@@ -33,6 +33,7 @@ PER_SOURCE_MIN_ROWS = 3
 ALLOWED_REASON_WORDS = ("browser", "chrome", "login", "captcha", "block", "not served", "does not sell", "doesn't sell", "does not fly", "did not answer",
                         "no flights", "not sold", "refused", "not available", "switched off", "could not be read", "layout", "window too narrow", "operator excluded", "operator asked for", "operator named", "place not found", "place not offered", "no matching place",
                         "went wrong", "error", "did not load", "not loading", "timed out", "unavailable", "empty page")      # a site's own failure said in plain words (29 Oct 2026: "showed 'Something went wrong'" was refused)      # "operator excluded": the operator named the sources to use and left this one out; the answer shows it
+FILTER_IN_REASON = re.compile(r"\b(?:filters?|direct|non-?stop|checked bag|baggage|bags?|cabin|refund\w*|results? with|with the|with a)\b")      # a 'route not served' that names a filter is a filter that left nothing (31 Oct 2026: "0 of 128 results with the Direct filter")
 SOURCE_WORDS = ("operator", "trip", "default", "server", "agency", "assistant")      # "server": a filter the server itself wrote, e.g. the euro conversion; "assistant": a choice the assistant made and says so (28 Oct 2026: "(assistant: no hotel picked)" and "(my judgement)" were refused)
 
 
@@ -52,6 +53,7 @@ class Offer(BaseModel):
     preferred_reason: str | None = Field(None, description="Why this option suits the trip better, from a source or the trip data (for example 'departs 12:20, the trip plans 12:10'). Used for Best fit.")
     link: str | None = None
     unconfirmed: list[str] = Field(default_factory=list, description="Wishes of the operator this row could not be checked against (set by the server, never typed): the row stays in the table and is never a pick.")
+    _narrowed: list[str] = PrivateAttr(default_factory=list)      # set by the server: the filters its source was read with that the operator never asked for (not in the tool's schema)
 
     @field_validator("details")
     @classmethod
@@ -135,7 +137,10 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
             problems.append(f"{s.name}: give `read` and `of` (N of M)")
     for n in not_checked:
         low = n.reason.lower()
-        if any(b in low for b in BANNED_REASONS):
+        if "not served" in low and FILTER_IN_REASON.search(low):
+            problems.append(f"{n.name}: '{n.reason[:100]}' is not 'route not served': the source has the route, a filter (direct, bag, cabin, refund...) left nothing. Read it again WITHOUT that filter and pass the rows: the server judges the operator's wishes on them. "
+                            "Use 'route not served' only when the source itself says it has no such route or place.")
+        elif any(b in low for b in BANNED_REASONS):
             problems.append(f"{n.name}: '{n.reason}' is not an allowed reason; read it, or use: no browser tool, login/captcha/block, route not served, did not answer")
         elif not any(w in low for w in ALLOWED_REASON_WORDS):
             problems.append(f"{n.name}: the reason '{n.reason[:100]}' is not one of the allowed ones; it must be one of: no browser tool in this chat, login/captcha/block, route not served by the source, place not found in the source's From/To box (say which place), source did not answer, 'could not be read: <the script's own error>', or 'operator asked for <sources> only' when the operator named the sources to use")
@@ -356,6 +361,11 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
             if o is not None and id(o) not in said and re.search(r"not at the terminal|outside the airport|transfer to the rental place", where, re.I):
                 said.add(id(o))
                 notes.append(f"Caution on the {title} ({o.source}: {o.name}): its pick-up is not at the airport terminal ({where}): the operator should know before quoting.")
+    told: set[int] = set()
+    for title, o in (("Cheapest", cheapest), ("Best fit", best), ("Recommended", rec)):      # a source read with a filter nobody asked for may hide the cheaper or better row (31 Oct 2026: max_distance 2 km, a checked bag)
+        if o is not None and o._narrowed and id(o) not in told:
+            told.add(id(o))
+            notes.append(f"Caution on the {title} ({o.source}: {o.name}): this source was read with a filter the operator did not ask for ({', '.join(o._narrowed)}), so a cheaper or better option may be hidden: read it again without that filter before quoting.")
     rows_out = [("Cheapest", label(cheapest), cheap_reason),
                 ("Best fit", label(best), best_reason),
                 ("Most flexible", label(flexible), flex_why if flexible else flexible_reason(priced)),

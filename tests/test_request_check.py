@@ -4,6 +4,7 @@ import pytest
 from mcp import Client
 
 from myt_mcp import request_check as rc
+from myt_mcp.compose import NotChecked, Offer, SourceRead, picks, validate
 from myt_mcp.app import create_server
 from myt_mcp.config import Settings
 
@@ -158,3 +159,58 @@ def test_a_page_time_that_does_not_fit_the_distance_is_not_written_as_a_fact():
 async def test_compose_answer_holds_its_own_text_to_the_check_answer_list_and_a_normal_answer_passes():
     out = await _compose(request="Transfer from the airport on 7 March, please track my flight")
     assert out["ok"] and "answer_check_missing" not in out
+
+
+# ---- 31 Oct 2026: a recipe called with a filter nobody asked for narrows its list; the answer says so ----------------------------------------------
+
+REQ_HOTEL = "Hotel in Lisbon, 7 to 12 March, 4 stars, breakfast included, free cancellation, up to 200 EUR per night. Central."
+
+
+def test_a_recipe_parameter_the_request_does_not_support_is_named_as_narrowing():
+    assert rc.narrowing({"max_distance_km": 2.0, "stars_min": 4, "breakfast": True, "free_cancellation": True}, REQ_HOTEL) == ["within 2 km of the centre"]
+    assert rc.narrowing({"expect": {"direct_only": True, "checked_bag": True, "refundable": False}}, "Flights TLV to LIS, business class") == ["direct flights only", "fares with a checked bag only"]
+    assert rc.narrowing({"expect": {"direct_only": True}}, "Flights TLV to LIS. Direct only, any fare") == []              # the operator's answer to the assistant's question is theirs
+    assert rc.narrowing({"max_price": 100.0}, "food tour, up to 100 EUR per person") == [] and rc.narrowing({"max_price": 100.0}, "food tour") == ["at most 100 EUR"]
+    assert rc.narrowing({"direct_only": True}, "") == [] and rc.narrowing(None, "anything") == []                                  # no request: nothing is judged
+
+
+def test_the_hotel_recipes_of_one_stay_share_the_assumed_limit():
+    carried = {("ratehawk_hotels", "r1"): {"wishes": {"max_distance_km": 2.0, "stars_min": 4}}, ("arbitrip_hotels", "r2"): {"wishes": {}}, ("tap", "r3"): {"wishes": {"expect": {"direct_only": True}}}}
+    found = rc.narrowed_sources(carried, REQ_HOTEL, "hotels")
+    assert found["ratehawk_hotels"] == ["within 2 km of the centre"] and found["arbitrip_hotels"] == ["within 2 km of the centre"]       # Arbitrip's address held the same limit
+    assert "tap" in found and found["tap"] == ["direct flights only"]
+    flights = rc.narrowed_sources(carried, "Flights TLV to LIS", "flights")
+    assert "arbitrip_hotels" not in flights
+    note = rc.narrowed_note({"ratehawk_hotels": ["within 2 km of the centre"]}, {"ratehawk_hotels": "RateHawk"})
+    assert "RateHawk (within 2 km of the centre)" in note and "may be missing" in note and rc.narrowed_note({}, {}) is None
+
+
+def test_a_pick_from_a_narrowed_source_carries_a_caution_and_other_picks_do_not():
+    cheap, other = Offer(**_transfer("Micro", "yes", 14.0)), Offer(**_transfer("Comfort", "yes", 40.0))
+    cheap._narrowed = ["flight tracking only"]
+    _rows, notes = picks("transfers", [cheap, other], True)
+    assert any("Caution on the Cheapest" in n and "flight tracking only" in n and "Kiwitaxi" in n for n in notes)
+    cheap._narrowed = []
+    assert not any("did not ask for" in n for n in picks("transfers", [cheap, other], True)[1])
+
+
+@pytest.mark.parametrize("reason,refused", [
+    ("route not served by the source (Skyscanner: 0 of 128 results with the Direct filter)", True),
+    ("route not served by the source (RateHawk: no direct business flights with checked bag on 12 Mar)", True),
+    ("route not served: SATA has no flights for this search", False),
+    ("route not served by the source (it flies from and to the Azores and Madeira)", False),
+    ("route not served: Aspire has no lounge at this airport", False),
+])
+def test_a_filter_that_left_nothing_is_not_a_route_the_source_does_not_serve(reason, refused):
+    problems = validate("flights", ["Direct only (operator)"], [SourceRead(name="TAP", read=3, of=3, link="https://x.test/a")], [NotChecked(name="Skyscanner", reason=reason)], [Offer(**{**_transfer("x", "yes", 1.0), "source": "TAP"})], {}, None)
+    mine = [p for p in problems if "not 'route not served'" in p]
+    assert bool(mine) is refused
+    assert not refused or "WITHOUT that filter" in mine[0]
+
+
+@pytest.mark.anyio
+async def test_the_one_list_of_everything_found_comes_from_the_server_not_from_the_chat():
+    first = await _activities(*GYG, request="food tours in Lisbon on 7 March")
+    assert first["ok"] and "ONE list" in first["one_list"] and "never write rows by hand" in first["one_list"].lower()
+    again = await _activities([], [], request="food tours in Lisbon on 7 March")       # no new sources: the server joins the earlier rows
+    assert again["ok"] and "Fado night" in again["answer"] and "Pastel class" in again["answer"]

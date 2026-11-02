@@ -138,5 +138,56 @@ def drop_unsupported(wishes: dict[str, Any] | None, request: str | None) -> tupl
     return kept, left
 
 
+# a parameter a recipe was called with that NARROWS its list (the page or the address filters rows out) -> (topic, words, True when its number must also be in the request)
+NARROWING = {"direct_only": ("direct", "direct flights only", False), "checked_bag": ("bag", "fares with a checked bag only", False), "refundable": ("cancellation", "refundable fares only", False),
+             "free_cancellation": ("cancellation", "free cancellation only", False), "breakfast": ("breakfast", "breakfast included only", False), "flight_tracking": ("tracking", "flight tracking only", False),
+             "zero_excess": ("excess", "zero excess only", False), "automatic": ("gearbox", "automatic gearbox only", False), "manual": ("gearbox", "manual gearbox only", False), "max_distance_km": ("distance", "within {v:g} km of the centre", True), "stars_min": ("stars", "{v:g}+ stars", True),
+             "max_hours": ("hours", "at most {v:g} hours", True), "max_price": ("budget", "at most {v:g} EUR", True), "max_price_pp": ("budget", "at most {v:g} EUR per person", True),
+             "max_total": ("budget", "at most {v:g} EUR in all", True)}
+
+
+def narrowing(wishes: dict[str, Any] | None, request: str | None) -> list[str]:
+    """The parameters a recipe was called with (its `wishes`, and its `expect`) that narrow its list and that the request does not support, in words. No request: nothing is judged."""
+    if not wishes or not (request or "").strip():
+        return []
+    out: list[str] = []
+    for src in (wishes, wishes.get("expect") if isinstance(wishes.get("expect"), dict) else {}):
+        for key, (topic, words, needs_number) in NARROWING.items():
+            v = src.get(key)
+            if v is None or v is False or v == "" or v == 0:
+                continue
+            if isinstance(v, bool):
+                said = says(request, topic)
+            elif isinstance(v, (int, float)):
+                said = says(request, topic) and (not needs_number or has_number(request, float(v)))
+            else:
+                continue
+            if not said:
+                out.append(words.format(v=float(v)) if isinstance(v, (int, float)) and not isinstance(v, bool) else words)
+    return list(dict.fromkeys(out))
+
+
+def narrowed_sources(carried: dict[Any, dict[str, Any]], request: str | None, kind: str) -> dict[str, list[str]]:
+    """{recipe site: the assumed narrowing words} for the recipes of this answer. The hotel recipes of one stay take the same limits, so a limit one of them was given (RateHawk) narrowed the others too (Arbitrip's address holds it)."""
+    found: dict[str, list[str]] = {}
+    for (site, _run), c in carried.items():
+        words = narrowing(c.get("wishes"), request)
+        if words:
+            found[site] = list(dict.fromkeys(found.get(site, []) + words))
+    if kind == "hotels" and found:
+        every = list(dict.fromkeys(w for site, ws in found.items() if site.endswith("_hotels") for w in ws))
+        for site in {s for (s, _r) in carried if s.endswith("_hotels")}:
+            found[site] = list(dict.fromkeys(found.get(site, []) + every))
+    return found
+
+
+def narrowed_note(narrowed: dict[str, list[str]], names: dict[str, str]) -> str | None:
+    if not narrowed:
+        return None
+    parts = "; ".join(f"{names.get(site, site)} ({', '.join(words)})" for site, words in narrowed.items())
+    return (f"Source narrowed by a filter the operator did not ask for: {parts}. Rows outside it were never listed, so a cheaper or better option may be missing: "
+            "read that source again without the filter before a price from it is quoted.")
+
+
 def not_applied_line(left: list[str]) -> str | None:
     return (f"Not applied, the request does not say it: {'; '.join(dict.fromkeys(left))} (the assistant's assumption; ask the operator if it matters)") if left else None

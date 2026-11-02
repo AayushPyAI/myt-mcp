@@ -206,7 +206,7 @@ def register(mcp: MCPServer) -> None:
                 log.info("CHECK compose_answer site_results refused: %s", "; ".join(dict.fromkeys(problems))[:800])
                 stop = any(": STOP," in p for p in problems)
                 return {"ok": False, "problems": list(dict.fromkeys(problems)),
-                        "next": ("Do not run that source again: put it in not_checked with the reason the STOP line gives and call compose_answer again. Do not write the answer yourself." if stop
+                        "next": ("Do not run that source again: put it in not_checked with the reason the STOP line gives and call compose_answer again. Do not write the answer yourself, and never write that source's rows from what you saw on its page: say it was not read." if stop
                                  else "Fix these (run the recipe again as the problem says) and call compose_answer again. Do not write the answer yourself.")}
             offers += extra
             via_model = sorted({str(i.get("site")) for i in items if _is_parts(i)})
@@ -226,6 +226,15 @@ def register(mcp: MCPServer) -> None:
             offers += carried_rows
             sources_read += carried_sources
             notes = (notes + " " + carry_note).strip()
+        narrowed = rc.narrowed_sources(carried, request, kind)      # a recipe the assistant called with a filter the operator never asked for listed fewer rows: said in the answer and on a pick from that source
+        if narrowed:
+            names = {site: getattr(modules().get(site), "SOURCE", site) for site in narrowed}
+            for o in offers:
+                for site, words in narrowed.items():
+                    if names[site].lower() in o.source.lower():
+                        o._narrowed = list(dict.fromkeys(o._narrowed + words))
+            notes = (notes + " " + (rc.narrowed_note(narrowed, names) or "")).strip()
+            log.info("CHECK compose_answer sources narrowed by filters the request does not support: %s", narrowed)
         unused = unused_recipes(kind, {str(i.get("site")) for i in items}, not_checked)
         if unused:
             log.info("CHECK compose_answer recipes issued but missing: %s", "; ".join(unused))
@@ -285,6 +294,8 @@ def register(mcp: MCPServer) -> None:
             answer_watch.composed(kind)
             if renamed:
                 out["site_names_fixed"] = renamed
+            out["one_list"] = ("If the operator asks for ONE list of everything found, call compose_answer again with the same kind and `request` and no new sources (not_checked as before): the server joins every earlier row, "
+                               "cheapest first. Never write rows by hand.")
         return out
 
     register_all(mcp)
