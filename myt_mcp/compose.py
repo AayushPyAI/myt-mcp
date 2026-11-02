@@ -132,7 +132,8 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
     for s in sources_read:
         urls = re.findall(r"https?://[^\s;|]+", s.link or "")      # one link, or one per leg ("TLV to LIS, 10 Dec 2026: https://...; LIS to TLV, ...: https://...")
         if not urls or any(re.fullmatch(r"https?://[^/]+/?", u) for u in urls):
-            problems.append(f"{s.name}: give the exact search or results page as `link`, not a home page")
+            problems.append(f"{s.name}: the `sources_read` entry for it needs `link` = the exact search or results page (the recipe's own `url`), not a home page; you gave "
+                            f"{'no link' if not urls else repr((s.link or '')[:80])}. One `sources_read` entry per source, with its `link`, `read` and `of`")
         if s.read is None or s.of is None:
             problems.append(f"{s.name}: give `read` and `of` (N of M)")
     for n in not_checked:

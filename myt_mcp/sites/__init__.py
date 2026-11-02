@@ -270,7 +270,7 @@ def embed_wishes(out: Any, site: str | None = None) -> Any:
                 out["script"] = out["script"].replace(head, head + f"  const SLIM = true;\n  const WK = {json.dumps(token)};\n", 1)
                 out["how_the_answer_comes_back"] = ("This page cannot send its answer to the server: the script returns it in short parts (window.__mytParts), each small enough to show in ONE output of the browser tool (it cuts at about 1,000 characters). "
                                                     "The script's answer is part 1 and says how many parts there are: run `window.__mytParts[1]`, `window.__mytParts[2]` ... one by one, and pass EVERY part to compose_answer exactly as it is (no slicing, no retyping), "
-                                                    "each as its own item of `site_results` with the recipe's own `site` key. A part you did not see whole is run again, never completed by hand.")
+                                                    "each as its own item of `site_results`: {\"site\": the recipe's own key, \"result\": the part exactly as it is, \"url\": the recipe's url}. A part you did not see whole is run again, never completed by hand.")
             else:
                 if out.get("wishes"):
                     carried = {"wishes": out.get("wishes") or {}, **({"filters_used": out["filters_used"]} if out.get("filters_used") else {})}
@@ -360,7 +360,7 @@ def carried_wishes(site_results: list[dict[str, Any]]) -> dict[tuple[str, str], 
     return found
 
 
-SLIM_ONLY_KEYS = {"fmt", "cols", "common", "path_base", "rows", "part", "parts", "wk", "more", "note", "crc"}
+SLIM_ONLY_KEYS = {"fmt", "cols", "common", "path_base", "rows", "part", "parts", "wk", "more", "note", "crc", "hn", "hx"}
 
 
 def join_slim_parts(site_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -391,7 +391,12 @@ def join_slim_parts(site_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if row.get("path") and "path" in cols:
                     row["path"] = base + row["path"]
                 rows.append(row)
-        joined: dict[str, Any] = {"site": site, "result": json.dumps({**{k: v for k, v in first.items() if k not in SLIM_ONLY_KEYS}, "rows": rows}),
+        pieces: dict[str, dict[int, str]] = {}        # long head texts sent in parts of their own (emit.js `hx`): [key, number, text]
+        for n in range(1, total + 1):
+            for key, number, text in got[n][0].get("hx") or []:
+                pieces.setdefault(str(key), {})[int(number)] = str(text)
+        long_texts = {key: "".join(text for _, text in sorted(by_number.items())) for key, by_number in pieces.items()}
+        joined: dict[str, Any] = {"site": site, "result": json.dumps({**{k: v for k, v in first.items() if k not in SLIM_ONLY_KEYS}, **long_texts, "rows": rows}),
                                   "url": next((str(i.get("url")) for _, i in got.values() if i.get("url")), "")}
         kept = STORE.wishes_of(first.get("wk")) if first.get("wk") else None
         if kept:
@@ -655,7 +660,8 @@ def unknown_site(site: str, mods: dict[str, Any]) -> str:
     """The site name is the recipe's own key ('getyourguide_find'): a display name ('GetYourGuide', 'Ratehawk') is refused with the keys it could mean (24-26 Oct 2026: both were sent and the rows were dropped)."""
     near = near_sites(site, mods)
     hint = f" Did you mean {' or '.join(repr(k) for k in near)}? Use the exact key, the same as the recipe tool you ran (the list of tours or hotels and the page of one tour or room are different keys)." if near else ""
-    return f"unknown site '{site}': known sites are {sorted(mods)}.{hint}"
+    shape = " Every item of `site_results` is {\"site\": the recipe's own key, \"result\": the script's text (a part, exactly as it is), \"url\": the recipe's url}: a part passed as {\"ratehawk\": ...} or without `site` has no site." if not site or not near else ""
+    return f"unknown site '{site}': known sites are {sorted(mods)}.{hint}{shape}"
 
 
 def check_parts(site_results: list[dict[str, Any]]) -> list[str]:

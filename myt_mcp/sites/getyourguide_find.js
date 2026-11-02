@@ -2,7 +2,7 @@ await (async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const text = () => (document.body && document.body.innerText) || '';
   const LIMIT = __LIMIT__; const SKIP = __SKIP__;
-  if (/(?<!re)captcha|verify you are human|access denied|unusual traffic|are you a robot/i.test(text().slice(0, 2500))) return JSON.stringify({ ok: false, error: 'GetYourGuide shows a human check or refuses the page. Stop: do not retry and do not work around it; tell the operator to look at the page.' });
+  if (/(?<!re)captcha|performing security verification|just a moment\.\.\.|checking if the site connection is secure|verify you are human|access denied|unusual traffic|are you a robot/i.test(text().slice(0, 2500))) return JSON.stringify({ ok: false, error: 'GetYourGuide shows a human check or refuses the page. Stop: do not retry and do not work around it; tell the operator to look at the page.' });
   if (!/(^|\.)getyourguide\.com$/.test(location.hostname) || !/^\/s\/?$/.test(location.pathname)) return JSON.stringify({ ok: false, error: 'not a GetYourGuide search page (www.getyourguide.com/s/?q=...): open the url first' });
   const anchors = () => { const seen = new Set(); return [...document.querySelectorAll('a[href*="-t"]')].filter((a) => { const h = (a.getAttribute('href') || '').split('?')[0]; if (!/-t\d+\/?$/.test(h) || seen.has(h)) return false; seen.add(h); return true; }); };
   let last = -1; let stable = 0;
@@ -14,6 +14,7 @@ await (async () => {
     if (anchors().length === before) break; await wait(800);
   }
   const t = text(); const all = anchors();
+  if (all.length === 0) return JSON.stringify({ ok: false, error: 'GetYourGuide showed no activity cards (a security check page, or a page that did not load: 2 Nov 2026 the chat got "Performing security verification" and the script said ok with 0 rows). Stop: look at the page, do not retry in a loop, never work around a human check; tell the operator.' });
   const BADGE = /^(Top pick|Top rated|Certified by GetYourGuide|Likely to sell out|Special offer|New|Best seller|Staff pick|Free cancellation|Skip the line|Limited time)$/i;
   const rows = all.slice(SKIP, SKIP + LIMIT).map((a, i) => {
     const lines = a.innerText.split('\n').map((s) => s.trim()).filter(Boolean);

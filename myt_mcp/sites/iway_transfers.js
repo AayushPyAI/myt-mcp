@@ -23,7 +23,7 @@ await (async () => {
   const rows = []; const unparsed = [];
   for (const b of items()) {
     const lines = b.innerText.split('\n').map(clean).filter(Boolean);
-    const price = lines.map((l) => l.match(/^(\$|€|£|₪|[A-Z]{3})\s?([\d,]+(?:\.\d+)?)$/)).find(Boolean);      // the WHOLE line is the price ("Minivan VIP 6" read as VIP 6 on the live page, 27 Oct 2026)
+    const price = lines.map((l) => l.match(/^(?:[Ff]rom\s+)?(\$|€|£|₪|[A-Z]{3})\s?([\d,]+(?:\.\d+)?)$/)).find(Boolean);      // the WHOLE line is the price, with an optional leading "from" (2 Nov 2026: the page showed "from $28.26" and 0 rows were read) ("Minivan VIP 6" read as VIP 6 on the live page, 27 Oct 2026)
     const nums = lines.filter((l) => /^\d+$/.test(l));
     const car = lines.find((l, i) => i > 0 && !/^\d+$/.test(l) && !/^(\$|€|£|₪)/.test(l) && !/^order now$/i.test(l)) || null;
     if (!lines[0] || !price) { if (unparsed.length < 3) unparsed.push(lines.join(' | ').slice(0, 160)); continue; }

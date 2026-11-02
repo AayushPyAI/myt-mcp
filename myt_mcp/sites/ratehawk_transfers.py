@@ -82,8 +82,15 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         for key, label in (("pickup", "from"), ("dropoff", "to")):
             if exp.get(key) and form.get(label) and not place_matches(exp[key], form[label]):
                 problems.append(f"the page searched {label} '{form.get(label)}', not '{exp.get(key)}': search again with the right place")
+        step_note = None
         if exp.get("time") and exp["time"] not in (form.get("when") or ""):
-            problems.append(f"the page searched '{form.get('when')}', not at {exp['time']}: search again with the right time")
+            page_time = re.search(r"\b([01]?\d|2[0-3]):([0-5]\d)\b", form.get("when") or "")
+            asked = int(exp["time"][:2]) * 60 + int(exp["time"][3:])
+            got = int(page_time.group(1)) * 60 + int(page_time.group(2)) if page_time else None
+            if got is not None and got <= asked < got + 15:       # the page's time list has 15-minute steps: the step at or before the asked time is the closest it can search (2 Nov 2026: 17:50 asked, 17:45 searched, the answer was refused twice)
+                step_note = f"RateHawk's pick-up times go in 15-minute steps: it was searched at {page_time.group(1).zfill(2)}:{page_time.group(2)}, the step before the {exp['time']} asked; the price for {exp['time']} itself can differ."
+            else:
+                problems.append(f"the page searched '{form.get('when')}', not at {exp['time']}: search again with the right time (the page's list has 15-minute steps: the step at or just before it is accepted)")
         if exp.get("day"):
             m = re.match(r"(\d{1,2}) ([A-Z][a-z]{2})", form.get("when") or "")
             months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -124,7 +131,7 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                                      "flight_tracking": "yes" if r.get("flight_tracking") else ("no" if tracking_applies else "not applicable (the pick-up is not at an airport)")}))
     n = int(data.get("rows_read") or len(offers))
     return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=data.get("price_order") == "ascending",
-                    extra_notes=[f"RateHawk's page showed: {form.get('from')} to {form.get('to')}, {form.get('when')}, {form.get('passengers')}."])
+                    extra_notes=[f"RateHawk's page showed: {form.get('from')} to {form.get('to')}, {form.get('when')}, {form.get('passengers')}."] + ([step_note] if exp and step_note else []))
 
 
 ASK_TRANSFERS = {"bags": "How many suitcases / bags?", "tracking": "Flight tracking needed (airport pick-up)?",

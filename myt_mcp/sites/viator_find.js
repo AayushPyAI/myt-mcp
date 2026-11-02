@@ -1,7 +1,7 @@
 await (async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const text = () => (document.body && document.body.innerText) || '';
-  if (/(?<!re)captcha|verify you are human|access denied|unusual traffic|are you a robot|blocked/i.test(text().slice(0, 1500)) && !/Showing \d+/.test(text().slice(0, 3000))) return JSON.stringify({ ok: false, error: 'Viator shows a human check or refuses the page. Stop: do not retry and do not work around it; tell the operator to look at the page.' });
+  if (/(?<!re)captcha|performing security verification|just a moment\.\.\.|checking if the site connection is secure|verify you are human|access denied|unusual traffic|are you a robot|blocked/i.test(text().slice(0, 1500)) && !/Showing \d+/.test(text().slice(0, 3000))) return JSON.stringify({ ok: false, error: 'Viator shows a human check or refuses the page. Stop: do not retry and do not work around it; tell the operator to look at the page.' });
   if (!/(^|\.)viator\.com$/.test(location.hostname) || !/\/searchResults\//.test(location.pathname)) return JSON.stringify({ ok: false, error: 'not a Viator search page (www.viator.com/searchResults/all?text=...): open the url first' });
   const anchors = () => { const seen = new Set(); return [...document.querySelectorAll('a[href*="/tours/"]')].filter((a) => { const h = (a.getAttribute('href') || '').split('?')[0]; if (!/\/d\d+-[A-Za-z0-9_.]+\/?$/.test(h) || seen.has(h)) return false; seen.add(h); return true; }); };
   let last = -1; let stable = 0;

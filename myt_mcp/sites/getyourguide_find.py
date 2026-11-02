@@ -75,6 +75,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     exp = wishes.get("expect") or {}
     problems: list[str] = []
     rows = data.get("rows", [])
+    if not rows and data.get("cards_on_page") == 0:
+        return SiteRows(problems=["GetYourGuide showed no activity cards (a security check page or a page that did not load): the operator must look at the page; it is not worked around"])
     if exp:
         if (data.get("query_text") or "").strip().lower() != exp["query"].lower():
             problems.append(f"the page searched '{data.get('query_text')}', not '{exp['query']}': open the url again")

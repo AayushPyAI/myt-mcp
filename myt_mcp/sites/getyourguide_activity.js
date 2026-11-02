@@ -1,7 +1,7 @@
 await (async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const text = () => (document.body && document.body.innerText) || '';
-  if (/(?<!re)captcha|verify you are human|access denied|unusual traffic|are you a robot/i.test(text().slice(0, 2500))) return JSON.stringify({ ok: false, error: 'GetYourGuide shows a human check or refuses the page. Stop: do not retry and do not work around it; tell the operator to look at the page.' });
+  if (/(?<!re)captcha|performing security verification|just a moment\.\.\.|checking if the site connection is secure|verify you are human|access denied|unusual traffic|are you a robot/i.test(text().slice(0, 2500))) return JSON.stringify({ ok: false, error: 'GetYourGuide shows a human check or refuses the page. Stop: do not retry and do not work around it; tell the operator to look at the page.' });
   if (!/(^|\.)getyourguide\.com$/.test(location.hostname) || !/-t\d+\/?$/.test(location.pathname)) return JSON.stringify({ ok: false, error: 'not a GetYourGuide activity page (…-t12345): open the url first' });
   // wait for the availability answer of the selected date and group: "1 option available", "Choose from 5 available options" or "Not available for your selection"
   const HEAD = /\d+ options? available|\d+ available options?|Not available for your selection|Sold out|No availability/i;

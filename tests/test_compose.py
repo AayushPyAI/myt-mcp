@@ -1867,3 +1867,45 @@ def test_gyg_find_discounted_card_keeps_the_price_to_pay_and_names_the_struck_on
     res = _gyf([row, plain], query_text="Lisbon food tour", date_chip="Mar 8")
     offers, *_ = convert_all([{"site": "getyourguide_find", "result": res, "url": "u"}], {"expect": r["expect"]})
     assert offers[0].price_total == 70 and "78" in offers[0].price_basis and "struck through" in offers[0].price_basis and "struck" not in offers[1].price_basis
+
+
+def test_gyg_find_a_page_with_no_cards_is_a_problem_not_an_empty_answer():
+    """2 Nov 2026: 'Performing security verification' page: cards_on_page 0, rows [], ok true: the chat put GetYourGuide in not_checked by itself; the server must say it too."""
+    from myt_mcp.sites import convert_all
+    res = _gyf([], cards_on_page=0, results_total=None, query_text=None, date_chip=None)
+    offers, sources, problems, _, notes = convert_all([{"site": "getyourguide_find", "result": res, "url": "u"}], {})
+    assert not offers and any("no activity cards" in p and "security check" in p for p in problems)
+
+
+def test_gyg_and_viator_scripts_recognise_the_cloudflare_check_page():
+    from pathlib import Path
+    sites = Path(__file__).resolve().parent.parent / "myt_mcp" / "sites"
+    for name in ("getyourguide_find", "getyourguide_activity", "viator_find", "viator_activity"):
+        assert "performing security verification" in (sites / f"{name}.js").read_text(encoding="utf-8"), name
+
+
+def test_ratehawk_transfers_accepts_the_15_minute_step_at_or_before_the_asked_time():
+    """2 Nov 2026: the flight lands 17:50, RateHawk's list has 17:45: the answer was refused twice. The step at or just before the asked time is accepted and named; a later or farther time is still refused."""
+    import json
+
+    from myt_mcp.sites.ratehawk_transfers import convert
+
+    page_time = TRANSFERS_RESULT["form"]["when"]          # '<day> <Mon>, <weekday>, 16:30'
+    base = {"pickup": "Rome FCO Fiumicino", "dropoff": "Room Mate Collection Mia", "day": "2027-03-01", "adults": 2, "children": 1}
+    early = convert(json.dumps(TRANSFERS_RESULT), {"expect": {**base, "time": "16:40"}}, "Transfers")
+    assert not early.problems and any("15-minute steps" in n and "16:30" in n and "16:40" in n for n in early.extra_notes), (page_time, early.problems)
+    exact = convert(json.dumps(TRANSFERS_RESULT), {"expect": {**base, "time": "16:30"}}, "Transfers")
+    assert not exact.problems and not any("15-minute" in n for n in exact.extra_notes)
+    for asked in ("16:45", "16:20", "10:00"):          # after the next step, or before the page's time: not the closest step at or before
+        wrong = convert(json.dumps(TRANSFERS_RESULT), {"expect": {**base, "time": asked}}, "Transfers")
+        assert any(f"not at {asked}" in p for p in wrong.problems), asked
+
+
+def test_error_messages_name_the_fields_the_chat_must_use():
+    """2 Nov 2026: the chat guessed the field names ('ratehawk', 'link' in the items) because 'unknown site' and 'give the exact page as link' named no field."""
+    from myt_mcp.compose import SourceRead, validate
+    from myt_mcp.sites import unknown_site
+    msg = unknown_site("", {"viator_find": 1, "getyourguide_find": 2})
+    assert '"site"' in msg and '"result"' in msg and '"url"' in msg and "unknown site ''" in msg
+    problems = validate("activities", [], [SourceRead(name="Viator", read=5, of=50, link="")], [], [], {}, None)
+    assert any("`sources_read` entry" in p and "no link" in p and "not a home page" in p for p in problems)

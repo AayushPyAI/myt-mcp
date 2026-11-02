@@ -1,7 +1,7 @@
 await (async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const text = () => (document.body && document.body.innerText) || '';
-  if (/(?<!re)captcha|verify you are human|access denied|unusual traffic|are you a robot/i.test(text().slice(0, 1500)) && !/Book Now|Check Availability|Update Search/.test(text())) return JSON.stringify({ ok: false, error: 'Viator shows a human check or refuses the page. Stop: do not retry and do not work around it; tell the operator to look at the page.' });
+  if (/(?<!re)captcha|performing security verification|just a moment\.\.\.|checking if the site connection is secure|verify you are human|access denied|unusual traffic|are you a robot/i.test(text().slice(0, 1500)) && !/Book Now|Check Availability|Update Search/.test(text())) return JSON.stringify({ ok: false, error: 'Viator shows a human check or refuses the page. Stop: do not retry and do not work around it; tell the operator to look at the page.' });
   if (!/(^|\.)viator\.com$/.test(location.hostname) || !/\/tours\/.+\/d\d+-/.test(location.pathname)) return JSON.stringify({ ok: false, error: 'not a Viator activity page (www.viator.com/tours/<place>/<name>/d123-CODE): open the url first' });
   const lines = (el) => (el.innerText || '').split('\n').map((s) => s.trim()).filter(Boolean);
   const DATE = /^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}$/; const MONEY = /^[€₪$£]\s?[\d,.]+$/;

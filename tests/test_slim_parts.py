@@ -123,3 +123,25 @@ def test_every_page_that_cannot_post_is_slim_and_a_page_that_posts_is_not():
     assert sites.SLIM_SITES == sites.NO_POST and {"getyourguide_find", "viator_find", "cp_trains", "sata", "ratehawk_hotels"} <= sites.SLIM_SITES
     assert all("const SLIM = true" in o["script"] and "const WK = " in o["script"] and "const WISHES" not in o["script"] for o in slim.values())
     assert "const INGEST" in posting["script"] and "const SLIM" not in posting["script"]
+
+
+def test_long_head_texts_go_in_parts_of_their_own_and_come_back_whole():
+    """2 Nov 2026: Viator's page answer had 1,000+ characters of head text (included, meeting point, cancellation): part 1 was 1,168 characters, the browser tool cut it and the chat rebuilt it by hand."""
+    head = {**HEAD, "url_path": "/Lisbon/d538-5731P2", "activity": "Lisbon Food and Wine Tour", "options_found": 2,
+            "included": "Food and drinks as listed. " * 9, "meeting_text": "Meet at Praça Dom Pedro IV (Rossio) by the statue, 1100-202 Lisboa — ז" * 5, "cancel_policy": "Free cancellation up to 24 hours before the start. " * 5}
+    rows = [{"title": "Standard group", "price": "EUR 158", "time": "10:30"}, {"title": "Private", "price": "EUR 340", "time": "11:00"}]
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    token = STORE.new_run("viator_activity", {"expect": {"x": 1}}, None)
+    prog = ("globalThis.window = { innerWidth: 1440 }; globalThis.location = { href: 'https://example.com/x' };\n(async () => {\nconst SLIM = true; const WK = " + json.dumps(token) + ";\n" + (SITES / "emit.js").read_text(encoding="utf-8")
+            + "\nemit(" + json.dumps(head, ensure_ascii=False) + ", " + json.dumps(rows) + ");\nconsole.log(JSON.stringify(window.__mytParts));\n})();")
+    parts = json.loads(subprocess.run([node, "-e", prog], capture_output=True, text=True, timeout=60, check=True).stdout)
+    assert all(len(p) <= 850 and p.isascii() for p in parts) and len(parts) >= 3
+    first = json.loads(parts[0])
+    assert first["part"] == 1 and set(first["hn"]) == {"included", "meeting_text", "cancel_policy"} and "included" not in first and len(first["rows"]) == 2
+    items = [{"site": "viator_activity", "result": p, "url": "https://viator.test/x"} for p in parts]
+    assert check_parts(items) == []
+    joined = json.loads(join_slim_parts(items)[0]["result"])
+    assert (joined["included"], joined["meeting_text"], joined["cancel_policy"]) == (head["included"], head["meeting_text"], head["cancel_policy"])
+    assert joined["rows"] == rows and "hn" not in joined and "hx" not in joined

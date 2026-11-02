@@ -150,3 +150,10 @@ async def test_the_iway_recipe_says_to_use_the_operators_own_tab_in_front_and_it
     assert "OWN iWay tab" in out["tab"] and "NEW tab" not in out["tab"] and "in front" in out["tab"]
     assert "WITHOUT parameters" in out["tab"] and "grey placeholders" in out["tab"] and "Never press Order now" in out["tab"]      # what to do when the address with place ids draws no form
     assert all(any(w in f.lower() for w in SOURCE_WORDS) for f in out["filters_used"]), out["filters_used"]
+
+
+def test_iway_script_reads_a_price_line_that_starts_with_from():
+    """2 Nov 2026: the page showed 'from $28.26' and the script (WHOLE line must be the price) read 0 rows."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "myt_mcp" / "sites" / "iway_transfers.js").read_text(encoding="utf-8")
+    assert "(?:[Ff]rom\\s+)?" in src

@@ -41,15 +41,33 @@
       // SLIM parts (RateHawk hotels, 29 Oct 2026): the browser tool shows the model only about 1,000 characters, and the page's security policy stops the post, so the answer has to pass through the model. Every part is
       // made to fit in ONE output (SLIM_CHARS): part 1 carries the head, the columns and a token for the wishes (the server keeps them), the others only their rows. The server joins the parts of a run before it reads them.
       const SLIM_CHARS = 850;
-      const slimHead = { ...head, next: 'Pass every part, unchanged, to compose_answer.' };
-      const slim0 = (part, parts, chunk) => asciiOnly(JSON.stringify(part === 1
+      // A head text longer than BIG (Viator's "What's Included", meeting point and cancellation text made part 1 1,168 characters, 2 Nov 2026: the chat then rebuilt the cut part by hand) goes out in parts of its own (`hx`), and
+      // part 1 only names them (`hn`): the server puts the pieces back together before it reads the answer.
+      const BIG = 80;
+      const bigKeys = Object.keys(head).filter((k) => k !== 'next' && typeof head[k] === 'string' && head[k].length > BIG);
+      const smallHead = {}; Object.keys(head).forEach((k) => { if (!bigKeys.includes(k)) smallHead[k] = head[k]; });
+      const slimHead = { ...smallHead, next: 'Pass every part, unchanged, to compose_answer.', ...(bigKeys.length ? { hn: bigKeys } : {}) };
+      const slim0 = (part, parts, chunk, hx) => asciiOnly(JSON.stringify(part === 1
         ? { fmt: 'slim', ...slimHead, run: RUN, rows_read: rows.length, part, parts, wk: typeof WK !== 'undefined' ? WK : null, viewport: window.innerWidth, ...(parts > 1 ? { more: 'window.__mytParts[1] .. [parts-1]' } : {}), cols, common, path_base: base, rows: chunk }
-        : { fmt: 'slim', run: RUN, part, parts, rows: chunk }));
-      const slim = (part, parts, chunk) => { const t = slim0(part, parts, chunk); return t.slice(0, -1) + ',"crc":"' + crc32(t) + '"}'; };
+        : { fmt: 'slim', run: RUN, part, parts, ...(hx ? { hx } : { rows: chunk }) }));
+      const slim = (part, parts, chunk, hx) => { const t = slim0(part, parts, chunk, hx); return t.slice(0, -1) + ',"crc":"' + crc32(t) + '"}'; };
       const groups = []; let now = [];
       for (const a of arr) { now.push(a); if ((now.length > 1 || groups.length === 0) && slim(groups.length + 1, 9, now).length > SLIM_CHARS) { now.pop(); groups.push(now); now = [a]; } }      // part 1 may hold no row at all when its head is all that fits
       groups.push(now);
-      window.__mytParts = groups.map((c, i) => slim(i + 1, groups.length, c));
+      const hxGroups = []; let hcur = [];
+      for (const k of bigKeys) {
+        const text = head[k]; let i = 0; let n = 0;
+        while (i < text.length) {
+          const fits = (len) => slim(99, 99, null, [...hcur, [k, n, text.slice(i, i + len)]]).length <= SLIM_CHARS;
+          let take = Math.min(text.length - i, 400);
+          while (take > 1 && !fits(take)) take = Math.floor(take * 0.8) || 1;
+          if (!fits(take) && hcur.length) { hxGroups.push(hcur); hcur = []; continue; }
+          hcur.push([k, n++, text.slice(i, i + take)]); i += take;
+        }
+      }
+      if (hcur.length) hxGroups.push(hcur);
+      const all = [...groups.map((c) => ({ rows: c })), ...hxGroups.map((h) => ({ hx: h }))];
+      window.__mytParts = all.map((g, i) => slim(i + 1, all.length, g.rows, g.hx));
       return window.__mytParts[0];
     }
     const chunks = []; let cur = [];
