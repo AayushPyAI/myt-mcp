@@ -137,6 +137,12 @@ def _rows(draft: str) -> list[list[str]]:
     return rows
 
 
+def is_unchanged(draft: str, kind: str, store: ComposedStore = COMPOSED) -> bool:
+    """True when the draft holds a compose_answer text of this kind word for word (spaces and line breaks aside): the chat showed the server's own text and added nothing to a row, a pick or a number."""
+    flat = _norm(draft)
+    return any(_norm(t) and _norm(t) in flat for t in store.recent(kind))
+
+
 def row_problems(draft: str, kind: str, store: ComposedStore = COMPOSED) -> list[str]:
     rows = _rows(draft)
     if not rows:

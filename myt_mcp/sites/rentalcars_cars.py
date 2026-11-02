@@ -213,6 +213,9 @@ def register(mcp: MCPServer) -> None:
                 "On the results page run with the javascript tool: (() => { const q = new URLSearchParams(location.search); return JSON.stringify({name: q.get('locationName'), iata: q.get('locationIata'), coordinates: q.get('coordinates'), fts_type: q.get('ftsType')}); })()  "
                 "and call this tool again with that object as pickup_place (dropoff_place for another return place)."]}
         age = driver_years or DEFAULT_AGE
+        younger = bool(driver_years and driver_years < 30)
+        if younger:      # the operator's driver is under the site's tested 30-65 band: the search is made at 30 and the answer says that a young-driver fee is NOT in these prices (2 Nov 2026: "driver 25+" was answered with 30 and no word)
+            age = 30
         fx = await eur_factors()
         try:
             out = rentalcars_cars_recipe(pick, drop, pickup_date, pickup_time, dropoff_date, dropoff_time, age)
@@ -223,7 +226,8 @@ def register(mcp: MCPServer) -> None:
         out["filters_used"] = (([f"{gearbox.capitalize()} gearbox (operator)"] if gearbox else []) + (["Zero excess (operator): only a damage excess listed as 0"] if zero_excess else [])
                                + ([f"at least {min_seats} seats (operator)"] if min_seats else []) + ([f"budget up to {max_total:g} EUR for the whole rental (operator)"] if max_total is not None else [])
                                + ([f"room for {min_large_bags} large bags (operator)"] if min_large_bags else [])
-                               + [f"driver age {age} " + ("(operator)" if driver_years else f"(default {DEFAULT_AGE}: the site's 30-65 band)")]
+                               + [(f"driver age {driver_years} (operator): Rentalcars was searched at 30 (its tested band is 30-65), so a young-driver fee is NOT in these prices" if younger
+                                   else f"driver age {age} " + ("(operator)" if driver_years else f"(default {DEFAULT_AGE}: the site's 30-65 band)"))]
                                + ([f"prices converted to EUR by the server at the {fx['source']} of {fx['date']}"] if fx else ["no euro exchange rate was available: Rentalcars rows in another currency stay unconverted (the server never guesses a rate)"]))
         out["pickup_time"] = pickup_time
         return await server_first(NAME, "RENTALCARS_READ_IN_SERVER", "https://www.rentalcars.com", out, default=False)      # operator's Chrome only (27 Oct 2026): Rentalcars prices follow the visitor's country (Mazda 2: EUR 19.02 from the server in Germany, about 18 from the operator's Israeli browser), and it showed the server a human check once

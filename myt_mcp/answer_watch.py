@@ -1,4 +1,4 @@
-"""Measures, never enforces, whether check_answer was called after compose_answer (27 Oct 2026: three chats in a row sent a retyped answer without calling it).
+"""Measures, never enforces, whether check_answer was called after a compose_answer whose own text still had something missing (27 Oct 2026: three chats in a row sent a retyped answer without calling it).
 
 The server cannot see the message the assistant finally sends, so it cannot make anyone call check_answer, and a new refusal would only push the assistant to skip compose_answer too. This module only counts:
 compose_answer notes the time, check_answer clears it, and when WAIT_SECONDS pass with no check_answer call one line is written to the log. It changes no answer and refuses nothing.
@@ -15,7 +15,10 @@ WAIT_SECONDS = 180
 _PENDING: dict[str, float] = {}      # kind of answer -> when compose_answer returned it
 
 
-def composed(kind: str) -> None:
+def composed(kind: str, checked_by_server: bool = False) -> None:
+    """`checked_by_server`: compose_answer held its own text to the check_answer list and nothing was missing: shown unchanged it needs no check_answer call, so no wait is started (2 Nov 2026: every unchanged answer was logged as 'never checked')."""
+    if checked_by_server:
+        return
     stamp = time.time()
     _PENDING[kind] = stamp
     try:

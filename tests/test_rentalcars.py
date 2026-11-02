@@ -161,7 +161,8 @@ async def test_the_tool_asks_first_learns_unknown_places_and_returns_the_url_wis
         ok = (await c.call_tool("rentalcars_cars_recipe", {**base, "gearbox": "automatic", "min_seats": 5, "zero_excess": True, "max_total": 300})).structured_content
         learned = (await c.call_tool("rentalcars_cars_recipe", {**base, "pickup": "Faro Airport", "operator_answered": True,
                                                                 "pickup_place": {"name": "Faro Airport", "iata": "FAO", "coordinates": "37.01,-7.96", "fts_type": "A"}})).structured_content
-        young = await c.call_tool("rentalcars_cars_recipe", {**base, "operator_answered": True, "driver_years": 25})
+        young = (await c.call_tool("rentalcars_cars_recipe", {**base, "operator_answered": True, "driver_years": 25})).structured_content
+        senior = await c.call_tool("rentalcars_cars_recipe", {**base, "operator_answered": True, "driver_years": 70})
 
         async def rate():
             return FX
@@ -173,7 +174,7 @@ async def test_the_tool_asks_first_learns_unknown_places_and_returns_the_url_wis
     assert ok["wishes"]["automatic"] is True and ok["wishes"]["zero_excess"] is True and ok["wishes"]["min_seats"] == 5 and ok["wishes"]["max_total"] == 300 and ok["wishes"]["expect"]["iata"] == "LIS"
     filters = " ".join(ok["filters_used"])
     assert "Automatic gearbox (operator)" in filters and "default 30" in filters and "at least 5 seats" in filters and "no euro exchange rate was available" in filters
-    assert "locationIata=FAO" in learned["url"] and young.is_error and "30-65" in young.content[0].text
+    assert "locationIata=FAO" in learned["url"] and "driversAge=30" in young["url"] and any("driver age 25 (operator)" in f and "searched at 30" in f and "young-driver fee is NOT" in f for f in young["filters_used"]) and senior.is_error and "30-65" in senior.content[0].text
     assert with_rate["wishes"]["fx"] == FX and any("converted to EUR by the server" in f and "2026-10-26" in f for f in with_rate["filters_used"])
 
 

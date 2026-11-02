@@ -430,7 +430,7 @@ def nothing_found_answer(kind: str, filters_used: list[str], sources_read: list[
     lines += ["", "Sources: " + (" | ".join(f"{s.name}: {s.link}" for s in sources_read) if sources_read else "none read")]
     if notes.strip():
         lines += ["", "Notes (assistant's judgement, not from a source): " + notes.strip()]
-    return {"ok": True, "answer": "\n".join(lines), "next": "Call check_answer with this `answer` (and this kind) BEFORE you send it, then show `answer` to the operator exactly as written. Do not retype, reword or reorder it. You may add questions after it."}
+    return {"ok": True, "answer": "\n".join(lines), "next": "The server has already checked this text (`answer_check_missing` is absent when nothing is missing): show `answer` to the operator exactly as written and no check_answer call is needed. If you write, change or add ANYTHING (a row, a pick, a sentence with a price), call check_answer with the full text you will send, BEFORE you send it. Do not retype, reword or reorder it. You may add questions after it."}
 
 
 def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
@@ -512,7 +512,7 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
     lines += ["", "Sources: " + " | ".join(f"{s.name}: {s.link}" for s in sources_read)]
     if notes.strip():
         lines += ["", "Notes (assistant's judgement, not from a source): " + notes.strip()]
-    return {"ok": True, "answer": "\n".join(lines), "next": "Call check_answer with this `answer` (and this kind) BEFORE you send it, then show `answer` to the operator exactly as written. Do not retype, reword or reorder a row, and do not change a number, a pick or a reason. You may add questions after it."}
+    return {"ok": True, "answer": "\n".join(lines), "next": "The server has already checked this text (`answer_check_missing` is absent when nothing is missing): show `answer` to the operator exactly as written and no check_answer call is needed. If you write, change or add ANYTHING (a row, a pick, a sentence with a price), call check_answer with the full text you will send, BEFORE you send it. Do not retype, reword or reorder a row, and do not change a number, a pick or a reason. You may add questions after it."}
 
 
 def mark_unconfirmed(o: "Offer", what: str) -> None:

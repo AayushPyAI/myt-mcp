@@ -61,9 +61,13 @@ async def test_compose_answer_starts_the_count_and_check_answer_clears_it():
         item = {"site": "booking_flights", "result": answer(), "url": RECIPE["url"]}
         done = (await c.call_tool("compose_answer", {"kind": "flights", "site_results": [item], "wishes": {"expect": RECIPE["expect"]}, "filters_used": ["Connections allowed (operator)", "Best and Cheapest sorts read together (agency rule)"], "not_checked": [{"name": "TAP", "reason": "operator asked for Booking.com only"}], "myt_supplier": {"SKY express": "not checked: test"}})).structured_content
         assert done["ok"] is True, done
-        assert "flights" in answer_watch._PENDING
-        await c.call_tool("check_answer", {"draft": done["answer"], "kind": "flights"})
-        assert answer_watch._PENDING == {}
+        assert "answer_check_missing" not in done and "no check_answer call is needed" in done["next"]
+        assert "flights" not in answer_watch._PENDING          # the server's own text passed the check: shown unchanged it needs no check_answer, so no wait is started (2 Nov 2026)
+        answer_watch._PENDING["flights"] = 1.0                 # a wait that was started (own check had found something missing) is still cleared by a check_answer call
+        checked = (await c.call_tool("check_answer", {"draft": done["answer"], "kind": "flights"})).structured_content
+        assert answer_watch._PENDING == {} and checked["same_as_compose_answer"] is True
+        retyped = (await c.call_tool("check_answer", {"draft": done["answer"].replace("EUR", "EURO", 1), "kind": "flights"})).structured_content
+        assert not retyped.get("same_as_compose_answer")
 
 
 def test_a_filter_line_that_asks_for_refundable_fares_is_read_as_the_wish():
@@ -147,3 +151,23 @@ def test_the_same_filter_in_other_words_is_listed_once():
     assert merged == ["Automatic gearbox (operator)", "room for 2 large bags (operator): NOT checkable on Ofran, its list shows only 'x/y' bags", "Zero excess (operator): not met by any Europcar list row",
                       "Excess cancelled / zero excess (operator)", "prices in other currencies converted to EUR by the server at the Bank of Israel representative rates of 2026-10-26 (USD 1 = EUR 0.8932)",
                       "At most 50 EUR per person (operator)", "Checked bag included (operator)", "Best and Cheapest tabs read together (agency rule)", "Free cancellation only (operator)"]
+
+
+def test_an_answer_the_server_already_checked_starts_no_wait():
+    """2 Nov 2026: unchanged compose_answer text needs no check_answer, so it must not be logged as 'never checked'."""
+    answer_watch.composed("transfers", checked_by_server=True)
+    assert "transfers" not in answer_watch._PENDING
+    answer_watch.composed("transfers", checked_by_server=False)       # its own check found something missing: the wait stays
+    assert "transfers" in answer_watch._PENDING
+
+
+def test_unchanged_text_is_recognised_and_a_changed_row_is_not():
+    from myt_mcp.composed import COMPOSED, is_unchanged
+    COMPOSED.clear()
+    text = "Sources checked: RateHawk | Not checked: none\n| Cheapest | Economy | EUR 81 |\n| Best fit | Minibus | EUR 120 |"
+    COMPOSED.remember("transfers", text)
+    assert is_unchanged("Here you go:\n\n" + text.replace("\n", "\n\n") + "\n\nShall I book?", "transfers") is True
+    assert is_unchanged(text.replace("EUR 81", "EUR 79"), "transfers") is False
+    assert is_unchanged(text, "cars") is False
+    COMPOSED.clear()
+

@@ -291,7 +291,7 @@ def register(mcp: MCPServer) -> None:
             COMPOSED.remember(kind, out["answer"])
             OFFERS.remember(kind, offers)
             CARRY.remember(kind, request, offers, sources_read)
-            answer_watch.composed(kind)
+            answer_watch.composed(kind, checked_by_server=not out.get("answer_check_missing"))
             if renamed:
                 out["site_names_fixed"] = renamed
             out["one_list"] = ("If the operator asks for ONE list of everything found, call compose_answer again with the same kind and `request` and no new sources (not_checked as before): the server joins every earlier row, "
