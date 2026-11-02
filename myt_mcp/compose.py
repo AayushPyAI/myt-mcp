@@ -286,6 +286,13 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
     quotable = [o for o in priced if o.quotable and not o.connecting]
     if not quotable:
         quotable = [o for o in priced if o.quotable]
+    if kind == "activities" and quotable and not cheapest.quotable:      # 2 Nov 2026: 'Cheapest' was a list row's 'from' price (EUR 63) while the exact price for the date was EUR 79: when rows with an exact price exist, the Cheapest is one of them
+        lowest_exact = min(quotable, key=lambda o: o.price_total)
+        lower = [o for o in priced if not o.quotable and o.price_total < lowest_exact.price_total]
+        cheapest = lowest_exact
+        cheap_reason = f"lowest of {len([o for o in quotable])} option(s) with an exact price for the date"
+        if lower:
+            cheap_reason += f"; {len(lower)} list row(s) show a lower 'from' price per person (lowest {min(o.price_total for o in lower):,.2f} {cur}), which is not the price for the date"
     wishes_given = any(o.fits is not None or o.unconfirmed for o in rows)
     fitting = [o for o in quotable if o.fits] if wishes_given else list(quotable)
     if wishes_given and cheapest.fits is False:
@@ -433,6 +440,15 @@ def nothing_found_answer(kind: str, filters_used: list[str], sources_read: list[
     return {"ok": True, "answer": "\n".join(lines), "next": "The server has already checked this text (`answer_check_missing` is absent when nothing is missing): show `answer` to the operator exactly as written and no check_answer call is needed. If you write, change or add ANYTHING (a row, a pick, a sentence with a price), call check_answer with the full text you will send, BEFORE you send it. Do not retype, reword or reorder it. You may add questions after it."}
 
 
+NEEDS_OPERATOR = re.compile(r"log(?:ged)?[ -]?in|captcha|human|verif|access denied|security check|blocked|\bblock\b", re.I)
+
+
+def needs_you(not_checked: list[NotChecked]) -> list[str]:
+    """A source that stopped on a login, a human check or a block is something only the operator can fix in their own Chrome: the answer says so in its FIRST line (2 Nov 2026: Ofran was not logged in, the assistant said so only at the very end)."""
+    return [f"Needs you: {n.name} ({n.reason}). Please sort it out in your own Chrome (log in, or pass the human check yourself: it is never worked around) and say so: it will be read again."
+            for n in not_checked if NEEDS_OPERATOR.search(n.reason or "")]
+
+
 def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], not_checked: list[NotChecked], offers: list[Offer],
             myt_supplier: dict[str, str], pickup_time: str | None, sorted_by_price: bool, notes: str, max_rows: int | None = None, checked_at: str | None = None) -> dict[str, Any]:
     unify_groups(offers, by_date=(kind == "transfers"))
@@ -448,7 +464,9 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
         covered = {s.name.lower() for s in sources_read} | {n.name.lower() for n in not_checked}
         not_checked = list(not_checked) + [NotChecked(name=src, reason="not read in this answer: not compared") for src in ("RateHawk", "Arbitrip") if not any(c.startswith(src.lower()) for c in covered)]
     complete_sources = {s.name.lower() for s in sources_read if s.of and s.read == s.of}
-    lines: list[str] = []
+    needs = needs_you(not_checked)
+    lines: list[str] = list(needs)
+    group_summaries: list[dict[str, Any]] = []
     lines.append("Sources checked: " + "; ".join(f"{s.name} ({s.read} of {s.of}{'+' if s.more else ''} read)" for s in sources_read)
                  + " | Not checked: " + ("; ".join(f"{n.name} ({n.reason})" for n in not_checked) or "none"))
     if filters_used:
@@ -469,6 +487,7 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
         pk, pnotes = picks(kind, rows, sorted_by_price, all(o.source.lower() in complete_sources for o in rows))
         pnotes += cheaper_unconnected_notes(kind, rows)
         pnotes += price_gap_notes(kind, rows)
+        group_summaries.append({"group": g, "picks": [list(x) for x in pk], "notes": list(pnotes)})
         kept = [o for o in rows if o.fits is not False]
         pool = kept if kept else rows        # an option that clearly misses a wish of the operator is not listed (rows without wishes, such as comparison rows, stay)
         ordered = sorted(pool, key=lambda r: (r.price_total is None, r.price_total or 0))
@@ -512,7 +531,8 @@ def compose(kind: str, filters_used: list[str], sources_read: list[SourceRead], 
     lines += ["", "Sources: " + " | ".join(f"{s.name}: {s.link}" for s in sources_read)]
     if notes.strip():
         lines += ["", "Notes (assistant's judgement, not from a source): " + notes.strip()]
-    return {"ok": True, "answer": "\n".join(lines), "next": "The server has already checked this text (`answer_check_missing` is absent when nothing is missing): show `answer` to the operator exactly as written and no check_answer call is needed. If you write, change or add ANYTHING (a row, a pick, a sentence with a price), call check_answer with the full text you will send, BEFORE you send it. Do not retype, reword or reorder a row, and do not change a number, a pick or a reason. You may add questions after it."}
+    return {"ok": True, "answer": "\n".join(lines), "next": "The server has already checked this text (`answer_check_missing` is absent when nothing is missing): show `answer` to the operator exactly as written and no check_answer call is needed. If you write, change or add ANYTHING (a row, a pick, a sentence with a price), call check_answer with the full text you will send, BEFORE you send it. Do not retype, reword or reorder a row, and do not change a number, a pick or a reason. You may add questions after it.", "summary": {"sources": lines[len(needs)], "filters": list(filters_used), "pickup_time": pickup_time, "checked_at": checked_at, "groups": group_summaries,
+            "links": "Sources: " + " | ".join(f"{s.name}: {s.link}" for s in sources_read), "notes": notes.strip(), "needs_you": needs}}
 
 
 def mark_unconfirmed(o: "Offer", what: str) -> None:
@@ -597,7 +617,7 @@ def apply_wishes(offers: list[Offer], wishes: dict | None) -> None:
     if not wishes:
         return
     for o in offers:
-        if o.fits is not None or not o.quotable:      # a comparison row (its cancellation is not in the list) is never judged from what the list lacks
+        if o.fits is not None or not o.quotable or o.unconfirmed:      # a comparison row (its cancellation is not in the list) is never judged from what the list lacks; a row a site marked 'not confirmed' keeps that (2 Nov 2026: Ofran's VW Polo, large bags unconfirmed, got fits=True here and became the Best fit)
             continue
         d = o.details or {}
         ok = True

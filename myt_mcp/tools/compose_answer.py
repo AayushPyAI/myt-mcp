@@ -11,8 +11,8 @@ from typing import Any, Literal
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from myt_mcp import answer_watch, request_check as rc
-from myt_mcp.composed import CARRY, COMPOSED, OFFERS
+from myt_mcp import answer_watch, request_check as rc, summary as sm
+from myt_mcp.composed import CARRY, COMPOSED, OFFERS, SUMMARIES
 from myt_mcp.ingest import STORE
 from myt_mcp.compose import MAX_ROWS_BY_KIND, NotChecked, Offer, SourceRead, apply_wishes, bag_unconfirmed, compose, refund_unconfirmed, tracking_unconfirmed
 from myt_mcp.sites import carried_wishes, convert_all, register_all, resolve_site_names
@@ -143,6 +143,19 @@ def asks_refundable(filters_used: list[str]) -> bool:
 def asks_flight_tracking(filters_used: list[str]) -> bool:
     """A filter line says flight tracking was wanted (the wish may be in the filters only, not carried by any recipe)."""
     return any(re.search(r"flight tracking", f, re.I) and not re.search(r"not required|not needed|no preference|not asked|unknown", f, re.I) for f in filters_used or [])
+
+
+def one_large_bags_line(filters: list[str]) -> list[str]:
+    """Two car recipes each write 'room for N large bags (operator)': one line is kept, the longest (the one that says a source could not check it)."""
+    bags = [f for f in filters if "large bags" in f.lower()]
+    if len(bags) < 2:
+        return filters
+    keep = max(bags, key=len)
+    out: list[str] = []
+    for f in filters:
+        if f not in bags or (f == keep and keep not in out):
+            out.append(f)
+    return out
 
 
 def register(mcp: MCPServer) -> None:
@@ -276,7 +289,9 @@ def register(mcp: MCPServer) -> None:
             filters_used = [*filters_used, not_applied]
         if not request and any("(operator" in f for f in filters_used):
             notes = (notes + " The operator's own message was not passed to the server (`request`), so the '(operator)' labels in the filters were not checked against it.").strip()
+        filters_used = one_large_bags_line(filters_used)
         out = compose(kind, filters_used, sources_read, not_checked, offers, myt_supplier or {}, pickup_time, sorted_by_price, notes, max_rows=MAX_ROWS_BY_KIND.get(kind))
+        summary = out.pop("summary", None)      # kept on the server for compose_summary, never sent to the chat
         log.info("CHECK compose_answer kind=%s ok=%s items=%s offers=%s carried=%s passed=%s problems=%s", kind, out.get("ok"), [(i.get("site"), len(i.get("result", ""))) for i in items], len(offers),
                  {k[0]: {w: (c["wishes"].get("expect") or {}).get(w) for w in ("direct_only", "checked_bag", "refundable")} for k, c in carried.items()},
                  sorted((wishes or {}).keys()), "; ".join(out.get("problems", []))[:800])          # sizes and rule messages only, never the rows
@@ -289,13 +304,27 @@ def register(mcp: MCPServer) -> None:
             log.info("CHECK compose_answer not in the request: relabelled=%s not_applied=%s", assumed, left_out)
         if out.get("ok") and out.get("answer"):
             COMPOSED.remember(kind, out["answer"])
+            if summary:
+                SUMMARIES.remember(kind, request, summary)
             OFFERS.remember(kind, offers)
             CARRY.remember(kind, request, offers, sources_read)
             answer_watch.composed(kind, checked_by_server=not out.get("answer_check_missing"))
             if renamed:
                 out["site_names_fixed"] = renamed
+            out["final_message"] = ("When every kind the operator asked for is composed, call compose_summary(request, asked) and show its text as the final message: never write your own summary (the server copies the picks, "
+                                    "filters with who asked for them, not-checked sources and links from its own answers).")
             out["one_list"] = ("If the operator asks for ONE list of everything found, call compose_answer again with the same kind and `request` and no new sources (not_checked as before): the server joins every earlier row, "
                                "cheapest first. Never write rows by hand.")
+        return out
+
+    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+    @tool_errors
+    async def compose_summary(request: str | None = None, asked: list[str] | None = None) -> dict[str, Any]:
+        """FINAL MESSAGE when several kinds were searched: after every compose_answer call this and show `answer` exactly as written; never write your own summary. `request` = the operator's words; `asked` = the kinds they asked for."""
+        out = sm.build_summary(SUMMARIES.recent(), request, asked)
+        log.info("CHECK compose_summary ok=%s kinds=%s not_searched=%s", out.get("ok"), out.get("kinds"), out.get("not_searched"))
+        if out.get("ok"):
+            COMPOSED.remember("general", out["answer"])
         return out
 
     register_all(mcp)

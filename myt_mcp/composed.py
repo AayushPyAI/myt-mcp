@@ -67,6 +67,26 @@ class OfferStore:
 OFFERS = OfferStore()
 
 
+class SummaryStore:
+    """The structured summary of the last composed answer of each kind (picks, sources, filters, cautions), kept so compose_summary can build ONE final text for the operator without the assistant writing it
+    (2 Nov 2026: the final message of an all-in-one run was the assistant's own prose: no Sources line, no Picks table, filters nobody asked for written as the operator's wishes, check_answer never called)."""
+
+    def __init__(self) -> None:
+        self._last: dict[str, dict[str, Any]] = {}
+
+    def remember(self, kind: str, request: str | None, summary: dict[str, Any]) -> None:
+        self._last[kind] = {**summary, "time": time.time(), "request": request}
+
+    def recent(self) -> dict[str, dict[str, Any]]:
+        return {k: v for k, v in self._last.items() if time.time() - v["time"] < TTL_SECONDS}
+
+    def clear(self) -> None:
+        self._last.clear()
+
+
+SUMMARIES = SummaryStore()
+
+
 CARRY_SECONDS = 45 * 60          # an earlier answer of the same kind and the same request still counts for this long
 CARRY_SECONDS_NO_REQUEST = 20 * 60
 

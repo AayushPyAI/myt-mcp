@@ -15,8 +15,8 @@ pytestmark = pytest.mark.anyio
 LEGACY = {"tap_flight_prices", "sata_flight_prices", "viator_search_activities", "viator_activity_details", "getyourguide_find_activities", "getyourguide_activity_details", "ofran_find_location",
           "ofran_car_prices", "ratehawk_hotels"}
 SWITCHES = ("TAP_SERVER_BROWSER", "SATA_SERVER_BROWSER", "VIATOR_SERVER_BROWSER", "GYG_SERVER_BROWSER", "OFRAN_SERVER_SEARCH", "RATEHAWK_SERVER_BROWSER", "LEGACY_TOOL_POINTERS")
-BUDGET_TOKENS = 29_300      # descriptions + parameter schemas, characters / 4 (raised from 28,000 for iWay, 27 Oct 2026, one more recipe; from 29,000 for plan_from_answer, 29 Oct 2026, the one tool that turns the rows an operator chose into reservation lines): lower it when descriptions get shorter, never raise it without a reason
-MAX_TOOLS = 58
+BUDGET_TOKENS = 29_500      # raised from 29,300 for compose_summary (2 Nov 2026, +163 tokens: the one new tool; the Rentalcars description changed in place) | was:      # descriptions + parameter schemas, characters / 4 (raised from 28,000 for iWay, 27 Oct 2026, one more recipe; from 29,000 for plan_from_answer, 29 Oct 2026, the one tool that turns the rows an operator chose into reservation lines): lower it when descriptions get shorter, never raise it without a reason
+MAX_TOOLS = 59      # +1 for compose_summary (2 Nov 2026): the one tool that builds the final message of a multi-kind answer, so the assistant does not write it
 
 
 async def production_tools(monkeypatch, **env):

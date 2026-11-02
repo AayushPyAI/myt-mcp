@@ -1909,3 +1909,35 @@ def test_error_messages_name_the_fields_the_chat_must_use():
     assert '"site"' in msg and '"result"' in msg and '"url"' in msg and "unknown site ''" in msg
     problems = validate("activities", [], [SourceRead(name="Viator", read=5, of=50, link="")], [], [], {}, None)
     assert any("`sources_read` entry" in p and "no link" in p and "not a home page" in p for p in problems)
+
+
+def test_a_row_marked_not_confirmed_by_its_site_is_never_a_pick_and_apply_wishes_keeps_it_so():
+    """2 Nov 2026: Ofran's VW Polo (large bags unconfirmed) went through apply_wishes, got fits=True and became the Best fit and Recommended."""
+    from myt_mcp.compose import Offer, apply_wishes, mark_unconfirmed, picks
+    det = {"seats_bags": "4 seats / 1/1 bags"}
+    unsure = Offer(group="g", source="Ofran", name="VW Polo", price_total=112.74, currency="EUR", quotable=True, details=dict(det))
+    sure = Offer(group="g", source="Other", name="Opel Corsa", price_total=130.0, currency="EUR", quotable=True, details={"seats_bags": "5 seats / 2 large bags"}, fits=True)
+    mark_unconfirmed(unsure, "large bags")
+    apply_wishes([unsure, sure], {"min_large_bags": 2, "automatic": True})
+    assert unsure.fits is None and unsure.unconfirmed == ["large bags"]
+    rows, _ = picks("cars", [unsure, sure], True)
+    by = {a: b for a, b, _ in rows}
+    assert "Opel Corsa" in by["Best fit"] and "Opel Corsa" in by["Recommended"] and "VW Polo" in by["Cheapest"]
+
+
+def test_the_cheapest_activity_is_an_exact_price_for_the_date_not_a_list_from_price():
+    """2 Nov 2026: the Cheapest pick was Devour Lisbon's list 'from' price EUR 63; the price for the date was EUR 79 (EUR 158 for two)."""
+    from myt_mcp.compose import Offer, picks
+    list_row = Offer(group="g", source="Viator", name="Devour Lisbon", price_total=63.0, currency="EUR", quotable=False, price_basis="'from' price per person")
+    exact = Offer(group="g", source="Viator", name="Devour Lisbon - Small Group (2 travellers)", price_total=158.0, currency="EUR", quotable=True, price_basis="whole group, 2 adults")
+    rows, _ = picks("activities", [list_row, exact], False)
+    cheapest = next(r for r in rows if r[0] == "Cheapest")
+    assert "158.00 EUR" in cheapest[1] and "exact price for the date" in cheapest[2] and "lower 'from' price per person" in cheapest[2] and "63.00 EUR" in cheapest[2]
+    only_list, _ = picks("activities", [list_row], False)
+    assert "63.00 EUR" in only_list[0][1] and "comparison row, not quotable" in only_list[0][2]          # with no exact price the list's own Cheapest stays, and says what it is
+
+
+def test_room_for_large_bags_is_written_once_in_the_filters():
+    from myt_mcp.tools.compose_answer import one_large_bags_line
+    f = ["Automatic gearbox (operator)", "room for 2 large bags (operator): NOT checkable on Ofran, its list shows only 'x/y' bags", "room for at least 2 large bags (operator)", "driver age 25 (operator)"]
+    assert one_large_bags_line(f) == [f[0], f[1], f[3]] and one_large_bags_line(f[:1] + f[2:]) == f[:1] + f[2:]
