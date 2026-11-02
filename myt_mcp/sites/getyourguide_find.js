@@ -19,14 +19,18 @@ await (async () => {
     const lines = a.innerText.split('\n').map((s) => s.trim()).filter(Boolean);
     const cityIdx = lines.findIndex((l) => /^[A-Z][A-Z .'’-]{2,}$/.test(l));
     const fromIdx = lines.findIndex((l) => /^From$/i.test(l));
-    const priceLine = fromIdx >= 0 ? lines[fromIdx + 1] || '' : '';
-    const pm = priceLine.match(/^([€₪$£]|EUR|ILS|USD|GBP)\s?([\d.,]+)$/);
+    // after "From" the card lists the struck price and then the discounted one ("From | €78 | €70", seen 2 Nov 2026): the price to pay is the LAST one (the lower), the first is what it was
+    const PRICE = /^([€₪$£]|EUR|ILS|USD|GBP)\s?([\d.,]+)$/; const prices = [];
+    if (fromIdx >= 0) for (const l of lines.slice(fromIdx + 1, fromIdx + 4)) { const m = l.match(PRICE); if (m) prices.push(m); else if (prices.length) break; }
+    const num = (m) => Number(m[2].replace(/,/g, ''));
+    const pm = prices.length ? (prices.length > 1 && num(prices[prices.length - 1]) <= num(prices[0]) ? prices[prices.length - 1] : prices[0]) : null;
+    const was = prices.length > 1 && pm === prices[prices.length - 1] && prices[0][1] === pm[1] ? num(prices[0]) : null;
     const title = cityIdx >= 0 ? lines[cityIdx + 1] : lines[0]; const metaIdx = cityIdx >= 0 ? cityIdx + 2 : 1;
     const meta = /hour|minute|min|day|•/i.test(lines[metaIdx] || '') ? lines[metaIdx] : null;
     const rating = lines.find((l) => /^\d(\.\d)?$/.test(l)) || null; const rev = lines.find((l) => /^\(\d[\d,]*\)$/.test(l)) || null;
     const tags = lines.filter((l) => BADGE.test(l));
     return { rank: SKIP + i + 1, title, path: (a.getAttribute('href') || '').split('?')[0], city: cityIdx >= 0 ? lines[cityIdx] : null, meta, rating: rating ? Number(rating) : null, reviews: rev ? Number(rev.replace(/[(),]/g, '')) : null,
-      symbol: pm ? pm[1] : null, from: pm ? Number(pm[2].replace(/,/g, '')) : null, per: /per (person|group)/i.test(a.innerText) ? (a.innerText.match(/per (person|group)/i) || [])[1].toLowerCase() : null, tags };
+      symbol: pm ? pm[1] : null, from: pm ? num(pm) : null, was, per: /per (person|group)/i.test(a.innerText) ? (a.innerText.match(/per (person|group)/i) || [])[1].toLowerCase() : null, tags };
   });
   const total = (t.match(/([\d,]+\+?)\s+results/) || [])[1] || null;
   const chip = (t.slice(0, 900).match(/\b([A-Z][a-z]{2} \d{1,2})\b(?=\s*\n)/) || [])[1] || null;

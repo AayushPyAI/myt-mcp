@@ -1852,3 +1852,18 @@ def test_ratehawk_cars_knows_the_lisbon_airport_id():
     from myt_mcp.sites.ratehawk_cars import known_locations
     ids = known_locations()
     assert ids["humberto delgado airport"] == ids["lisbon airport"] == 965847007
+
+
+def test_gyg_find_discounted_card_keeps_the_price_to_pay_and_names_the_struck_one():
+    """2 Nov 2026: a card reads 'From | EUR 78 | EUR 70'; the script used to take the struck 78. It now sends the last (lower) price as `from` and the first as `was`."""
+    from datetime import date
+    from myt_mcp.sites import convert_all
+    from myt_mcp.sites.getyourguide_find import getyourguide_find_recipe
+    r = getyourguide_find_recipe("Lisbon food tour", date(2027, 3, 8), 24, 0, None, False, None, None, None)
+    assert "prices.length - 1" in r["script"] and "from: pm ? num(pm) : null, was," in r["script"]
+    row = _gr(1, "Old Lisbon No-Uphill Food Tour: 17 Tastings, Wines & Sips", "/lisbon-l42/the-portuguese-food-tour-dishes-drinks-sights-t1082047/", "3.5 hours", 4.84, 41, 70, ["Top rated"])
+    row["was"] = 78
+    plain = _gr(2, "Lisbon: Food and Wine Small Group Walking Tour", "/lisbon-l42/lisbon-food-wine-tasting-walk-t603/", "3 hours", 4.89, 5207, 70)
+    res = _gyf([row, plain], query_text="Lisbon food tour", date_chip="Mar 8")
+    offers, *_ = convert_all([{"site": "getyourguide_find", "result": res, "url": "u"}], {"expect": r["expect"]})
+    assert offers[0].price_total == 70 and "78" in offers[0].price_basis and "struck through" in offers[0].price_basis and "struck" not in offers[1].price_basis

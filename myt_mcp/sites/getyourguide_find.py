@@ -113,7 +113,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         kind = "private group" if "private" in meta.lower() else ("small group" if "small group" in meta.lower() else ("group" if "group" in meta.lower() else "not shown on the list"))
         offers.append(Offer(
             group=exp.get("group") or group, source=SOURCE, name=title, price_total=r.get("from"), currency="EUR" if r.get("from") is not None else None,
-            price_basis="'from' price = the lowest starting price in the list (the card does not say per person or per group); the exact group price comes from getyourguide_activity_recipe",
+            price_basis="'from' price = the lowest starting price in the list (the card does not say per person or per group)" + (f", already discounted (the card also shows EUR {r['was']:g} struck through)" if r.get("was") else "")
+            + "; the exact group price comes from getyourguide_activity_recipe",
             fits=fits, quotable=False, supplier="GetYourGuide", link=("https://www.getyourguide.com" + r["path"]) if r.get("path") else None,
             details={"duration": meta.split("•")[0].strip() or "not shown", "start_times": "check the activity page for the date", "language": ("audio guide optional" if "audio guide" in meta.lower() else "not shown on the list"),
                      "meeting_point": "not shown on the list", "cancellation": "Free cancellation (tag on the card)" if "Free cancellation" in (r.get("tags") or []) else "not shown on the list", "private_or_group": kind,
