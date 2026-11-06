@@ -1,12 +1,14 @@
 """Booking.com attractions (the LIST of a city's activities for a day; COMPARISON ONLY: the price for a date and a group is on the activity's own page, see booking_attraction), read in the operator's own Chrome.
 
-Site rules (found on the real page, 27 Oct 2026): the address is booking.com/attractions/searchresults/<country>/<city>.html?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&adults=N&selected_currency=EUR
-[&sort_by=trending|highest_weighted_rating|lowest_price][&filter_by_label[]=free_cancellation][&filter_by_label[]=skip_the_line][&filter_by_min_rating[]=4.5|4.0|3.5|3.0][&filter_by_language[]=en]; the site redirects
-to <city>.en-gb.html and keeps these values. Its own filters live in the address (a ticked box writes the pair itself): free cancellation, skip the line, "9 up / 8 up / 7 up / 6 up" (min_rating 4.5 / 4.0 / 3.5
-/ 3.0 on its 5-point scale), language; there is no price filter. The sort box is three radios (Our top picks = trending, the default; Lowest price; Best reviewed = highest_weighted_rating) and changes the list inside the
-page. 15 cards load first and 15 more with each scroll; the page does not say how many exist. A card has the title, the review score and count, "Duration: 9 hours" (not on every card), "Free cancellation
-available" (not on every card), "#1 Best seller", and the LOWEST starting price per person ("From", with the discounted "Current price from" when there is one). No connect-src in the page's CSP, no human check
-seen. A place is the <country>/<city> part of the address; only Lisbon is known here. Our top picks and Best reviewed are read together (the agency's rule). A human check is never worked around.
+Site rules (found on the real page, 27 Oct 2026; the data source read live 5 Nov 2026): the address is booking.com/attractions/searchresults/<country>/<city>.html?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&adults=N&selected_currency=EUR
+[&sort_by=trending|highest_weighted_rating|lowest_price][&filter_by_label[]=free_cancellation|skip_the_line][&filter_by_min_rating[]=4.5|4.0|3.5|3.0][&filter_by_language[]=en]; the site redirects to <city>.en-gb.html and keeps these values.
+The page's data is Booking.com's own Apollo store (<script data-capla-store-data="apollo">): attractionsProduct.searchProducts with the first 15 products (id, slug, name, duration, cancellationPolicy with the exact cut-off, reviewsStats on
+a 5-point scale, representativePrice = the exact lowest price per person, labels, flags), `filterStats` (activities matching, activities in the city: 12 of 4,128 for free cancellation + skip the line + 4.5 up in Lisbon) and
+`pagination.hasNextPage`. The page loads 15 more with each scroll from POST accommodations.booking.com/dml/graphql, operation SearchResultsProducts, input {ufi, limit: 15, page, source: "search_results", sortBy, filterByLabel,
+filterByMinRating, filterBySupportedLanguage}; a compact query for the fields needed gives the same products (15 of 15 equal to the embedded page 1) and the CSRF token, pageview id and tracking headers are optional. Verified live: free
+cancellation gives only free-cancellation products, min rating 4.5 only 4.5 and up, lowest_price ascending across pages, highest_weighted_rating by weighted score. Skip the line is the site's own filter: the data flags it
+(aiBadgesSkipTheLine) on only some of the results, so each row is marked from its own flag. The page shows the rating on 10 points (the 5-point average times two) and the price rounded up to whole euros. A card shows no
+sort of "how many exist": the service does. A place is the <country>/<city> part of the address; only Lisbon is known here. Our top picks and Best reviewed are read together (the agency's rule). A human check is never worked around.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from myt_mcp.compose import Offer
+from myt_mcp.compose import Offer, mark_unconfirmed
 from myt_mcp.errors import tool_errors
 from myt_mcp.sites import SiteRows, server_first, with_emit
 
@@ -32,7 +34,7 @@ HERE = Path(__file__).parent
 BATCH = 30      # cards per sort
 SORTS = [["Our top picks", "trending"], ["Best reviewed", "highest_weighted_rating"]]
 TAB_NAMES = {"Our top picks": "Top picks", "Best reviewed": "Best reviewed"}
-PAGE_KEYS = ("place", "day", "day_to", "adults", "currency", "sort", "labels", "min_rating", "language", "time_of_day")      # what the script checks in the page's own address
+PAGE_KEYS = ("place", "day", "day_to", "adults", "currency")      # what the script echoes of the page's own address
 RATING_BUCKETS = ((9.0, "4.5"), (8.0, "4.0"), (7.0, "3.5"), (6.0, "3.0"))      # the site's "9 up" ... "6 up" boxes: its 5-point value for a 10-point score
 LANGUAGES = {"en", "pt", "es", "fr", "it", "de", "ru", "uk", "nl"}
 
@@ -59,21 +61,22 @@ def booking_attractions_recipe(place_path: str, place_name: str, day: date, adul
               "group": f"Booking.com attractions in {place_name}, {day:%d %b %Y}"}
     url = (f"https://www.booking.com/attractions/searchresults/{place_path}.html?date_from={day.isoformat()}&date_to={day.isoformat()}&adults={adults}&selected_currency=EUR"
            + "".join(f"&filter_by_label[]={x}" for x in labels) + (f"&filter_by_min_rating[]={bucket}" if bucket else "") + (f"&filter_by_language[]={language.lower()}" if language else ""))
-    script = (with_emit((HERE / "booking_attractions.js").read_text(encoding="utf-8")).replace("__EXPECT__", json.dumps({k: expect[k] for k in PAGE_KEYS}))
-              .replace("__LIMIT__", str(limit)).replace("__SORTS__", json.dumps(SORTS)))
+    filters = {"filterByLabel": labels, "filterByMinRating": [bucket] if bucket else [], "filterBySupportedLanguage": [language.lower()] if language else []}
+    expect["filters"] = filters
+    request = {"filters": filters, "limit": limit, "sorts": [{"label": label, "key": key} for label, key in SORTS]}
+    script = with_emit((HERE / "booking_attractions.js").read_text(encoding="utf-8")).replace("__REQUEST__", json.dumps(request))
     return {"url": url, "script": script, "expect": expect}
 
 
-def _hours(text: str | None) -> float | None:
-    if not text:
-        return None
-    h = re.search(r"(\d+(?:\.\d+)?)\s*hours?", text, re.I)
-    m = re.search(r"(\d+)\s*minutes?", text, re.I)
-    return (float(h.group(1)) if h else 0.0) + (int(m.group(1)) / 60 if m else 0.0) if (h or m) else None
+FLAG_TEXT = {"aiBadgesSkipTheLine": "skip the line", "aiBadgesAdmissionIncluded": "admission included", "aiBadgesExpertGuide": "expert guide", "aiBadgesAudio": "audio guide"}
 
 
 def _expected_filters(exp: dict[str, Any]) -> list[str]:
     return sorted([f"filter_by_label={x}" for x in exp.get("labels") or []] + [f"filter_by_min_rating={x}" for x in exp.get("min_rating") or []] + [f"filter_by_language={x}" for x in exp.get("language") or []])
+
+
+def _until(stamp: str | None) -> str | None:
+    return stamp[:16].replace("T", " ") if stamp else None
 
 
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
@@ -85,35 +88,30 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         return SiteRows(problems=[f"the Booking.com script reported: {data.get('error', 'not ok')}"])
     exp = wishes.get("expect") or {}
     problems: list[str] = []
-    if data.get("unparsed"):
-        problems.append(f"Booking.com wrote an activity card in a form the reader does not know ({str(data['unparsed'][0])[:80]}...): the page may have changed; read it by hand and say so")
-    form = data.get("form") or {}
+    searched = data.get("searched") or {}
     for k in PAGE_KEYS:
-        if k in exp and form.get(k) != exp[k]:
-            problems.append(f"the page searched {k} {form.get(k)} instead of {exp[k]}: open the url again")
-    if exp:
-        want = _expected_filters(exp)
-        for when, got in (("when the page was opened", data.get("filters_on")), ("after the sort was changed", data.get("filters_on_end"))):
-            if got is not None and sorted(got) != want:
-                problems.append(f"the page's filter boxes were {got or 'all off'} {when}, not {want or 'all off'}: clear or set them, open the url again and run the script once more")
+        if k in exp and searched.get(k) != exp[k]:
+            problems.append(f"the page searched {k} {searched.get(k)} instead of {exp[k]}: open the url again")
+    if exp.get("filters") is not None and searched.get("filters") != exp["filters"]:
+        problems.append(f"the request carried the filters {searched.get('filters')} instead of {exp['filters']}: run the script again")
     sorts = {s.get("sort"): s for s in data.get("sorts") or []}
     if exp and not {"Our top picks", "Best reviewed"} <= set(sorts):
         problems.append("both the Our top picks and the Best reviewed sorts must be read: run the script again")
     for name, srt in sorts.items():
-        key = dict(SORTS).get(name)
-        if key and srt.get("shown_as") != key:
-            problems.append(f"the page showed the sort '{srt.get('shown_as')}' instead of {name} when its cards were read: run the script again")
+        if not srt.get("read"):
+            problems.append(f"no activity of the {name} sort was read ({'; '.join(data.get('failed') or []) or 'no reason given'}): run the script again")
+    country = data.get("country") or (exp.get("place") or "").split("/")[0]
     merged: dict[tuple, dict[str, Any]] = {}
     padding = 0
     for r in data.get("rows", []):
-        if r.get("cur") != "€":
+        if r.get("cur") != "EUR":
             problems.append(f"a Booking.com price is in '{r.get('cur')}', not euro: open the url again (the address asks selected_currency=EUR)")
             continue
         title = r.get("title") or ""
         if exp.get("title_contains") and not any(w in title.lower() for w in exp["title_contains"]):
             padding += 1        # the list is the whole city's, in the site's own order: a card without the wish's words is left out altogether
             continue
-        key = (title, r.get("from"))
+        key = (r.get("id") or title, r.get("from"))
         if key in merged:      # the same activity in both sorts is one row with both labels
             tab = TAB_NAMES.get(r.get("sort"), r.get("sort"))
             if tab not in merged[key]["tabs"]:
@@ -123,38 +121,59 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     offers: list[Offer] = []
     for item in merged.values():
         r, title = item["row"], item["row"].get("title") or ""
-        checks: list[bool | None] = []
+        rating10 = round(r["rating5"] * 2, 1) if r.get("rating5") is not None else None      # the page shows 9.2 for the 5-point average 4.6
+        flags = set(r.get("flags") or [])
+        checks: list[tuple[str, bool | None]] = []
         if exp:
             if exp.get("title_contains"):
-                checks.append(True)
+                checks.append(("title", True))
             if exp.get("max_price") is not None:
-                checks.append(None if r.get("from") is None else r["from"] <= exp["max_price"])
+                checks.append(("price", None if r.get("from") is None else r["from"] <= exp["max_price"]))
             if exp.get("min_rating_wish") is not None:
-                checks.append(None if r.get("rating") is None else r["rating"] >= exp["min_rating_wish"])
+                checks.append(("rating", None if rating10 is None else rating10 >= exp["min_rating_wish"]))
             if exp.get("free_cancellation"):
-                checks.append(True if r.get("free_cancel") else None)
-        fits = None if not checks else (False if False in checks else (None if None in checks else True))
-        rating = f"{r['rating']:g} ({r['reviews']:,} reviews)" if r.get("rating") is not None and r.get("reviews") is not None else (f"{r['rating']:g}" if r.get("rating") is not None else "not shown")
-        offers.append(Offer(
+                checks.append(("free cancellation", bool(r.get("free_cancel"))))
+            if "skip_the_line" in (exp.get("labels") or []):
+                checks.append(("skip the line", True if "aiBadgesSkipTheLine" in flags else None))
+        values = [v for _, v in checks]
+        fits = None if not checks else (False if False in values else (None if None in values else True))
+        rating = f"{rating10:g} ({r['reviews']:,} reviews)" if rating10 is not None and r.get("reviews") is not None else (f"{rating10:g}" if rating10 is not None else "not rated yet")
+        badges = [x for x in (r.get("best_seller_text") or (f"#{r['best_seller']:g} Best seller" if r.get("best_seller") else None), *[FLAG_TEXT[f] for f in r.get("flags") or [] if f in FLAG_TEXT]) if x]
+        guide, audio = r.get("guide_langs") or [], r.get("audio_langs") or []
+        langs = "; ".join(x for x in (f"guide in {', '.join(guide)}" if guide else None, f"audio in {', '.join(audio)}" if audio else None) if x) or ("filtered by Booking.com for " + ", ".join(exp["language"]) if exp.get("language") else "not shown")
+        cancel = (f"Free cancellation until {_until(r['cancel_until'])} (Booking.com's own data)" if r.get("cancel_until") else "Free cancellation (Booking.com's own flag)") if r.get("free_cancel") else ("not free (Booking.com's own flag)" if r.get("free_cancel") is False else "not shown on the list")
+        o = Offer(
             group=exp.get("group") or group, source=SOURCE, name=title, price_total=r.get("from"), currency="EUR",
-            price_basis="'from' price = the lowest starting price per person in the list (not for the date and the group: that is on the activity's page)" + (f"; was EUR {r['was']:g} before the discount" if r.get("was") and r["was"] != r.get("from") else ""),
-            fits=fits, quotable=False, supplier="Booking.com", link=("https://www.booking.com" + r["path"]) if r.get("path") and r["path"].startswith("/") else r.get("path"),
-            details={"duration": r.get("duration") or "not shown on the card", "start_times": "check the activity page for the date", "language": "not shown on the list", "meeting_point": "not shown on the list",
-                     "cancellation": "Free cancellation (tag on the card)" if r.get("free_cancel") else "not shown on the list", "private_or_group": "not shown on the list", "rating": rating,
-                     "badges": ", ".join(x for x in (f"#{r['best_seller']} Best seller" if r.get("best_seller") else None, r.get("available_from")) if x) or None,
-                     "from_tab": " and ".join(item["tabs"])}))
-    seen = ", ".join(f"{name}: {srt.get('read')} cards" for name, srt in sorts.items())
+            price_basis="'from' price = the lowest starting price per person, exact (the page shows it rounded up); not for the date and the group: that is on the activity's page" + (f"; discounted from EUR {r['public_from']:g}" if r.get("discounted") and r.get("public_from") and r["public_from"] != r.get("from") else ""),
+            fits=fits, quotable=False, supplier="Booking.com", link=f"https://www.booking.com/attractions/{country}/{r['slug']}.en-gb.html" if r.get("slug") and country else None,
+            flexible=True if r.get("free_cancel") else None,
+            details={"duration": r.get("duration") or "not shown", "start_times": "check the activity page for the date", "language": langs,
+                     "meeting_point": "not shown on the list", "cancellation": cancel, "private_or_group": "private" if "private" in title.lower() else "not shown on the list", "rating": rating,
+                     "badges": ", ".join(badges) or None, "available_from": (f"bookable from {r['available_from']}" + (f" (up to {r['booking_window_days']} days ahead)" if r.get("booking_window_days") else "")) if r.get("available_from") else None, "from_tab": " and ".join(item["tabs"])})
+        if fits is None:
+            for label, v in checks:
+                if v is None:
+                    mark_unconfirmed(o, label)
+        offers.append(o)
+    seen = ", ".join(f"{name}: {srt.get('read')} activities" for name, srt in sorts.items())
     notes = ["Booking.com's list shows only the lowest starting price per person: for the price for the date and the group open the activity's page for the best two or three (booking_attraction_recipe). Top picks and Best reviewed were read together; an activity in both is one row (column from tab).",
-             f"Cards read: {seen}. The page does not say how many activities exist for this search, so 'N of N' counts only the cards read by scrolling."]
+             f"Read: {seen}."]
+    if data.get("results_matching") is not None:
+        notes.append(f"Booking.com says {data['results_matching']:,} activities match this search" + (f" (of {data['results_in_city']:,} in the city)" if data.get("results_in_city") else "") + "; only the first ones of each sort were read.")
     site_filters = _expected_filters(exp)
     if site_filters:
-        notes.append("Booking.com's own filters were set in the address: " + ", ".join(site_filters) + ".")
+        notes.append("Booking.com's own filters were sent with the request: " + ", ".join(site_filters) + ".")
+    if "skip_the_line" in (exp.get("labels") or []):
+        notes.append("Skip the line is Booking.com's own filter; its data flags skip-the-line on only some of the results, so a row without the flag is marked 'not confirmed' for it.")
     if padding:
-        notes.append(f"{padding} of these cards have none of the wish's title words ({', '.join(exp.get('title_contains') or [])}): the list is the whole city's, so they are left out of the table and the picks.")
+        notes.append(f"{padding} of these results have none of the wish's title words ({', '.join(exp.get('title_contains') or [])}): the list is the whole city's, so they are left out of the table and the picks.")
+    if data.get("failed"):
+        notes.append("Not every page asked for was read: " + "; ".join(str(x) for x in data["failed"]) + ".")
     if not data.get("rows") and not problems:
-        problems.append("no activity card could be read: say it could not be read, never that there are none")
+        problems.append("no activity could be read: say it could not be read, never that there are none")
     count = len(merged) + padding
-    return SiteRows(offers=offers, read=count, total=count, problems=problems, sorted_by_price=False, extra_notes=notes, read_rows=True, total_absolute=True)
+    total = data.get("results_matching")
+    return SiteRows(offers=offers, read=count, total=max(total or 0, count) if total is not None else count, problems=problems, sorted_by_price=False, extra_notes=notes, read_rows=True, total_absolute=True)
 
 
 def register(mcp: MCPServer) -> None:
@@ -169,7 +188,7 @@ def register(mcp: MCPServer) -> None:
         it) and a read-only SCRIPT: open the url, run the script with the javascript tool. The script reads the first `limit` cards (default 30, scrolling to load them) of 'Our top picks', then picks 'Best reviewed' in the page's sort box and
         reads the first `limit` of that (both are read together, the agency's rule), and sends its whole answer from the page to the server by itself and returns a short receipt (the recipe's `ingest` id is in it): then call
         compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. The price is the lowest starting price per person: for the group price of a date call booking_attraction_recipe for the
-        best two or three. A human check (captcha) is never worked around: stop and tell the operator. SERVER FIRST: the server first reads this page itself in its own automation Chrome (the same script); then the answer is a short receipt with an `ingest` id and you only call compose_answer with `runs`=[that id]. If it could not (the answer then has `server_read` with the reason, and the url and script below), read the page in Claude in Chrome as described here. Never retry the server's read."""
+        best two or three. A human check (captcha) is never worked around: stop and tell the operator. The server reads it first in its own Chrome (a short receipt with an `ingest` id: only compose_answer with `runs`=[that id]); if `server_read` says it could not, read the url in Claude in Chrome. Never retry the server's read."""
         if not [w for w in (title_contains or []) if str(w).strip()]:
             raise ToolError("title_contains is needed: Booking.com's list is the WHOLE city's activities (on 29 Oct 2026 57 of 60 cards were off-topic). Give 1-3 words that the wanted activity's title must contain, "
                             "taken from what the operator asked for (for example [\"food\", \"tour\"] or [\"sintra\"]); the server leaves out the cards without them.")
@@ -179,7 +198,7 @@ def register(mcp: MCPServer) -> None:
         elif known:
             path, name = known["path"], known["name"]
         else:
-            return {"ok": False, "searched": False, "known_places": [v["name"] for v in places().values()],
+            return {"ok": False, "searched": False, "known_places": list(dict.fromkeys(v["name"] for v in places().values())),
                     "next": "Nothing was opened. That city is not known yet: search it once on booking.com/attractions in Claude in Chrome, read '<country code>/<city>' from the results address "
                             "(booking.com/attractions/searchresults/pt/porto.html is pt/porto), then call this tool again with place_path."}
         try:

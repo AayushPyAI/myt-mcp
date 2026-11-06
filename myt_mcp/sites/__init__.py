@@ -129,6 +129,25 @@ def server_reads(flag: str, default: bool = True) -> bool:
     return os.environ.get(flag, "1" if default else "0").strip().lower() not in ("0", "false", "no", "")
 
 
+async def server_eval(origin: str, url: str, js: str) -> str | None:
+    """Run ONE read-only JavaScript function (it returns JSON text) on `url` in the server's own automation Chrome; None when there is no such browser or it fails (nothing is worked around)."""
+    global _SERVER_BROWSER
+    if not server_browser_url():
+        return None
+    from myt_mcp.browser import BrowserSession
+    if _SERVER_BROWSER is None:
+        _SERVER_BROWSER = BrowserSession(server_browser_url())
+
+    async def action(page: Any) -> str:
+        await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        return await page.evaluate(js)
+    try:
+        async with read_slots():
+            return await _SERVER_BROWSER.run(origin, url, action)
+    except Exception:
+        return None
+
+
 def server_browser_url() -> str:
     return os.environ.get("BROWSER_CDP_URL", "").strip()
 

@@ -1,63 +1,76 @@
-// Booking.com attractions list reader (comparison only). Run it in the operator's Booking.com attractions RESULTS tab the recipe opened (read only: it picks the sort in the page's own sort box and scrolls down to load more cards).
-// Every activity is a card (data-testid="card") with named parts: card-title, review-score ("User reviews, Exceptional, 9.6 out of 10 from 56 reviews"), price ("From | EUR 35 | EUR 29.05 | Original price from ...
-// Current price from EUR 29.05"). The card also says "Duration: 9 hours", "Free cancellation available" and "#1 Best seller". The price is the LOWEST starting price per person of the activity (not for a date and
-// group: that is on the activity's own page), in the currency of the address (selected_currency=EUR). The address already holds the site's own filters (filter_by_label[]=free_cancellation, filter_by_min_rating[]=4.5 ...).
-// 15 cards load first and 15 more come each time the page is scrolled; the page does not say how many exist. The script reads the first LIMIT cards of "Our top picks" (the default order), then picks "Best reviewed"
-// (the sort box's radio) and reads the first LIMIT of that (the agency reads both). A human check (captcha) stops the script: it is never worked around.
-// The tool replaces __EXPECT__ (what the address asked for), __LIMIT__ (cards per sort) and __SORTS__ ([["Our top picks","trending"],["Best reviewed","highest_weighted_rating"]]).
+// Booking.com attractions list reader (comparison only). Run it on a Booking.com attractions results page (www.booking.com/attractions/searchresults/<country>/<city>.html; read only; it books nothing).
+// The page's data is Booking.com's own: the first 15 activities (and the filter counts) are embedded in the page as an Apollo store (<script data-capla-store-data="apollo">: attractionsProduct.searchProducts with
+// the products, `filterStats` = how many activities match and how many exist, `pagination.hasNextPage`), and the page loads the next 15 with each scroll from ONE GraphQL request, operation SearchResultsProducts at
+// accommodations.booking.com/dml/graphql (input: ufi, limit 15, page N, source, and the filters as filterByLabel / filterByMinRating / filterBySupportedLanguage / sortBy). The script reads page 1 of the page's own sort from the
+// embedded data and sends that same request, with a compact query for just the fields it needs (checked live 5 Nov 2026: page 1 equals the embedded one on all 15 activities), for the next pages and for the second sort
+// (the agency reads Our top picks and Best reviewed together), one request at a time with a pause. The tool replaces __REQUEST__ (what to read).
 await (async () => {
-  const EXPECT = __EXPECT__; const LIMIT = __LIMIT__; const SORTS = __SORTS__;
+  const REQ = __REQUEST__;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  if (/are you a person or a robot|press\s*&\s*hold|verify you are human|(?<!re)captcha/i.test(document.body.innerText.slice(0, 2500))) return JSON.stringify({ ok: false, error: 'Booking.com shows a human check (captcha). Stop: do not retry and do not work around it; tell the operator to look at the page.' });
-  if (!/(^|\.)booking\.com$/i.test(location.hostname) || !/^\/attractions\/searchresults\/[a-z]{2}\/[a-z0-9-]+(\.[a-z-]+)?\.html$/i.test(location.pathname)) return JSON.stringify({ ok: false, error: 'not a Booking.com attractions results page: open the url first' });
-  const cards = () => [...document.querySelectorAll('[data-testid="card"]')];
-  for (let i = 0; i < (typeof CARD_TRIES !== 'undefined' ? CARD_TRIES : 60) && !cards().length; i++) await wait(500);      // up to 30 s (CARD_TRIES: tests only)
-  if (!cards().length) return JSON.stringify({ ok: false, error: 'no activities are shown (still loading, a check page, or none for this search): never say there are none, say it could not be read' });
-  const q = new URLSearchParams(location.search);
-  const m = location.pathname.match(/\/searchresults\/([a-z]{2})\/([a-z0-9-]+)/i);
-  const all = (k) => q.getAll(k + '[]').sort();
-  const form = { place: m ? m[1].toLowerCase() + '/' + m[2].toLowerCase() : null, day: q.get('date_from'), day_to: q.get('date_to'), adults: parseInt(q.get('adults') || '', 10) || null, currency: q.get('selected_currency'),
-    sort: q.get('sort_by'), labels: all('filter_by_label'), min_rating: all('filter_by_min_rating'), language: all('filter_by_language'), time_of_day: all('filter_by_time_of_day') };
-  const problems = [];
-  for (const k of ['place', 'day', 'day_to', 'adults', 'currency', 'sort', 'labels', 'min_rating', 'language', 'time_of_day']) if (EXPECT[k] !== undefined && JSON.stringify(form[k]) !== JSON.stringify(EXPECT[k])) problems.push(k + ' ' + JSON.stringify(form[k]) + ' instead of ' + JSON.stringify(EXPECT[k]));
-  if (problems.length) return JSON.stringify({ ok: false, error: 'the page searched something else (' + problems.join('; ') + '): open the url again', form });
-  // what the page's own filter boxes say is on (the sort radios are not filters)
-  const filtersOn = () => [...document.querySelectorAll('input:checked')].filter((x) => x.name && x.name !== 'sort').map((x) => x.name + '=' + x.value).sort();
-  const sortOn = () => { const r = [...document.querySelectorAll('input[name="sort"]')].find((x) => x.checked); return r ? r.id.replace(/^.*-/, '') : null; };
-  const sig = () => cards().slice(0, 3).map((c) => ((c.querySelector('[data-testid="card-title"]') || {}).innerText || '')).join('|');
-  const T = (el, id) => { const e = el.querySelector('[data-testid="' + id + '"]'); return e ? e.innerText.replace(/\s+/g, ' ').trim() : null; };
-  const rows = []; const unparsed = []; const sorts = [];
-  const readCards = (sortName) => {
-    for (const c of cards().slice(0, LIMIT)) {
-      const title = T(c, 'card-title'); const priceText = T(c, 'price'); const text = c.innerText.replace(/\s+/g, ' ');
-      const cur = priceText && priceText.match(/Current price from\s*(€|\$|£|₪|₹|[A-Z]{3})\s?([\d,]+(?:\.\d+)?)/i);
-      const orig = priceText && priceText.match(/Original price from\s*(€|\$|£|₪|₹|[A-Z]{3})\s?([\d,]+(?:\.\d+)?)/i);
-      const plain = priceText && priceText.match(/From\s*(€|\$|£|₪|₹|[A-Z]{3})\s?([\d,]+(?:\.\d+)?)/i);
-      const pick = cur || plain;
-      if (!title || !pick) { if (unparsed.length < 3) unparsed.push(text.slice(0, 160)); continue; }
-      const rv = (T(c, 'review-score') || '').match(/([\d.]+) out of 10 from ([\d,]+) reviews?/i);
-      const a = c.querySelector('a[href*="/attractions/"]') || c.closest('a');
-      rows.push({ sort: sortName, title, cur: pick[1], from: parseFloat(pick[2].replace(/,/g, '')), was: orig ? parseFloat(orig[2].replace(/,/g, '')) : null, rating: rv ? parseFloat(rv[1]) : null, reviews: rv ? parseInt(rv[2].replace(/,/g, ''), 10) : null,
-        duration: ((c.innerText.split('\n').map((x) => x.trim()).find((x) => /^Duration:/i.test(x)) || '').replace(/^Duration:\s*/i, '')) || null,
-        free_cancel: /Free cancellation available/i.test(text), best_seller: (text.match(/#(\d+) Best seller/i) || [null, null])[1], available_from: (text.match(/Available from [a-z0-9 ]+?(?= See availability|$)/i) || [null])[0],
-        path: a ? a.getAttribute('href').split('?')[0].split('#')[0] : null });
-    }
+  const text = () => (document.body && document.body.innerText) || '';
+  if (/are you a person or a robot|press\s*&\s*hold|verify you are human|(?<!re)captcha/i.test(text().slice(0, 2500))) return JSON.stringify({ ok: false, error: 'Booking.com shows a human check (captcha). Stop: do not retry and do not work around it; tell the operator to look at the page.' });
+  const where = location.pathname.match(/^\/attractions\/searchresults\/([a-z]{2}\/[a-z0-9-]+?)(?:\.[a-z-]+)?\.html$/);
+  if (!/(^|\.)booking\.com$/i.test(location.hostname) || !where) return JSON.stringify({ ok: false, error: 'not a Booking.com attractions results page (www.booking.com/attractions/searchresults/pt/lisbon.html): open the url first' });
+  const t0 = performance.now();
+  const el = document.querySelector('script[data-capla-store-data="apollo"]');
+  let store = null; try { store = el ? JSON.parse(el.textContent) : null; } catch (err) { store = null; }
+  const root = store && store.ROOT_QUERY && store.ROOT_QUERY.attractionsProduct;
+  if (!root) return JSON.stringify({ ok: false, error: 'the page has no activity data (Booking.com changed its page or it is not loaded yet): say it could not be read' });
+  const searches = Object.keys(root).filter((k) => k.startsWith('searchProducts:')).map((k) => ({ input: (JSON.parse(k.slice('searchProducts:'.length)) || {}).input || {}, value: root[k] }));
+  const listEntry = searches.find((s) => s.input.limit > 0); const statsEntry = searches.find((s) => s.input.extractFilterStats);
+  if (!listEntry) return JSON.stringify({ ok: false, error: 'the page holds no activity list (Booking.com changed its page): say it could not be read' });
+  const ufi = listEntry.input.ufi;
+  const pageFilters = { filterByLabel: listEntry.input.filterByLabel || [], filterByMinRating: listEntry.input.filterByMinRating || [], filterBySupportedLanguage: listEntry.input.filterBySupportedLanguage || [] };
+  const same = (a, b) => JSON.stringify([...(a || [])].sort()) === JSON.stringify([...(b || [])].sort());
+  const filtersMatch = ['filterByLabel', 'filterByMinRating', 'filterBySupportedLanguage'].every((k) => same(pageFilters[k], (REQ.filters || {})[k]));
+  const pageSort = listEntry.input.sortBy || 'trending';
+  const deref = (x) => { if (Array.isArray(x)) return x.map(deref); if (x && typeof x === 'object') { if (x.__ref) return deref(store[x.__ref]); const o = {}; for (const [k, v] of Object.entries(x)) if (k !== '__typename') o[k] = deref(v); return o; } return x; };
+  const stats = statsEntry && filtersMatch ? deref(statsEntry.value).filterStats || null : null;
+  const params = new URLSearchParams(location.search);
+  const QUERY = 'query SearchResultsProducts($input: AttractionsProductSearchInput!, $contextParams: AttractionsContextParamsInput) { attractionsProduct { searchProducts(input: $input, contextParams: $contextParams) { ... on AttractionsProductSearchResponse { pagination { hasNextPage } products { id slug name availableFrom bookingWindowDays guideSupportedLanguagesLabels { code label } audioSupportedLanguagesLabels { code label } duration { label min max type value } cancellationPolicy { comparedTo hasFreeCancellation isStillRefundable label message percentage period until } reviewsStats { combinedNumericStats { average total scale } } representativePrice { chargeAmount currency publicAmount discounts { __typename } } labels { text type } flags { flag value rank label } primaryLabel { text type } } } } } }';
+  const html = document.documentElement.innerHTML; const grab = (re) => (html.match(re) || [])[1] || null;
+  const headers = { accept: '*/*', 'content-type': 'application/json', 'x-booking-site-type-id': '1', 'x-booking-context-action': 'attractions', 'x-booking-context-action-name': 'attractions', 'x-booking-topic': 'capla_browser_b-attractions-product-frontend-capla' };
+  if (grab(/"csrfToken":"([^"]+)"/)) headers['x-booking-csrf-token'] = grab(/"csrfToken":"([^"]+)"/);
+  if (grab(/"pageviewId":"([^"]+)"/)) headers['x-booking-pageview-id'] = grab(/"pageviewId":"([^"]+)"/);
+  if (params.get('aid')) headers['x-booking-context-aid'] = params.get('aid');
+  const endpoint = new URL('https://accommodations.booking.com/dml/graphql'); ['aid', 'label', 'date_from', 'date_to', 'adults', 'selected_currency'].forEach((k) => { if (params.get(k)) endpoint.searchParams.set(k, params.get(k)); }); endpoint.searchParams.set('lang', 'en-gb');
+  const contextParams = { requestUrl: location.origin + location.pathname, urlCode: '', test: false, showInactive: false, source: '', adPlat: '', label: params.get('label') || '' };
+  const fetchPage = async (sortKey, page) => {
+    const input = { ufi, limit: 15, page, source: 'search_results', ...(sortKey && sortKey !== 'trending' ? { sortBy: sortKey } : {}) };
+    for (const k of ['filterByLabel', 'filterByMinRating', 'filterBySupportedLanguage']) if (((REQ.filters || {})[k] || []).length) input[k] = REQ.filters[k];
+    const res = await fetch(endpoint.toString(), { method: 'POST', credentials: 'include', headers, body: JSON.stringify({ operationName: 'SearchResultsProducts', variables: { input, contextParams }, extensions: {}, query: QUERY }) });
+    if (!res.ok) throw new Error('answered ' + res.status);
+    const j = await res.json();
+    if (j.errors && j.errors.length) throw new Error(String(j.errors[0].message || 'query refused').slice(0, 80));
+    const sp = j && j.data && j.data.attractionsProduct && j.data.attractionsProduct.searchProducts;
+    if (!sp || !Array.isArray(sp.products)) throw new Error('no activity list in the answer');
+    return { products: sp.products, next: !!(sp.pagination && sp.pagination.hasNextPage) };
   };
-  const filtersStart = filtersOn();
-  for (const [name, key] of SORTS) {
-    if (sortOn() !== key) {
-      const radio = [...document.querySelectorAll('input[name="sort"]')].find((x) => x.id.endsWith('-' + key));
-      if (!radio) return JSON.stringify({ ok: false, error: 'the sort box has no "' + name + '" choice: run the script once more' });
-      const before = sig(); (radio.closest('label') || radio).click();
-      for (let k = 0; k < 30 && (sortOn() !== key || sig() === before); k++) await wait(400);
-      await wait(1500);
+  const toRow = (p, sort, rank) => {
+    const price = p.representativePrice || {}; const cs = ((p.reviewsStats || {}).combinedNumericStats) || {}; const cp = p.cancellationPolicy || {}; const d = p.duration || {};
+    const best = (p.flags || []).find((f) => f.flag === 'bestseller' && f.value);
+    return { sort, rank, id: p.id || null, title: p.name || null, slug: p.slug || null, cur: price.currency || null, from: Number.isFinite(price.chargeAmount) ? price.chargeAmount : null, public_from: Number.isFinite(price.publicAmount) ? price.publicAmount : null, discounted: (price.discounts || []).length > 0,
+      rating5: Number.isFinite(cs.average) ? cs.average : null, reviews: Number.isFinite(cs.total) ? cs.total : null, scale: cs.scale || null, duration: d.label ? d.label.replace(/^Duration:\s*/i, '') : null, duration_iso: d.value || null, duration_type: d.type || null,
+      available_from: p.availableFrom || null, booking_window_days: Number.isFinite(p.bookingWindowDays) ? p.bookingWindowDays : null, guide_langs: (p.guideSupportedLanguagesLabels || []).map((l) => l.label || l.code).filter(Boolean), audio_langs: (p.audioSupportedLanguagesLabels || []).map((l) => l.label || l.code).filter(Boolean),
+      free_cancel: cp.hasFreeCancellation === true, refundable_now: cp.isStillRefundable === true, cancel_until: cp.until || null, cancel_period: cp.period || null, labels: (p.labels || []).map((l) => l.type).filter(Boolean),
+      flags: (p.flags || []).filter((f) => f.value).map((f) => f.flag), best_seller: best ? best.rank : null, best_seller_text: best ? best.label : null, primary_label: p.primaryLabel ? p.primaryLabel.text : null };
+  };
+  const rows = []; const sorts = []; const failed = [];
+  for (const sort of REQ.sorts) {
+    let list = []; let page = 1; let next = true; let source = 'api';
+    if (sort.key === pageSort && filtersMatch) { list = deref(listEntry.value.products || []); next = !!(listEntry.value.pagination && listEntry.value.pagination.hasNextPage); source = 'page'; page = 2; }
+    while (list.length < REQ.limit && next) {
+      try { const r = await fetchPage(sort.key, page); list = list.concat(r.products); next = r.next; page++; }
+      catch (err) { failed.push(sort.label + ' page ' + page + ': ' + String(err.message || err).slice(0, 80)); next = false; break; }
+      if (list.length < REQ.limit && next) await wait(600);
     }
-    let last = -1; let stalled = 0;
-    for (let i = 0; i < 25 && cards().length < LIMIT && stalled < 3; i++) { window.scrollTo(0, document.body.scrollHeight); await wait(1500); const n = cards().length; stalled = n === last ? stalled + 1 : 0; last = n; }
-    window.scrollTo(0, 0);
-    const before = rows.length; readCards(name);
-    sorts.push({ sort: name, shown_as: sortOn(), read: rows.length - before, cards_on_page: cards().length });
+    const take = list.slice(0, REQ.limit); take.forEach((p, i) => rows.push(toRow(p, sort.label, i + 1)));
+    sorts.push({ sort: sort.label, key: sort.key, read: take.length, has_next: next, first_page_from: source });
+    await wait(600);
   }
+  if (!rows.length) return JSON.stringify({ ok: false, error: 'Booking.com gave no activity (' + (failed[0] || 'an empty list') + '): say it could not be read, never that there are none' });
   return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.',
-    form, filters_on: filtersStart, filters_on_end: filtersOn(), heading: ((document.querySelector('h1') || {}).innerText || '').slice(0, 80), sorts, unparsed }, rows);
+    place: where[1], country: where[1].split('/')[0], searched: { place: where[1], day: params.get('date_from'), day_to: params.get('date_to'), adults: parseInt(params.get('adults') || '', 10) || null, currency: params.get('selected_currency') || null, filters: REQ.filters },
+    page_filters: pageFilters, filters_match: filtersMatch, ufi, results_matching: stats && Number.isFinite(stats.filteredProductCount) ? stats.filteredProductCount : null, results_in_city: stats && Number.isFinite(stats.unfilteredProductCount) ? stats.unfilteredProductCount : null,
+    sorts, failed: failed.length ? failed : null, ms: Math.round(performance.now() - t0) }, rows);
 })()

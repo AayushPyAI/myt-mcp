@@ -74,4 +74,4 @@ async def test_the_rentalcars_description_no_longer_tells_the_chat_to_skip_a_you
     async with Client(create_server(Settings())) as c:
         tools = {t.name: t for t in (await c.list_tools()).tools}
     d = tools["rentalcars_cars_recipe"].description
-    assert "The driver is 30-65" not in d and "under 30 is searched at 30" in d and "never skip this source for age" in d
+    assert "The driver is 30-65" not in d and "under 30 is searched at 30" not in d and "searched as given" in d and "never skip this source for age" in d

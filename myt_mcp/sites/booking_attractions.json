@@ -1,4 +1,16 @@
 {
-  "_note": "Booking.com attractions places: the <country>/<city> part of the results address (booking.com/attractions/searchresults/<country>/<city>.html), read 27 Oct 2026. Learn another place by searching it once on the site and reading it from the address.",
-  "lisbon": {"path": "pt/lisbon", "name": "Lisbon"}
+  "_note": "Booking.com attractions places: the <country>/<city> part of the results address (booking.com/attractions/searchresults/<country>/<city>.html). Lisbon read 27 Oct 2026; the others checked on 6 Nov 2026 (each address answered with its own activities: Porto 1,409, Faro 840, Funchal 826, Ponta Delgada 826, Sintra 4,088, Florence 3,091, Rome 7,096, Venice 1,925, Barcelona 2,912, Madrid 1,608). Tel Aviv (1 activity) and Jerusalem (3) were checked and left out: Booking.com has almost nothing there. Learn another place by searching it once on the site and reading it from the address.",
+  "lisbon": {"path": "pt/lisbon", "name": "Lisbon"},
+  "porto": {"path": "pt/porto", "name": "Porto"},
+  "faro": {"path": "pt/faro", "name": "Faro"},
+  "funchal": {"path": "pt/funchal", "name": "Funchal"},
+  "madeira": {"path": "pt/funchal", "name": "Funchal"},
+  "ponta delgada": {"path": "pt/ponta-delgada", "name": "Ponta Delgada"},
+  "azores": {"path": "pt/ponta-delgada", "name": "Ponta Delgada"},
+  "sintra": {"path": "pt/sintra", "name": "Sintra"},
+  "florence": {"path": "it/florence", "name": "Florence"},
+  "rome": {"path": "it/rome", "name": "Rome"},
+  "venice": {"path": "it/venice", "name": "Venice"},
+  "barcelona": {"path": "es/barcelona", "name": "Barcelona"},
+  "madrid": {"path": "es/madrid", "name": "Madrid"}
 }

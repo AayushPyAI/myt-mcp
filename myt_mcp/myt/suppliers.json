@@ -1,0 +1,402 @@
+[
+ {
+  "id": 106193,
+  "name": "Artur Azores Tours",
+  "private_name": null,
+  "type": null,
+  "subtype": null,
+  "trips": [
+   235475
+  ],
+  "product_types": [
+   "Attraction"
+  ]
+ },
+ {
+  "id": 100581,
+  "name": "Caseificio Bio Reggiani",
+  "private_name": null,
+  "type": null,
+  "subtype": null,
+  "trips": [
+   197794
+  ],
+  "product_types": [
+   "Attraction"
+  ]
+ },
+ {
+  "id": 83086,
+  "name": "Gardaland park",
+  "private_name": null,
+  "type": null,
+  "subtype": null,
+  "trips": [
+   197794
+  ],
+  "product_types": [
+   "Attraction"
+  ]
+ },
+ {
+  "id": 81856,
+  "name": "Get Your Guide",
+  "private_name": null,
+  "type": null,
+  "subtype": null,
+  "trips": [
+   189423
+  ],
+  "product_types": [
+   "Attraction"
+  ]
+ },
+ {
+  "id": 101768,
+  "name": "Lisbon Airport Transfers",
+  "private_name": null,
+  "type": null,
+  "subtype": null,
+  "trips": [
+   189423
+  ],
+  "product_types": [
+   "Transportation"
+  ]
+ },
+ {
+  "id": 34912,
+  "name": "Museum Enzo Ferrari Modena",
+  "private_name": null,
+  "type": null,
+  "subtype": null,
+  "trips": [
+   197794
+  ],
+  "product_types": [
+   "Attraction"
+  ]
+ },
+ {
+  "id": 115191,
+  "name": "Pure Azores",
+  "private_name": null,
+  "type": "attraction",
+  "subtype": "Nature",
+  "trips": [
+   189423
+  ],
+  "product_types": [
+   "Attraction"
+  ]
+ },
+ {
+  "id": 98430,
+  "name": "TAP AIR PORTUGAL",
+  "private_name": null,
+  "type": "transportation",
+  "subtype": "Airline",
+  "trips": [
+   189423
+  ],
+  "product_types": [
+   "Transportation"
+  ]
+ },
+ {
+  "id": 114469,
+  "name": "Detours Porto",
+  "private_name": "Detours Porto",
+  "type": "attraction",
+  "subtype": "Nature",
+  "trips": [
+   235475,
+   189423
+  ]
+ },
+ {
+  "id": 106196,
+  "name": "Fabio rocha of art of wine",
+  "private_name": "Fabio rocha of art of wine",
+  "type": "attraction",
+  "subtype": "Nature",
+  "trips": [
+   235475
+  ]
+ },
+ {
+  "id": 53322,
+  "name": "Our Island",
+  "private_name": "Into the wild azores",
+  "type": "attraction",
+  "subtype": "Nature",
+  "trips": [
+   235475
+  ]
+ },
+ {
+  "id": 107372,
+  "name": "Terreiro",
+  "private_name": "Portugo",
+  "type": "attraction",
+  "subtype": "Relaxation",
+  "trips": [
+   235475
+  ],
+  "product_types": [
+   "Attraction"
+  ]
+ },
+ {
+  "id": 85936,
+  "name": "Emerging Travel Inc. - RateHawk",
+  "private_name": "RateHawk",
+  "type": "dmc",
+  "subtype": "DMC",
+  "trips": [
+   235475,
+   189423,
+   276310,
+   197794
+  ],
+  "product_types": [
+   "Transportation",
+   "Lodging"
+  ]
+ },
+ {
+  "id": 48039,
+  "name": "Get your guide",
+  "private_name": "Get your guide",
+  "type": "dmc",
+  "subtype": "DMC",
+  "trips": [
+   235475,
+   189423
+  ],
+  "product_types": [
+   "Attraction"
+  ]
+ },
+ {
+  "id": 91096,
+  "name": "GetYourGuide",
+  "private_name": null,
+  "type": "dmc",
+  "subtype": "DMC",
+  "trips": [
+   235475
+  ]
+ },
+ {
+  "id": 66240,
+  "name": "Dario Cecchini",
+  "private_name": "Dario- the bucher",
+  "type": "food",
+  "subtype": "Italian",
+  "trips": [
+   276310
+  ],
+  "product_types": [
+   "Food"
+  ]
+ },
+ {
+  "id": 72751,
+  "name": "ITCooking",
+  "private_name": "ITCooking",
+  "type": "food",
+  "subtype": "Italian",
+  "trips": [
+   276310
+  ],
+  "product_types": [
+   "Food"
+  ]
+ },
+ {
+  "id": 102638,
+  "name": "Arbitrip",
+  "private_name": "Arbitrip",
+  "type": "lodging",
+  "subtype": "Hotel",
+  "trips": [
+   235475,
+   189423
+  ],
+  "product_types": [
+   "Lodging"
+  ]
+ },
+ {
+  "id": 115247,
+  "name": "Bensaude Group",
+  "private_name": "Bensaude Group",
+  "type": "lodging",
+  "subtype": "Hotel",
+  "trips": [
+   189423
+  ],
+  "product_types": [
+   "Lodging"
+  ]
+ },
+ {
+  "id": 75277,
+  "name": "Berchielli",
+  "private_name": "Berchielli",
+  "type": "lodging",
+  "subtype": "Hotel",
+  "trips": [
+   189423
+  ],
+  "product_types": [
+   "Lodging"
+  ]
+ },
+ {
+  "id": 77317,
+  "name": "Hotel Vincci Liberdade",
+  "private_name": "Hotel Vincci Liberdade",
+  "type": "lodging",
+  "subtype": "Hotel",
+  "trips": [
+   189423
+  ],
+  "product_types": [
+   "Lodging"
+  ]
+ },
+ {
+  "id": 100498,
+  "name": "Relais Vignale",
+  "private_name": "Relais Vignale & SPA",
+  "type": "lodging",
+  "subtype": "Hotel",
+  "trips": [
+   276310
+  ],
+  "product_types": [
+   "Lodging"
+  ]
+ },
+ {
+  "id": 109154,
+  "name": "Room Mate Collection Mia, Rome Colosseum",
+  "private_name": "Room Mate Collection Mia, Rome Colosseum",
+  "type": "lodging",
+  "subtype": "Hotel",
+  "trips": [
+   189423
+  ],
+  "product_types": [
+   "Lodging"
+  ]
+ },
+ {
+  "id": 112379,
+  "name": "FLY MONEY FINTECH",
+  "private_name": "FLY MONEY FINTECH",
+  "type": "staff",
+  "subtype": "Other",
+  "trips": [
+   235475
+  ],
+  "product_types": [
+   "Staff"
+  ]
+ },
+ {
+  "id": 104037,
+  "name": "Hadas",
+  "private_name": "Hadas Lavi",
+  "type": "staff",
+  "subtype": "Other",
+  "trips": [
+   235475
+  ],
+  "product_types": [
+   "Staff"
+  ]
+ },
+ {
+  "id": 100821,
+  "name": "Ilan Harush",
+  "private_name": "Ilan Harush",
+  "type": "staff",
+  "subtype": "Other",
+  "trips": [
+   235475
+  ],
+  "product_types": [
+   "Staff"
+  ]
+ },
+ {
+  "id": 106702,
+  "name": "7M Rent a Car",
+  "private_name": "7M Rent a Car",
+  "type": "transportation",
+  "subtype": "Car",
+  "trips": [
+   235475
+  ],
+  "product_types": [
+   "Transportation"
+  ]
+ },
+ {
+  "id": 83265,
+  "name": "Ofran worldwide car rental",
+  "private_name": "אופרן שירותים בע\"מ Ofran worldwide car rental",
+  "type": "transportation",
+  "subtype": "Car",
+  "trips": [
+   276310,
+   235475,
+   189423,
+   197794
+  ],
+  "product_types": [
+   "Transportation"
+  ]
+ },
+ {
+  "id": 46627,
+  "name": "SATA Azores Airlines",
+  "private_name": "Azore Airlines",
+  "type": "transportation",
+  "subtype": "Airline",
+  "trips": [
+   235475,
+   189423
+  ],
+  "product_types": [
+   "Transportation"
+  ]
+ },
+ {
+  "id": 98182,
+  "name": "Sixt Car Rental",
+  "private_name": null,
+  "type": "transportation",
+  "subtype": "Car",
+  "trips": [
+   235475
+  ]
+ },
+ {
+  "id": 73808,
+  "name": "Trenitalia",
+  "private_name": "Trenitalia",
+  "type": "transportation",
+  "subtype": "Train",
+  "trips": [
+   276310,
+   189423
+  ],
+  "product_types": [
+   "Transportation"
+  ]
+ }
+]

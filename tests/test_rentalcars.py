@@ -12,7 +12,7 @@ from myt_mcp.app import create_server
 from myt_mcp.config import Settings
 from myt_mcp.services import Services
 from myt_mcp.sites import convert_all, modules
-from myt_mcp.sites.rentalcars_cars import convert, find_place, rentalcars_cars_recipe, results_url
+from myt_mcp.sites.rentalcars_cars import convert, find_place, rentalcars_cars_recipe, results_url, seat_count, site_filters
 
 LIS = {"name": "Humberto Delgado Airport", "iata": "LIS", "coordinates": "38.769901275634766,-9.129509925842285", "fts_type": "A"}
 EXPECT = {"iata": "LIS", "drop_iata": "LIS", "pickup_when": "2027-03-06 10:00", "dropoff_when": "2027-03-08 10:00", "age": 30, "pickup": "Humberto Delgado Airport"}
@@ -64,7 +64,7 @@ def rows_from(j):
         amount = lambda name: (f[name]["price"] or {}).get("amount") if name in f and f[name].get("price") else None      # noqa: E731
         other = "; ".join(f"{x['name']} {x['price']['amount']} ({'in the total' if x['includedInDriveAwayPrice'] else 'not in the total'})" for x in m["fees"]
                           if x["name"] in ("TRANSPONDER_FEE", "VALET_FEE", "ADMINISTRATION_FEE", "CREDIT_CARD_CHARGE", "ENVIRONMENTAL_FEE") and x.get("price")) or None
-        rows.append({"id": v["id"], "car": v["makeAndModel"], "klass": v["carClass"], "category": v["carCategories"][0], "seats": v["numberOfSeats"], "doors": v["numberOfDoors"], "big": v["bigSuitcase"], "small": v["smallSuitcase"],
+        rows.append({"id": v["id"], "car": v["makeAndModel"], "klass": v["carClass"], "category": v["carCategories"][0], "seats": v["numberOfSeats"], "doors": v["numberOfDoors"], "big": v["bigSuitcase"], "small": v["smallSuitcase"], "bags_page": v.get("suitcaseCount"),
                      "gearbox": v["transmission"], "ac": v["airConditioning"], "fuel": v["fuel"], "mileage": v["mileageType"], "pay": v["payWhen"], "free_cancel": v["freeCancellation"], "card_needed": v["creditCardRequired"],
                      "cur": v["driveAwayPrice"]["currency"], "total": v["driveAwayPrice"]["amount"], "base": v["price"]["amount"], "damage_excess": amount("DAMAGE_EXCESS"), "theft_excess": amount("THEFT_EXCESS"),
                      "deposit": amount("DEPOSIT"), "other_fees": other, "supplier": j["suppliers"][depot["supplierId"]]["name"], "rating": depot["rating"]["average"], "ratings": depot["rating"]["numRatings"],
@@ -83,7 +83,7 @@ def test_the_recipe_holds_the_expected_search_and_refuses_bad_values():
     out = rentalcars_cars_recipe(LIS, LIS, "2027-03-06", "10:00", "2027-03-08", "10:00", 30)
     assert out["expect"] == EXPECT and "__EXPECT__" not in out["script"] and '"iata": "LIS"' in out["script"] and "emit(" in out["script"]
     base = {"pickup": LIS, "dropoff": LIS, "pickup_date": "2027-03-06", "pickup_time": "10:00", "dropoff_date": "2027-03-08", "dropoff_time": "10:00", "age": 30}
-    for bad in ({"pickup_time": "10"}, {"dropoff_date": "2027-03-05"}, {"age": 25}, {"age": 70}):
+    for bad in ({"pickup_time": "10"}, {"dropoff_date": "2027-03-05"}, {"age": 17}, {"age": 81}):
         with pytest.raises(ValueError):
             rentalcars_cars_recipe(**{**base, **bad})
 
@@ -95,7 +95,7 @@ def test_every_car_becomes_a_comparison_row_with_its_supplier_depot_excess_and_c
     assert rows.problems == [] and len(rows.offers) == 3 and rows.read == 3
     assert (peugeot.price_total, peugeot.currency, peugeot.quotable, peugeot.supplier, peugeot.flexible) == (3259.28, "INR", False, "Klass Wagen", True)
     d = peugeot.details
-    assert d["company"] == "Klass Wagen (rating 7.5, 14,317 reviews)" and d["gearbox"] == "Automatic" and d["seats_bags"] == "5 seats / 2 large + 1 small bags / 4 doors" and d["mileage"] == "Unlimited mileage"
+    assert d["company"] == "Klass Wagen (rating 7.5, 14,317 reviews)" and d["gearbox"] == "Automatic" and d["seats_bags"] == "5 seats / 2 large + 1 small bags (the page lists 3 checked bags) / 4 doors" and d["mileage"] == "Unlimited mileage"
     assert d["excess"] == "damage excess 287,296.68 INR, theft excess 287,296.68 INR" and d["deposit"] == "287,296.68 INR" and d["fuel"] == "Electric; policy like for like (return with the fuel level you started with)"
     assert d["pickup_place"].startswith("Humberto Delgado Airport (shuttle bus from the airport): Lisbon Airport, Rua Doro 5") and d["cancellation"].startswith("free cancellation")
     assert d["other_fees"] == "ENVIRONMENTAL_FEE 212.81 (in the total); TRANSPONDER_FEE 474.57 (not in the total)" and "2 days" in peugeot.price_basis and "pay now" in peugeot.price_basis
@@ -163,18 +163,22 @@ async def test_the_tool_asks_first_learns_unknown_places_and_returns_the_url_wis
                                                                 "pickup_place": {"name": "Faro Airport", "iata": "FAO", "coordinates": "37.01,-7.96", "fts_type": "A"}})).structured_content
         young = (await c.call_tool("rentalcars_cars_recipe", {**base, "operator_answered": True, "driver_years": 25})).structured_content
         senior = await c.call_tool("rentalcars_cars_recipe", {**base, "operator_answered": True, "driver_years": 70})
+        too_young = await c.call_tool("rentalcars_cars_recipe", {**base, "operator_answered": True, "driver_years": 17})
 
         async def rate():
             return FX
         monkeypatch.setattr("myt_mcp.sites.rentalcars_cars.eur_factors", rate)
         with_rate = (await c.call_tool("rentalcars_cars_recipe", {**base, "operator_answered": True})).structured_content
     assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 4
-    assert unknown["ok"] is False and unknown["needs_place"] == ["Faro Airport"] and any("locationIata" in s for s in unknown["steps"])
+    assert unknown["ok"] is False and unknown["needs_place"] == ["Faro Airport"] and any("/api/location-suggestions?term=" in s and "Faro Airport" in s and "placeType === 'A'" in s for s in unknown["steps"])
     assert "locationIata=LIS" in ok["url"] and "driversAge=30" in ok["url"] and ok["pickup_time"] == "10:00" and "script" in ok and ok["wishes"]["fx"] is None
     assert ok["wishes"]["automatic"] is True and ok["wishes"]["zero_excess"] is True and ok["wishes"]["min_seats"] == 5 and ok["wishes"]["max_total"] == 300 and ok["wishes"]["expect"]["iata"] == "LIS"
     filters = " ".join(ok["filters_used"])
     assert "Automatic gearbox (operator)" in filters and "default 30" in filters and "at least 5 seats" in filters and "no euro exchange rate was available" in filters
-    assert "locationIata=FAO" in learned["url"] and "driversAge=30" in young["url"] and any("driver age 25 (operator)" in f and "searched at 30" in f and "young-driver fee is NOT" in f for f in young["filters_used"]) and senior.is_error and "30-65" in senior.content[0].text
+    assert "locationIata=FAO" in learned["url"] and "driversAge=25" in young["url"] and any("driver age 25 (operator)" in f and "inside the total" in f for f in young["filters_used"])
+    assert not senior.is_error and "driversAge=70" in senior.structured_content["url"] and too_young.is_error and "18-80" in too_young.content[0].text
+    assert ok["site_filters"] == {"transmission": ["AUTOMATIC"], "seatCategory": ["5", "6_OR_ABOVE"]} and '"transmission": ["AUTOMATIC"]' in ok["script"] and any("sent to Rentalcars's own filters: transmission AUTOMATIC" in f for f in ok["filters_used"])
+    assert young["site_filters"] == {}
     assert with_rate["wishes"]["fx"] == FX and any("converted to EUR by the server" in f and "2026-10-26" in f for f in with_rate["filters_used"])
 
 
@@ -195,3 +199,54 @@ def test_a_very_low_total_in_euro_is_explained_as_the_pages_own_price_and_a_norm
     assert any("not a currency mistake" in n and "16.52 EUR for 2 days" in n for n in low.extra_notes)
     normal = convert(json.dumps({**json.loads(_data()), "rows": rows_from(api_answer([match(1, cur="EUR", total=96.0, base=90.0, damage=1800.0, theft=1800.0, deposit=2100.0)]))}), WISHES, "Cars")
     assert not any("currency mistake" in n for n in normal.extra_notes)
+
+
+def test_only_the_wishes_the_site_can_narrow_are_sent_to_its_filters_and_the_five_plus_two_cars_count_as_seven():
+    assert site_filters("automatic", None) == {"transmission": ["AUTOMATIC"]} and site_filters("manual", 7) == {"transmission": ["MANUAL"], "seatCategory": ["6_OR_ABOVE"]}
+    assert site_filters(None, 5) == {"seatCategory": ["5", "6_OR_ABOVE"]} and site_filters(None, 4) == {} and site_filters(None, None) == {}      # bags, zero excess and budget are never sent
+    assert (seat_count("5"), seat_count("5+2"), seat_count("9"), seat_count(None), seat_count("n/a")) == (5, 7, 9, None, None)
+    rows = convert(_data([match(1, "Dacia Jogger", seats="5+2", total=100.0)]), {**WISHES, "min_seats": 7}, "Cars").offers
+    assert rows[0].fits is True and rows[0].details["seats_bags"].startswith("5+2 seats")
+    assert convert(_data([match(1, "Peugeot 2008", seats="5")]), {**WISHES, "min_seats": 7}, "Cars").offers[0].fits is False
+
+
+def test_the_notes_say_what_the_site_narrowed_whether_every_car_was_read_and_a_filter_with_no_car_is_not_a_failure():
+    sent = {"transmission": ["AUTOMATIC"]}
+    done = convert(_data(unfiltered_total=506, filtered_total=274, filters_sent=sent, complete=True), WISHES, "Cars")
+    assert any("narrowed the list to transmission AUTOMATIC: 274 of 506 cars" in n for n in done.extra_notes) and not any("cheaper car may be among the rest" in n for n in done.extra_notes) and done.total == 274
+    cut = convert(_data(unfiltered_total=506, filtered_total=None, filters_sent=None, complete=False), WISHES, "Cars")
+    assert any("counted more cars than were read" in n for n in cut.extra_notes) and cut.total == 506
+    none = convert(_data(rows=[], matches_read=0, unfiltered_total=506, filtered_total=0, filters_sent=sent, complete=True), WISHES, "Cars")
+    assert none.problems == [] and any("found no car for it (506 cars without the filters)" in n and "never say sold out" in n for n in none.extra_notes)
+    assert "could not be read" in " ".join(convert(_data(rows=[]), WISHES, "Cars").problems)
+    aged = json.loads(_data())
+    aged["rows"][0]["other_fees"] = "AGED_DRIVER_FEE 3190 (in the total)"
+    assert any("young- or senior-driver fee" in n and "inside the total" in n for n in convert(json.dumps(aged), WISHES, "Cars").extra_notes)
+
+
+def test_a_car_without_a_large_bag_figure_is_unconfirmed_and_one_with_the_figure_is_judged():
+    """The site gives the large suitcases for most cars (470 of 500 on 5 Nov 2026); a car without the figure is not confirmed, never silently dropped as not fitting."""
+    rows = rows_from(api_answer([match(1, "Peugeot 2008", big=2, small=1), match(2, "Fiat 500", "MBMR", "4", "3", 0, 2, "MANUAL", 2100.0, 1900.0, depot="4627999"), match(3, "VW Golf", "CWMR", "5", "5", 1, 2, "MANUAL", 3500.0, 3300.0, depot="4627999")]))
+    rows[2]["big"] = None
+    rows[2]["small"] = None
+    data = json.loads(_data())
+    data["rows"] = rows
+    offers = {o.name.split(" (")[0]: o for o in convert(json.dumps(data), {**WISHES, "min_large_bags": 2}, "Cars").offers}
+    assert offers["Peugeot 2008"].fits is True and offers["Fiat 500"].fits is False and offers["Fiat 500"].unconfirmed == []
+    assert offers["VW Golf"].fits is None and offers["VW Golf"].unconfirmed == ["large bags"]
+
+
+def test_fees_listed_as_not_in_the_total_are_added_up_beside_the_price_in_euro_and_never_added_to_it():
+    """5 Nov 2026: a EUR 17.79 Klass Wagen car lists a EUR 20 valet and a 6.69 transponder fee 'not in the total'; the picks said only 17.79."""
+    data = json.loads(_data())
+    data["rows"][0]["other_fees"] = "TRANSPONDER_FEE 6.69 (not in the total); VALET_FEE 20 (not in the total); ENVIRONMENTAL_FEE 3 (in the total)"
+    data["rows"][0].update(cur="EUR", total=17.79)
+    row = convert(json.dumps(data), WISHES, "Cars").offers[0]
+    assert row.price_total == 17.79 and "plus fees listed as not in the total: 26.69 EUR (transponder, valet: which of them apply is not shown)" in row.price_basis
+    clean = json.loads(_data())
+    clean["rows"][0]["other_fees"] = None
+    assert "plus fees" not in convert(json.dumps(clean), WISHES, "Cars").offers[0].price_basis
+    rupees = json.loads(_data())
+    rupees["rows"][0]["other_fees"] = "TRANSPONDER_FEE 100 (not in the total)"
+    converted = convert(json.dumps(rupees), {**WISHES, "fx": {**FX, "factors": {"INR": 0.0107}}}, "Cars").offers[0]
+    assert "plus fees listed as not in the total: 1.07 EUR (transponder" in converted.price_basis          # converted with the same rate as the price

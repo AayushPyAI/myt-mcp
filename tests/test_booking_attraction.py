@@ -1,4 +1,5 @@
-"""Booking.com attractions, ONE activity (booking.com/attractions/<cc>/<slug>.html): the address, the converter on what the real page gave (27 Oct 2026) and the tool."""
+"""Booking.com attractions, ONE activity (booking_attraction): the address, the converter on what Booking.com's own availability service gave (read live 5 Nov 2026: GetAvailability on the Lisbon Oceanarium,
+2 adults + 1 child on 18 Dec: the page's Total 77.50 = 2 x 29.90 + 17.70) and the tool."""
 
 import json
 from datetime import date
@@ -11,139 +12,135 @@ from myt_mcp.config import Settings
 from myt_mcp.sites import convert_all, modules
 from myt_mcp.sites.booking_attraction import booking_attraction_recipe, convert
 
-URL = "https://www.booking.com/attractions/pt/pr4z1zrjq9hl-skip-the-queue-tickets-into-the-lisbon-oceanarium.en-gb.html?aid=1#x"
 SLUG = "pr4z1zrjq9hl-skip-the-queue-tickets-into-the-lisbon-oceanarium"
-DAY = date(2027, 3, 7)
-RECIPE = booking_attraction_recipe(URL, DAY, 2, [], "Oceanarium")
+URL = f"https://www.booking.com/attractions/pt/{SLUG}.html"
+DAY = date(2026, 12, 18)
+RECIPE = booking_attraction_recipe(URL + "?x=1", DAY, 2, [8], "Oceanarium")
 EXPECT = RECIPE["expect"]
-KINDS = [{"label": "Adult (age 13-64)", "price": 29.9, "count": 2, "wanted": 2}, {"label": "Child (age 3-12)", "price": 17.7, "count": 0, "wanted": 0},
-         {"label": "Senior (age 65+)", "price": 19.9, "count": 0, "wanted": 0}, {"label": "Infant (age 0-2)", "price": 0.0, "count": 0, "wanted": 0}]
 
 
-def row(**over):
-    """The ticket box as the script reads it; prices and wording are the real Oceanarium page of 27 Oct 2026 (10 Nov 2026, 2 adults: the page's own Total was 59.80)."""
-    base = {"ticket": "Non-refundable", "times": ["10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30"], "time_chosen": "10:00", "kinds": KINDS, "symbol": "€", "total": 59.8, "taxes": True, "computed": 59.8, "symbol_kinds": "€"}
-    base.update(over)
-    return base
+def slot(time="10:00", total=77.5, bookable=True, units=100, why=None):
+    return {"time": time, "total": total, "state": "available" if bookable else "sold_out", "units": units, "until": f"2026-12-18T{time}:00Z", "bookable": bookable, "why": why or []}
+
+
+def row(ticket="Ticket", total=77.5, slots=None, free=False, label="Non-refundable", until=None, unfit=None, kinds=None, differs=True, cur="EUR", adult=True, includes="Admission"):
+    return {"offer_id": "OFqQ7wUOEP0K", "ticket": ticket, "availability_type": "date_time", "cur": cur, "kinds": kinds if kinds is not None else [
+        {"type": "adult", "label": "Adult", "count": 2, "price": 29.9, "public_price": 29.9, "constraint": "(age 13-64)", "discounted": False},
+        {"type": "children", "label": "Child", "count": 1, "price": 17.7, "public_price": 17.7, "constraint": "(age 3-12)", "discounted": False}], "unfit": unfit or [],
+            "total": total, "totals_differ": differs, "slots": slots if slots is not None else [slot("10:00", 77.5), slot("10:30", 77.5), slot("11:00", 80.0)], "adult_required": adult,
+            "cancel": {"free": free, "refundable_now": free, "label": None if free else label, "until": until, "period": "P1D" if free else None, "percentage": 100 if free else None}, "includes": includes, "not_included": None}
 
 
 def answer(rows=None, **over):
-    base = {"ok": True, "form": {"slug": SLUG, "date": "2027-03-07", "currency": "EUR"}, "title": "Tickets into The Lisbon Oceanarium", "chosen_day": "Sun 7 Mar", "operated_by": "Musement",
-            "includes": "Admission", "additional": "Please bring your ticket with you to the attraction.", "unavailable": None, "steppers": 4, "rows": rows if rows is not None else [row()]}
+    base = {"ok": True, "path": f"/attractions/pt/{SLUG}.en-gb.html", "slug": SLUG, "country": "pt", "activity": "Tickets into The Lisbon Oceanarium", "product_id": "PR4z1zRjQ9hl", "operated_by": "Musement", "day": "2026-12-18",
+            "travellers": {"adults": 2, "ages": [8]}, "currency": "EUR", "slots_total": 18, "includes": "Admission", "not_included": None, "additional": "Please bring your ticket on your phone.", "meeting": "Esplanada Dom Carlos I s/nº, Lisbon",
+            "unavailable": None, "rows": rows if rows is not None else [row()]}
     base.update(over)
     return json.dumps(base)
 
 
-def test_the_address_asks_the_date_and_euro_and_drops_the_lists_own_query():
-    assert RECIPE["url"] == f"https://www.booking.com/attractions/pt/{SLUG}.html?date=2027-03-07&selected_currency=EUR"
-    assert EXPECT["slug"] == SLUG and EXPECT["day_label"] == "Sun 7 Mar" and EXPECT["total"] == 2 and EXPECT["group"] == "Oceanarium, 07 Mar 2027"
-    assert "__EXPECT__" not in RECIPE["script"] and "Next" in RECIPE["script"]
+def test_the_address_asks_the_date_and_euro_and_the_request_holds_the_group():
+    assert RECIPE["url"] == URL + "?date=2026-12-18&selected_currency=EUR"
+    assert EXPECT["slug"] == SLUG and EXPECT["day"] == "2026-12-18" and EXPECT["adults"] == 2 and EXPECT["ages"] == [8] and EXPECT["total"] == 3 and EXPECT["group"] == "Oceanarium, 18 Dec 2026" and EXPECT["country"] == "pt"
+    assert '"ages": [8]' in RECIPE["script"] and f'"slug": "{SLUG}"' in RECIPE["script"] and "__REQUEST__" not in RECIPE["script"] and "window.__mytParts" in RECIPE["script"]
 
 
-@pytest.mark.parametrize("url", ["", "https://www.getyourguide.com/lisbon/x-t1/", "https://www.booking.com/attractions/searchresults/pt/lisbon.html", "https://www.booking.com/hotel/pt/x.html"])
-def test_a_link_that_is_not_an_activity_page_is_refused(url):
+@pytest.mark.parametrize("args", [("https://www.booking.com/hotel/pt/x.html", 2, []), (URL, 0, [8]), (URL, 16, []), (URL, 2, [100]), (URL, 0, []), (URL, 0, [8])])
+def test_a_bad_link_or_group_is_refused(args):
     with pytest.raises(ValueError):
-        booking_attraction_recipe(url, DAY, 2, [])
+        booking_attraction_recipe(args[0], DAY, args[1], args[2])
 
 
-def test_bad_groups_are_refused():
-    for adults, ages in ((0, [5]), (16, []), (2, [18]), (0, [])):
-        with pytest.raises(ValueError):
-            booking_attraction_recipe(URL, DAY, adults, ages)
-
-
-def test_the_ticket_box_becomes_a_comparison_only_row_with_the_pages_own_total_and_its_breakdown():
+def test_the_price_for_the_group_is_the_sum_of_the_tickets_with_the_breakdown_the_times_and_the_terms():
     rows = convert(answer(), {"expect": EXPECT}, "Activities")
-    assert rows.problems == [] and rows.read == 1
+    assert rows.problems == [] and rows.read == 1 and rows.total == 1
     o = rows.offers[0]
-    assert o.price_total == 59.8 and o.currency == "EUR" and o.quotable is False and o.flexible is False and o.supplier == "Musement" and o.group == "Oceanarium, 07 Mar 2027"
-    assert o.name == "Tickets into The Lisbon Oceanarium (Non-refundable)" and "2 x Adult (age 13-64) at 29.90" in o.price_basis and "taxes and charges included" in o.price_basis and "2027-03-07" in o.price_basis
-    assert o.details["start_times"].startswith("10 start time(s): 10:00, 10:30, 11:00, 11:30, 12:00, 12:30, ... last 14:30 (first chosen: 10:00") and o.details["cancellation"] == "Non-refundable"
-    assert o.details["includes"] == "Admission" and o.details["operated_by"] == "Musement" and o.details["duration"] == "not shown on the ticket box"
-    assert any("page's own Total" in n for n in rows.extra_notes)
+    assert o.price_total == 77.5 and o.currency == "EUR" and o.quotable is False and o.name == "Tickets into The Lisbon Oceanarium (Ticket)" and o.supplier == "Musement" and o.group == "Oceanarium, 18 Dec 2026"
+    assert "whole group (3 travellers; 2 x Adult (age 13-64) at 29.90 EUR; 1 x Child (age 3-12) at 17.70 EUR), taxes and charges included (Booking.com's total), for 2026-12-18, the first time 10:00" in o.price_basis
+    d = o.details
+    assert d["start_times"] == "3 start time(s): 10:00, 10:30, 11:00; the price differs by time: 10:00 77.5, 10:30 77.5, 11:00 80 EUR" and d["cancellation"] == "Non-refundable" and o.flexible is False and d["seats_left"] == "100"
+    assert d["meeting_point"] == "Esplanada Dom Carlos I s/nº, Lisbon" and d["includes"] == "Admission" and d["know_before"] == "Please bring your ticket on your phone." and d["booking_rule"] == "an adult must be in the booking"
+    assert o.link == URL + "?date=2026-12-18&selected_currency=EUR" and any("sum of its own ticket prices" in n for n in rows.extra_notes)
 
 
-def test_a_group_with_a_child_is_counted_in_the_kind_of_the_childs_age_in_the_breakdown():
-    kinds = [{**KINDS[0], "count": 2, "wanted": 2}, {**KINDS[1], "count": 1, "wanted": 1}] + KINDS[2:]
-    rec = booking_attraction_recipe(URL, DAY, 2, [8])
-    o = convert(answer([row(kinds=kinds, total=77.5, computed=77.5)]), {"expect": rec["expect"]}, "Activities").offers[0]
-    assert o.price_total == 77.5 and "3 travellers" in o.price_basis and "2 x Adult (age 13-64) at 29.90; 1 x Child (age 3-12) at 17.70" in o.price_basis
+def test_the_duration_comes_from_the_products_own_data_when_the_activity_has_one():
+    """Read live 5 Nov 2026: the Fatima tour has 'Duration: 9 hours' (PT9H) in its product data, the Oceanarium entrance ticket has none."""
+    assert convert(answer(duration="9 hours", duration_iso="PT9H"), {"expect": EXPECT}, "Activities").offers[0].details["duration"] == "9 hours"
+    assert convert(answer(), {"expect": EXPECT}, "Activities").offers[0].details["duration"] == "none given by Booking.com (an entrance ticket has none)"
 
 
-def test_a_date_the_site_cannot_book_is_told_as_it_is_and_never_as_sold_out():
-    rows = convert(answer([], unavailable="Your selected date is unavailable, please choose another one", chosen_day=None), {"expect": EXPECT}, "Activities")
-    assert rows.offers == [] and rows.problems == []
-    assert any("unavailable" in n and "never 'sold out'" in n for n in rows.extra_notes)
+def test_free_cancellation_comes_with_its_exact_cutoff_and_judges_the_wish():
+    free = row(free=True, until="2026-12-17T10:00:00", label=None)
+    off = convert(answer([free]), {"expect": EXPECT, "free_cancellation": True}, "Activities").offers[0]
+    assert off.flexible is True and off.fits is True and off.details["cancellation"] == "Free cancellation until 2026-12-17 10:00 (Booking.com's own data)"
+    nonref = convert(answer([row()]), {"expect": EXPECT, "free_cancellation": True}, "Activities").offers[0]
+    assert nonref.fits is False and nonref.flexible is False
+    unasked = convert(answer([row()]), {"expect": EXPECT}, "Activities").offers[0]
+    assert unasked.fits is None
 
 
-def test_the_free_cancellation_wish_is_judged_on_the_tickets_own_wording():
-    wishes = {"expect": EXPECT, "free_cancellation": True}
-    assert convert(answer([row(ticket="Non-refundable")]), wishes, "Activities").offers[0].fits is False
-    free = convert(answer([row(ticket="Free cancellation until 8 Mar 2027, 10:00")]), wishes, "Activities").offers[0]
-    assert free.fits is True and free.flexible is True
-    assert convert(answer([row(ticket="Standard ticket")]), wishes, "Activities").offers[0].fits is None      # a wording that says nothing: unknown, never assumed
-    assert convert(answer([row(ticket="Non-refundable")]), {"expect": EXPECT}, "Activities").offers[0].fits is None      # no wish, no judgement
+def test_several_ticket_offers_are_several_rows_and_a_group_a_ticket_cannot_take_is_said():
+    skip = row("Skip-the-line ticket", 90.0, slots=[slot("10:00", 90.0)], differs=False)
+    full = row("Entrance ticket", 70.0, slots=[slot("10:00", 70.0, bookable=False, why=["only 1 Adult left"])])
+    res = convert(answer([row(), skip, full]), {"expect": EXPECT}, "Activities")
+    assert [o.name for o in res.offers] == ["Tickets into The Lisbon Oceanarium (Ticket)", "Tickets into The Lisbon Oceanarium (Skip-the-line ticket)"] and res.read == 2
+    assert any("several ticket offers" in n for n in res.extra_notes) and any("'Entrance ticket' cannot take this group on 2026-12-18: only 1 Adult left" in n for n in res.extra_notes)
+
+
+def test_a_date_with_no_time_slot_is_said_and_never_called_sold_out():
+    res = convert(answer([], unavailable="Booking.com lists no time slot on 2026-12-18", slots_total=0), {"expect": EXPECT}, "Activities")
+    assert res.offers == [] and res.problems == [] and any("lists no time slot on 2026-12-18" in n and "never 'sold out'" in n for n in res.extra_notes)
+
+
+def test_a_time_slot_with_no_price_is_a_reading_fault_never_a_free_ticket():
+    """5 Nov 2026, first server-side read: the later time slots showed a price of 0 because the tickets were matched by ids that differ per slot."""
+    res = convert(answer([row(slots=[slot("10:00", 77.5), slot("10:30", 0.0), slot("11:00", 0.0)], differs=True)]), {"expect": EXPECT}, "Activities")
+    assert any("gave no price for 2 of its time slot(s) (10:30, 11:00)" in p for p in res.problems)
+    assert res.offers[0].details["start_times"] == "1 start time(s): 10:00"
+
+
+def test_a_ticket_with_no_kind_for_a_traveller_or_another_currency_or_a_wrong_group_is_refused_never_guessed():
+    assert any("has no kind for: 8" in p for p in convert(answer([row(unfit=["8"])]), {"expect": EXPECT}, "Activities").problems)
+    assert any("not euro" in p for p in convert(answer([row(cur="USD")]), {"expect": EXPECT}, "Activities").problems)
+    few = row(kinds=[{"type": "adult", "label": "Adult", "count": 2, "price": 29.9, "constraint": "(age 13-64)"}])
+    assert any("priced for 2 traveller(s), not 3" in p for p in convert(answer([few]), {"expect": EXPECT}, "Activities").problems)
+    assert any("gave no price for 1 of its time slot(s) (10:00)" in p for p in convert(answer([row(total=0.0, slots=[slot("10:00", 0.0)])]), {"expect": EXPECT}, "Activities").problems)
 
 
 @pytest.mark.parametrize("change,fragment", [
-    ({"form": {"slug": "pr999-other", "date": "2027-03-07", "currency": "EUR"}}, "is the activity 'pr999-other', not"),
-    ({"form": {"slug": SLUG, "date": "2027-03-07", "currency": "USD"}}, "currency in the address is USD, not EUR"),
-    ({"rows": [row(symbol="$")]}, "not euro"),
-    ({"rows": [row(total=0)]}, "shows no total for the group"),
-    ({"rows": [row(kinds=[{**KINDS[0], "count": 1}] + KINDS[1:])]}, "Adult (age 13-64): 1 instead of 2"),
-    ({"rows": []}, "never that the activity is sold out"),
+    ({"slug": "other-activity"}, "the page is the activity 'other-activity'"),
+    ({"day": "2026-12-19"}, "the answer is for 2026-12-19, not 2026-12-18"),
+    ({"travellers": {"adults": 3, "ages": [8]}}, "the travellers sent were 3 adults and ages [8], not 2 adults and ages [8]"),
+    ({"rows": []}, "no ticket price could be read"),
 ])
-def test_a_page_that_is_another_activity_or_priced_or_counted_wrongly_is_refused_with_the_fix(change, fragment):
+def test_an_answer_for_something_else_is_refused_with_the_fix(change, fragment):
     problems = convert(answer(**change), {"expect": EXPECT}, "Activities").problems
     assert any(fragment in p for p in problems), problems
 
 
-def test_a_total_that_is_not_the_tickets_added_up_is_shown_as_the_pages_own_with_a_note():
-    rows = convert(answer([row(total=55.0, computed=59.8)]), {"expect": EXPECT}, "Activities")
-    assert rows.offers[0].price_total == 55.0 and any("differs from the tickets added up" in n for n in rows.extra_notes)
-
-
 def test_a_script_error_and_a_text_that_is_not_json_come_back_as_a_readable_problem():
-    assert "reported: the ticket box is not on the page" in convert(json.dumps({"ok": False, "error": "the ticket box is not on the page"}), {"expect": EXPECT}, "Activities").problems[0]
-    assert "not the script's JSON text" in convert("Total | 59.80", {"expect": EXPECT}, "Activities").problems[0]
+    assert "reported: Booking.com shows a human check" in convert(json.dumps({"ok": False, "error": "Booking.com shows a human check (captcha)."}), {"expect": EXPECT}, "Activities").problems[0]
+    assert "not the script's JSON text" in convert("Total EUR 77.50", {"expect": EXPECT}, "Activities").problems[0]
 
 
 def test_the_converter_is_found_by_the_server_and_works_through_convert_all():
     assert "booking_attraction" in modules()
-    offers, sources, problems, _, notes = convert_all([{"site": "booking_attraction", "result": answer(), "url": RECIPE["url"], "wishes": {"expect": EXPECT}}], {"expect": EXPECT})
-    assert problems == [] and len(offers) == 1 and sources[0].read == 1 and any("activity's page is the quoted source" in n for n in notes)
+    offers, sources, problems, by_price, notes = convert_all([{"site": "booking_attraction", "result": answer(), "url": RECIPE["url"], "wishes": {"expect": EXPECT}}], {"expect": EXPECT})
+    assert problems == [] and len(offers) == 1 and sources[0].read == 1 and by_price is False
 
 
 @pytest.mark.anyio
-async def test_the_tool_returns_the_address_and_wishes_and_refuses_a_link_that_is_not_an_activity_page():
+async def test_the_tool_returns_the_address_the_script_and_the_wishes_and_refuses_a_bad_link():
     async with Client(create_server(Settings())) as c:
-        got = (await c.call_tool("booking_attraction_recipe", {"url": URL, "day": "2027-03-07", "adults": 2, "children_ages": [8], "activity": "Oceanarium", "free_cancellation": True})).structured_content
-        assert got["url"].startswith("https://www.booking.com/attractions/pt/pr4z1zrjq9hl") and got["wishes"]["free_cancellation"] is True and got["wishes"]["expect"]["total"] == 3
-        assert "Free cancellation only (operator)" in got["filters_used"] and "Prices in EUR (server default)" in got["filters_used"]
-        bad = await c.call_tool("booking_attraction_recipe", {"url": "https://www.booking.com/hotel/pt/x.html", "day": "2027-03-07", "adults": 2, "children_ages": []})
-        assert bad.is_error and "never guess it" in bad.content[0].text
-        nobody = await c.call_tool("booking_attraction_recipe", {"url": URL, "day": "2027-03-07", "adults": 0, "children_ages": [5]})
-        assert nobody.is_error and "at least one adult" in nobody.content[0].text
+        got = (await c.call_tool("booking_attraction_recipe", {"url": URL, "day": "2026-12-18", "adults": 2, "children_ages": [8], "free_cancellation": True})).structured_content
+        assert got["url"] == URL + "?date=2026-12-18&selected_currency=EUR" and got["wishes"]["expect"]["total"] == 3 and got["wishes"]["free_cancellation"] is True and "script" in got
+        assert any("Free cancellation only" in f for f in got["filters_used"])
+        bad = await c.call_tool("booking_attraction_recipe", {"url": "https://www.booking.com/hotel/pt/x.html", "day": "2026-12-18", "adults": 2, "children_ages": []})
+        assert bad.is_error and "Booking.com activity link" in bad.content[0].text
 
 
-def test_every_priced_activity_row_names_its_own_page_so_three_rows_do_not_share_one_link():
-    """28 Oct 2026: three activities were priced, the rows said 'see Sources' and Sources held only the first page's link."""
-    path = f"/attractions/pt/{SLUG}.html"
-    withpath = json.loads(answer())
-    withpath["form"]["path"] = path
-    o = convert(json.dumps(withpath), {"expect": EXPECT}, "Activities").offers[0]
-    assert o.link == f"https://www.booking.com{path}?date=2027-03-07&selected_currency=EUR"
-    assert convert(answer(), {"expect": EXPECT}, "Activities").offers[0].link is None          # an older script that did not report the path: the row falls back to 'see Sources'
-    withpath["form"]["path"] = "/somewhere/else.html"
-    assert convert(json.dumps(withpath), {"expect": EXPECT}, "Activities").offers[0].link is None
-
-
-def test_the_group_title_does_not_say_the_date_twice():
-    """28 Oct 2026: the chat named the activity 'Lisbon activities 7 Mar 2027' and the title became 'Lisbon activities 7 Mar 2027, 07 Mar 2027'."""
-    from datetime import date
-    from myt_mcp.sites import group_title
-    d = date(2027, 3, 7)
-    assert group_title("Oceanarium", d) == "Oceanarium, 07 Mar 2027" and group_title(None, d) == "Activity, 07 Mar 2027"
-    for said in ("Lisbon activities 7 Mar 2027", "Fado night 07 Mar 2027", "Walk on 7 March 2027", "Walk 2027-03-07"):
-        assert group_title(said, d) == said
-    assert group_title("Walk 6 Mar 2027", d) == "Walk 6 Mar 2027, 07 Mar 2027"
+def test_a_senior_is_priced_in_the_senior_kind_and_a_group_of_seniors_needs_no_other_adult():
+    r = booking_attraction_recipe(URL, DAY, 0, [70, 72])
+    assert r["expect"]["adults"] == 0 and r["expect"]["ages"] == [70, 72] and r["expect"]["total"] == 2 and '"ages": [70, 72]' in r["script"]
+    with pytest.raises(ValueError, match="at least one adult"):
+        booking_attraction_recipe(URL, DAY, 0, [8, 12])

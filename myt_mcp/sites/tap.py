@@ -1,10 +1,13 @@
 """TAP Air Portugal flights (one way, one leg per call): a URL and a tested read-only script for the operator's own Chrome (a site module, see myt_mcp/sites/__init__.py).
 
-Site rules (found on the real page, 22 Oct 2026): the search is the deeplink booking.flytap.com/booking/flights/deeplink?market=PT&language=en&origin&destination&flightType=single&adt&chd&inf&depDate=DD.MM.YYYY
-(it redirects to /booking/flights with the same parameters); TAP's availability service refuses plain HTTP clients, so the page itself draws the list. The page keeps the availability answer it drew the list from
-in its own session storage (`airportTranslationData`: data.listOutbound = flights with segments, data.offers.listOffers = fares with the group total, price per passenger type, bag and refund flags per segment,
-seats left); the script only reads that. The page's own "N direct flights" / "N connecting flights" lines are read too, as a cross-check. The fare is only as good as its worst segment (bag, refund). The market PT
-shows EUR. TAP also sells offers that start from a station (a train leg, for example ZMS = Florence station): they are not flights from the airport and are listed apart. These are the airline's own prices: quotable.
+Site rules (found on the real page, 22 Oct 2026; the request read live 5 Nov 2026): the search is the deeplink booking.flytap.com/booking/flights/deeplink?market=PT&language=en&origin&destination&flightType=single&adt&chd&inf&depDate=DD.MM.YYYY
+(it redirects to /booking/flights with the same parameters). The booking page gets its flights from ONE request, POST /bfm/rest/booking/availability/search?payWithMiles=false&starAlliance=false, a JSON body of the search
+(origin, destination, departureDate ["DDMMYYYY"], adt/chd/inf, passengers, oneWay, cabinClass ...) with `Authorization: Bearer <the page's own login token>` (kept JSON-quoted in sessionStorage `token`); the service refuses plain
+HTTP clients ("ACCESS DENIED"), so the script sends it from the page. Its answer equals the one the page stores in `airportTranslationData` (checked: the same 10 flights, 23 fares and prices): data.listOutbound = flights with segments,
+data.offers.listOffers = fares with the group total, price per passenger type, bag and refund flags per segment, seats left. When the request fails the script reads that stored answer, the way it did before. `cabinClass` does
+not filter (E, B, W and F gave the same Economy and Executive fares): the cabin is judged here. A round trip is a two-step answer (all outbound flights, one inbound): not used. The page's own "N direct flights" / "N connecting flights"
+lines are read too, as a cross-check. The fare is only as good as its worst segment (bag, refund). The market PT shows EUR. TAP also sells offers that start from a station (a train leg, for example ZMS = Florence station): they are
+not flights from the airport and are listed apart. These are the airline's own prices: quotable.
 A human check is never worked around.
 """
 
@@ -53,7 +56,8 @@ def tap_recipe(origin: str, destination: str, day: date, adults: int = 2, childr
     if cabin is not None and cabin.strip().lower() not in CABINS:
         raise ValueError(f"cabin must be one of {sorted(CABINS)} (or left out when the operator named none)")
     url = search_link(origin, destination, day, adults, children, infants)
-    script = with_emit((HERE / "tap.js").read_text(encoding="utf-8")).replace("__LIMIT__", str(limit)).replace("__SKIP__", str(offset))
+    request = {"origin": origin, "destination": destination, "day": day.isoformat(), "adults": adults, "children": children, "infants": infants}
+    script = with_emit((HERE / "tap.js").read_text(encoding="utf-8")).replace("__LIMIT__", str(limit)).replace("__SKIP__", str(offset)).replace("__REQUEST__", json.dumps(request))
     expect = {"origin": origin, "destination": destination, "day": day.isoformat(), "adults": adults, "children": children, "infants": infants, "direct_only": direct_only,
               "checked_bag": checked_bag, "refundable": refundable, "cabin": CABINS[cabin.strip().lower()] if cabin else None, "leg": f"{origin} to {destination}, {day:%d %b %Y}"}
     return {"url": url, "script": script, "expect": expect}

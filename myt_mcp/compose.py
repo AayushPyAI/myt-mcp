@@ -105,6 +105,9 @@ def _quotable_cell(o: "Offer") -> str:
     return f"{base} (not confirmed: {', '.join(o.unconfirmed)})" if o.unconfirmed else base
 
 
+NO_SEARCH_ADDRESS = {"Ofran"}      # sources read through their own request from any page of the site: there is no address that reproduces the search, so the home page is their honest link (5 Nov 2026: the check refused it)
+
+
 KEY_ALIASES = {"free_cancellation": "cancellation", "free_cancel": "cancellation", "waiting": "waiting_time", "meeting": "meeting_point"}      # the words a chat writes for the columns the server asks for (28 Oct 2026: Kiwitaxi rows)
 
 
@@ -131,7 +134,7 @@ def validate(kind: str, filters_used: list[str], sources_read: list[SourceRead],
         problems.append("sources_read is empty: list every source you read")
     for s in sources_read:
         urls = re.findall(r"https?://[^\s;|]+", s.link or "")      # one link, or one per leg ("TLV to LIS, 10 Dec 2026: https://...; LIS to TLV, ...: https://...")
-        if not urls or any(re.fullmatch(r"https?://[^/]+/?", u) for u in urls):
+        if not urls or (any(re.fullmatch(r"https?://[^/]+/?", u) for u in urls) and s.name not in NO_SEARCH_ADDRESS):
             problems.append(f"{s.name}: the `sources_read` entry for it needs `link` = the exact search or results page (the recipe's own `url`), not a home page; you gave "
                             f"{'no link' if not urls else repr((s.link or '')[:80])}. One `sources_read` entry per source, with its `link`, `read` and `of`")
         if s.read is None or s.of is None:
@@ -267,6 +270,34 @@ def flexible_reason(priced: list["Offer"]) -> str:
     return "not determined: no refundable or free-cancellation option was read"
 
 
+MONEY_AFTER = re.compile(r"([\d][\d,]*(?:\.\d+)?)\s*(EUR|USD|ILS|GBP|INR)\b")
+MONEY_BEFORE = re.compile(r"\b(EUR|USD|ILS|GBP|INR)\s*([\d][\d,]*(?:\.\d+)?)")
+EXTRA_FEES = re.compile(r"plus fees listed as not in the total: ([\d,]+(?:\.\d+)?) ([A-Z]{3})")
+
+
+def is_zero_excess(o: "Offer") -> bool:
+    return bool(re.search(r"zero excess|excess cancelled", str((o.details or {}).get("excess") or ""), re.I))
+
+
+def cover_text(o: "Offer") -> str:
+    """The cover a car row comes with, in a few words, from its own excess cell (27 Oct 2026 data, 5 Nov 2026 comparison: the same Europcar Citroen C4 was EUR 108 with a 3,000 excess and EUR 193 with none, and the picks said only the price)."""
+    text = str((o.details or {}).get("excess") or "")
+    if not text or text.startswith("not shown"):
+        return "excess not shown"
+    if is_zero_excess(o):
+        return "zero excess"
+    m = MONEY_BEFORE.search(text)
+    if m:
+        return f"excess {m.group(2)} {m.group(1)}"
+    m = MONEY_AFTER.search(text)
+    return f"excess {m.group(1)} {m.group(2)}" if m else text[:60]
+
+
+def extra_fees_text(o: "Offer") -> str:
+    m = EXTRA_FEES.search(str(o.price_basis or ""))
+    return f"; plus {m.group(1)} {m.group(2)} of fees listed as not in the total" if m else ""
+
+
 def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = False) -> tuple[list[tuple[str, str, str]], list[str]]:
     """Cheapest, Best fit, Most flexible, Recommended for one group: (label, option, reason) rows and notes. All reasons come from the rows' own numbers."""
     notes: list[str] = []
@@ -374,10 +405,25 @@ def picks(kind: str, rows: list[Offer], sorted_by_price: bool, complete: bool = 
         if o is not None and o._narrowed and id(o) not in told:
             told.add(id(o))
             notes.append(f"Caution on the {title} ({o.source}: {o.name}): this source was read with a filter the operator did not ask for ({', '.join(o._narrowed)}), so a cheaper or better option may be hidden: read it again without that filter before quoting.")
+    if kind == "cars":      # the picks say the cover and the fees that are not in the price: the sources sell different cover (5 Nov 2026)
+        if cheapest is not None:
+            cheap_reason += f" (cover: {cover_text(cheapest)}{extra_fees_text(cheapest)})"
+        if best is not None:
+            best_reason += f" (cover: {cover_text(best)}{extra_fees_text(best)})"
+        if rec is not None:
+            rec_reason += f" (cover: {cover_text(rec)}{extra_fees_text(rec)})"
     rows_out = [("Cheapest", label(cheapest), cheap_reason),
                 ("Best fit", label(best), best_reason),
                 ("Most flexible", label(flexible), flex_why if flexible else flexible_reason(priced)),
                 ("Recommended", label(rec), rec_reason)]
+    if kind == "cars":
+        zero = [o for o in priced if is_zero_excess(o)]
+        if zero and not is_zero_excess(cheapest):
+            low = min(zero, key=lambda o: o.price_total)
+            diff = low.price_total - cheapest.price_total
+            why = f"lowest of {len(zero)} zero-excess option(s) in {cur}, {diff:,.2f} {cur} above the Cheapest, which has {cover_text(cheapest)}" + ("" if low.quotable else " (comparison row, not quotable)")
+            rows_out.append(("Cheapest with zero excess", label(low), why))
+            notes.append("The cars do not come with the same cover: the Cheapest has an excess and the rows with zero excess cost more (see the pick 'Cheapest with zero excess'). Compare the excess column before choosing.")
     return rows_out, notes
 
 

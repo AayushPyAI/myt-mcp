@@ -3,7 +3,7 @@ and the script finds that request in the page's own network log and reads it aga
 tests/test_rentalcars.py builds it). Nothing leaves the machine. The script's rows go through the server's converter, and are compared with the rows the unit tests derive from the same answer."""
 
 import json
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -15,9 +15,9 @@ PAGE = ("<html><body><div>Pick-up location</div><div>Humberto Delgado Airport (L
         "<script>fetch('/api/search-results?searchCriteria=%7B%7D&filterCriteria=%7B%7D&serviceFeatures=%5B%5D').then(r => r.json()).then(j => { document.title = 'loaded ' + j.matches.length; });</script></body></html>")
 
 
-def run_script(answer: dict, url: str | None = None, page_html: str = PAGE, tries: int | None = None, api_status: int = 200) -> str:
+def run_script(answer: dict, url: str | None = None, page_html: str = PAGE, tries: int | None = None, api_status: int = 200, filters: dict | None = None, site=None, seen: list | None = None) -> str:
     sync_api = pytest.importorskip("playwright.sync_api")
-    recipe = rentalcars_cars_recipe(LIS, LIS, "2027-03-06", "10:00", "2027-03-08", "10:00", 30)
+    recipe = rentalcars_cars_recipe(LIS, LIS, "2027-03-06", "10:00", "2027-03-08", "10:00", 30, filters)
     script = "async () => { const LOCAL_RETURN = true; " + (f"const API_TRIES = {tries}; " if tries else "") + recipe["script"].replace("await (async", "return (async", 1) + " }"
     body = json.dumps(answer)
 
@@ -26,7 +26,10 @@ def run_script(answer: dict, url: str | None = None, page_html: str = PAGE, trie
         if path == "/search-results":
             route.fulfill(status=200, content_type="text/html", body=page_html)
         elif path == "/api/search-results":
-            route.fulfill(status=api_status, content_type="application/json", body=body)
+            query = parse_qs(urlparse(route.request.url).query)
+            if seen is not None:
+                seen.append(json.loads(query.get("filterCriteria", ["{}"])[0]))
+            route.fulfill(status=api_status, content_type="application/json", body=json.dumps(site(json.loads(query.get("filterCriteria", ["{}"])[0]))) if site else body)
         else:
             route.abort()
     try:
@@ -74,3 +77,45 @@ def test_the_real_script_says_it_could_not_read_a_page_with_no_search_request_or
     assert empty["ok"] is False and "holds no cars" in empty["error"]
     refused = json.loads(run_script(api_answer(), api_status=403))
     assert refused["ok"] is False and "answered 403" in refused["error"]
+
+
+def _site(total: int, cap: int = 500, bands=(("BUCKET_1", 4), ("BUCKET_2", 3), ("BUCKET_3", 3))):
+    """A site that behaves as the real one did on 5 Nov 2026: it counts every car that matches the filters, returns at most `cap` of them (recommended order), and filters by transmission and price band."""
+    cars = [match(i + 1, f"Car {i + 1}", gearbox="AUTOMATIC" if i % 2 == 0 else "MANUAL", total=100.0 + i) for i in range(total)]
+    for i, m in enumerate(cars):
+        m["vehicle"]["id"] = str(1000 + i)
+    band_of = {c["vehicle"]["id"]: bands[min(i * len(bands) // total, len(bands) - 1)][0] for i, c in enumerate(cars)}
+
+    def answer(fc: dict) -> dict:
+        out = [c for c in cars if (not fc.get("transmission") or c["vehicle"]["transmission"] in fc["transmission"]) and (not fc.get("pricePerDayBuckets") or band_of[c["vehicle"]["id"]] in fc["pricePerDayBuckets"])]
+        base = api_answer([])
+        base["matches"] = out[:cap]
+        base["aggregates"] = {**base["aggregates"], "matches": {"matchCountAfterFiltering": len(out)},
+                              "pricePerDayBuckets": [{"value": b, "numVehicles": sum(1 for v in band_of.values() if v == b), "available": True} for b, _ in bands]}
+        return base
+    return answer
+
+
+def test_the_script_sends_the_operators_filters_to_the_site_and_reports_both_counts():
+    seen: list = []
+    data = json.loads(run_script({}, filters={"transmission": ["AUTOMATIC"]}, site=_site(10), seen=seen))
+    assert data["ok"] is True and data["unfiltered_total"] == 10 and data["filtered_total"] == 5 and data["matches_read"] == 5 and data["complete"] is True and data["filters_sent"] == {"transmission": ["AUTOMATIC"]}
+    assert {r["gearbox"] for r in data["rows"]} == {"AUTOMATIC"} and {} in seen and {"transmission": ["AUTOMATIC"]} in seen          # the page's own search, then the same search with the filter
+    plain = json.loads(run_script({}, site=_site(10)))
+    assert plain["filtered_total"] is None and plain["filters_sent"] is None and plain["matches_read"] == 10 and plain["complete"] is True
+
+
+def test_when_the_site_counts_more_cars_than_it_answers_the_script_joins_the_price_bands_and_says_if_it_could_not():
+    seen: list = []
+    joined = json.loads(run_script({}, site=_site(12, cap=5), seen=seen))
+    assert joined["ok"] is True and joined["unfiltered_total"] == 12 and joined["matches_read"] == 12 and joined["complete"] is True and len({r["id"] for r in joined["rows"]}) == 12
+    assert [f for f in seen if f.get("pricePerDayBuckets")] == [{"pricePerDayBuckets": ["BUCKET_1"]}, {"pricePerDayBuckets": ["BUCKET_2"]}, {"pricePerDayBuckets": ["BUCKET_3"]}]
+    with_filter = json.loads(run_script({}, filters={"transmission": ["MANUAL"]}, site=_site(12, cap=3)))
+    assert with_filter["filtered_total"] == 6 and with_filter["matches_read"] == 6 and with_filter["complete"] is True and {r["gearbox"] for r in with_filter["rows"]} == {"MANUAL"}
+    too_big = json.loads(run_script({}, site=_site(12, cap=2)))        # one price band alone holds more than the site answers: it says so
+    assert too_big["ok"] is True and too_big["complete"] is False and too_big["matches_read"] < 12
+
+
+def test_a_filter_the_site_finds_no_car_for_is_an_answer_and_not_a_failure():
+    data = json.loads(run_script({}, filters={"transmission": ["NONE"]}, site=_site(10)))
+    assert data["ok"] is True and data["filtered_total"] == 0 and data["rows"] == [] and data["unfiltered_total"] == 10

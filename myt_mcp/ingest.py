@@ -11,11 +11,13 @@ call: prices and flight/hotel/activity facts read from a page the operator opene
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
+log = logging.getLogger("myt_mcp")
 TTL_SECONDS = 3 * 3600
 MAX_BODY = 4_000_000
 MAX_POSTS = 5
@@ -84,7 +86,9 @@ class IngestStore:
         run.result, run.received_at = json.dumps(data, ensure_ascii=False), time.time()
         run.url = str(data.get("page_url") or "")[:600]
         rows = data.get("rows")
-        return 200, {"ok": True, "rows": len(rows) if isinstance(rows, list) else None, "chars": len(body)}
+        n = len(rows) if isinstance(rows, list) else None
+        log.info("INGEST %s rows=%s chars=%d %.1fs after its recipe call", run.site, n, len(body), run.received_at - run.created)      # the time the operator's Chrome took from the recipe to the answer (5 Nov 2026: a chat run took minutes and the log could not say which source)
+        return 200, {"ok": True, "rows": n, "chars": len(body)}
 
     def items(self, tokens: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
         """-> (site_results items for convert_all, problems). Each item carries the wishes and filters the server itself issued with the recipe."""

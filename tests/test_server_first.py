@@ -138,19 +138,22 @@ async def test_the_tools_ask_first_gates_still_come_before_any_server_read(monke
 
 
 def test_a_flight_read_by_the_servers_us_english_chrome_reads_like_one_read_by_the_operators_chrome():
+    """Booking.com's flights service gives ISO dates and 24-hour times itself (the page's cards showed "5:30 AM" and "Mar 6" in the server's US-English Chrome): the same flight is one row whichever Chrome asked."""
     from tests.test_booking_flights import EXPECT, answer, row
     from myt_mcp.sites.booking_flights import convert
-    us = row("Best", carriers="Iberia", dep="5:30 AM", arr="11:50 AM", dep_date="Mar 6", arr_date="Mar 6", duration="8h 20m", total=370.0, per=185.0)
-    eu = row("Cheapest", carriers="Iberia", dep="05:30", arr="11:50", dep_date="6 Mar", arr_date="6 Mar", duration="8h 20m", total=370.0, per=185.0)
-    rows = convert(answer([us, eu, row("Best", dep="11:30 PM", arr="10:30 PM", dep_date="Mar 6", arr_date="Mar 7")]), {"expect": EXPECT}, "Flights")
-    assert [o.name for o in rows.offers] == ["Iberia 05:30-11:50 (8h 20m)", "SKY express 23:30-22:30 (arrives 7 Mar) (25h)"] and rows.offers[0].details["from_tab"] == "Best and Cheapest"
+    best = row("Best", flight="IB1234", carrier="Iberia", code="IB", dep="2026-12-10T05:30:00", arr="2026-12-10T11:50:00", mins=500, total=370.0)
+    cheapest = row("Cheapest", flight="IB1234", carrier="Iberia", code="IB", dep="2026-12-10T05:30:00", arr="2026-12-10T11:50:00", mins=500, total=370.0)
+    night = row("Best", flight="TP1000", dep="2026-12-10T23:30:00", arr="2026-12-11T10:30:00", mins=660, total=300.0)
+    rows = convert(answer([best, cheapest, night]), {"expect": EXPECT}, "Flights")
+    assert [o.name for o in rows.offers] == ["Iberia IB1234 05:30-11:50 (8h 20)", "TAP Portugal TP1000 23:30-10:30 (arrives 11/12) (11h 00)"] and rows.offers[0].details["from_tab"] == "Best and Cheapest"
 
 
 def test_the_start_times_of_an_activity_read_by_the_server_have_the_24_hour_clock():
-    from tests.test_booking_attraction import EXPECT, answer, row
+    """Booking.com's availability service gives the time slots as 24-hour times itself, so the server's Chrome and the operator's read the same."""
+    from tests.test_booking_attraction import EXPECT, answer, row, slot
     from myt_mcp.sites.booking_attraction import convert
-    o = convert(answer([row(times=["10:00 AM", "01:30 PM", "06:00 PM"], time_chosen="10:00 AM")]), {"expect": EXPECT}, "Activities").offers[0]
-    assert o.details["start_times"].startswith("3 start time(s): 10:00, 13:30, 18:00 (first chosen: 10:00;")
+    o = convert(answer([row(slots=[slot("10:00"), slot("13:30"), slot("18:00")], differs=False)]), {"expect": EXPECT}, "Activities").offers[0]
+    assert o.details["start_times"] == "3 start time(s): 10:00, 13:30, 18:00"
 
 
 async def test_the_server_reads_at_most_the_set_number_of_pages_at_once_and_the_rest_wait_in_line(monkeypatch):

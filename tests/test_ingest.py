@@ -266,13 +266,15 @@ def test_arbitrip_hotels_recipe_no_longer_refuses_children(monkeypatch):
     assert room["expect"]["children"] == "1" and room["expect"]["children_ages"] == "8" and "children_ages=8" in room["link_query"]
 
 
-async def test_ofran_recipe_tells_the_model_to_check_the_agency_login_first(monkeypatch):
+async def test_ofran_recipe_keeps_an_optional_login_check_that_is_never_a_reason_to_skip_ofran(monkeypatch):
     monkeypatch.setenv("PUBLIC_BASE_URL", BASE)
     settings = Settings(mcp_secret="s" * 24)
     async with Client(create_server(settings, Services(settings))) as c:
         out = json.loads((await c.call_tool("ofran_recipe", {"pickup": "Ponta Delgada Airport", "pickup_date": "2027-03-05", "pickup_time": "08:10", "dropoff_date": "2027-03-09", "dropoff_time": "10:00",
                                                               "gearbox": "automatic", "min_seats": 5, "zero_excess": True, "max_total": 500})).content[0].text)
-    assert "BEFORE you fill the form" in out["login_check"]["run_first"] and "not_checked" in out["login_check"]["if_false"]
+    check = out["login_check"]
+    assert "OPTIONAL" in check["run_first"] and "waits up to 8 s" in check["run_first"] and "https://ofran.co.il/" in check["run_first"] and "www." not in check["run_first"]
+    assert "Do NOT stop" in check["if_false"] and "do NOT put Ofran in not_checked" in check["if_false"] and "run the script anyway" in check["if_false"] and "diag:" in out["script"]
 
 
 def test_a_cheaper_airline_only_a_comparison_source_lists_is_named_in_the_picks_notes():
@@ -433,12 +435,16 @@ def test_arbitrip_never_reports_more_rows_read_than_the_pages_estimate():
 
 def test_padding_rows_of_an_activity_list_are_left_out_so_a_kayak_is_never_the_cheapest_whale_watching():
     from myt_mcp.sites import convert_all
-    from tests.test_compose import _gyf, _gr
-    rows = [_gr(1, "Sete Cidades Lake: 2-Seat Kayak Rental", "/ponta-delgada-l1/kayak-t1/", "2 hours", 4.9, 300, 20, []),
-            _gr(2, "Whale and Dolphin Watching Trip from Ponta Delgada", "/ponta-delgada-l1/whale-t2/", "3 hours", 4.8, 100, 55, [])]
-    exp = {"query": "whale watching ponta delgada", "day": None, "group": "whale", "title_contains": ["whale", "watching", "ponta", "delgada"], "free_cancellation": False, "max_price": 60, "min_rating": None, "max_hours": 3}
-    offers, _, problems, _, notes = convert_all([{"site": "getyourguide_find", "result": _gyf(rows), "url": "u"}], {"expect": exp})
-    assert [o.name for o in offers] == ["Whale and Dolphin Watching Trip from Ponta Delgada"] and any("left out of the table and the picks" in n for n in notes)
+    import json
+    from datetime import date
+
+    from myt_mcp.sites.getyourguide_find import getyourguide_find_recipe
+    rows = [{"rank": 1, "id": 1, "title": "Sete Cidades Lake: 2-Seat Kayak Rental", "city": "Ponta Delgada", "meta": "2 hours", "rating": 4.9, "reviews": 300, "cur": "EUR", "from": 20, "was": None, "per": "person", "badges": [], "path": "/-t1/"},
+            {"rank": 2, "id": 2, "title": "Whale and Dolphin Watching Trip from Ponta Delgada", "city": "Ponta Delgada", "meta": "3 hours", "rating": 4.8, "reviews": 100, "cur": "EUR", "from": 55, "was": None, "per": "person", "badges": [], "path": "/-t2/"}]
+    r = getyourguide_find_recipe("whale watching ponta delgada", date(2027, 3, 7), max_price=60, max_hours=3)
+    result = json.dumps({"ok": True, "query_text": "whale watching ponta delgada", "date_from": "2027-03-07", "filters_sent": r["expect"]["filters"], "results_total": 150, "cards_on_page": 24, "offset": 0, "rows": rows})
+    offers, _, problems, _, notes = convert_all([{"site": "getyourguide_find", "result": result, "url": "u"}], {"expect": r["expect"]})
+    assert problems == [] and [o.name for o in offers] == ["Whale and Dolphin Watching Trip from Ponta Delgada"] and any("left out of the table and the picks" in n for n in notes)
 
 
 async def test_the_viator_list_is_read_by_the_server_slowly(monkeypatch):
@@ -509,3 +515,16 @@ def test_the_ratehawk_hotels_address_carries_israel_as_the_guests_citizenship_an
     from myt_mcp.sites.ratehawk_hotels import ratehawk_hotels_recipe
     url = ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 3, 6), date(2027, 3, 8), 2, breakfast=True, free_cancellation=True, stars=4)["url"]
     assert "residency=en-il" in url and "dates=06.03.2027-08.03.2027" in url and "guests=2" in url and "meal_types=breakfast" in url
+
+
+def test_every_browser_answer_is_logged_with_its_source_rows_and_the_seconds_since_its_recipe_call(caplog):
+    """5 Nov 2026: a chat run took minutes and the server log could not say which source was slow."""
+    import logging
+    from myt_mcp.ingest import IngestStore
+    store = IngestStore()
+    token = store.new_run("ofran", {})
+    with caplog.at_level(logging.INFO, logger="myt_mcp"):
+        status, receipt = store.accept(token, b'{"ok": true, "rows": [{"a": 1}, {"a": 2}]}')
+    assert status == 200 and receipt["rows"] == 2
+    line = next(r.getMessage() for r in caplog.records if r.getMessage().startswith("INGEST"))
+    assert line.startswith("INGEST ofran rows=2 chars=") and "s after its recipe call" in line and token not in line

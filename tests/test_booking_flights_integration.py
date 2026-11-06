@@ -1,158 +1,194 @@
-"""Booking.com flights, integration: the REAL script runs in a real browser (Playwright's Chromium) on a page that behaves like the real one (27 Oct 2026): flight cards with the site's own data-testid parts,
-"We found N flight options", a Sort button with a menu (Best / Cheapest / Fastest) that changes the list inside the page, page numbers under the list (an <ol> of buttons, aria-current on the open one,
-15 flights a page), the stops radio, the airlines and flight-times filter boxes. Every change of the list comes after a short delay, like the site's. Nothing leaves the machine."""
+"""Booking.com flights, integration: the REAL script runs in a real browser (Playwright's Chromium) on a flights.booking.com page that serves what the real site serves (read live 5 Nov 2026): GET /api/flights/ with the
+search parameters (sort, page, stops, children, cabinClass ...) answering `flightOffers` (15 a page), `aggregation` (totalCount, filteredTotalCount), `searchId` and `searchCriteria`. Nothing leaves the machine.
+The rows the script makes are compared with the rows these tests derive in Python from the same offers."""
+
+from __future__ import annotations
 
 import json
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
 from myt_mcp.sites import convert_all
 from myt_mcp.sites.booking_flights import booking_flights_recipe
-from tests.test_booking_flights import DAY, EXPECT, RECIPE
+from tests.test_booking_flights import DAY, offer, row
 
 
-def page(total_pages=9, found=133, no_direct=False, airlines_off=0, times_on=0, stops_radio="-1", sym="€", legs=1, cards_per_page=15, sort_button_not_ready=False) -> str:
-    cfg = {"pages": total_pages, "found": found, "sym": sym, "legs": legs, "per": cards_per_page, "late": sort_button_not_ready}
-    banner = "<p>There are no direct flights for your search. Here are other options you might like.</p>" if no_direct else ""
-    airlines = "".join(f'<label><input type="checkbox" {"" if i < airlines_off else "checked"}>Airline {i}</label>' for i in range(5))
-    times = "".join(f'<label><input type="checkbox" {"checked" if i < times_on else ""}>{h}</label>' for i, h in enumerate(["00:00-05:59", "06:00-11:59"]))
-    radios = "".join(f'<label><input type="radio" name="filters-stops-option" value="{v}" {"checked" if v == stops_radio else ""}>{t}</label>' for v, t in (("-1", "Any"), ("0", "Direct only"), ("1", "1 stop max")))
-    return f"""<html><head><meta charset='utf-8'></head><body>
-<div data-testid="airlines_filter">{airlines}</div><div data-testid="flight_times_filter">{times}</div><div>{radios}</div>
-<p>We found {found} flight options</p>{banner}<button id="sortbtn">Sort by: Best</button><div id="menu"></div><div id="list"></div><ol id="pager"></ol>
-<script>
-const CFG = {json.dumps(cfg)}; const state = {{ sort: 'Best', page: 1 }};
-const sortbtn = document.getElementById('sortbtn');
-function card(i) {{
-  const shared = i === 0 && state.page === 1;      // the same flight is first in the Best list and in the Cheapest list
-  const name = shared ? 'Shared Air' : state.sort + ' ' + state.page + '-' + i;
-  const price = shared ? 313 : (state.sort === 'Cheapest' ? 320 : 400) + state.page * 10 + i;
-  let segs = '';
-  for (let k = 0; k < CFG.legs; k++) segs += '<div data-testid="flight_card_segment_departure_time_' + k + '">23:30</div><div data-testid="flight_card_segment_departure_airport_' + k + '">TLV</div><div data-testid="flight_card_segment_departure_date_' + k + '">6 Mar</div>'
-    + '<div data-testid="flight_card_segment_stops_' + k + '">1 stop</div><div data-testid="flight_card_segment_duration_' + k + '">25h</div><div data-testid="flight_card_segment_destination_time_' + k + '">22:30</div>'
-    + '<div data-testid="flight_card_segment_destination_airport_' + k + '">LIS</div><div data-testid="flight_card_segment_destination_date_' + k + '">7 Mar</div>';
-  return '<div data-testid="searchresults_card"><span>Flight option ' + (i + 1) + ' of ' + CFG.per + '</span><div>Flexible ticket upgrade available</div>' + segs + '<div data-testid="flight_card_carriers">' + name + '</div>'
-    + '<div data-testid="upt_price">' + CFG.sym + Math.round(price / 2) + '</div><div data-testid="flight_card_price_total_price">' + CFG.sym + price + ' total</div><button>View details</button></div>';
-}}
-function render() {{
-  document.getElementById('list').innerHTML = Array.from({{ length: CFG.per }}, (_, i) => card(i)).join('');
-  document.getElementById('pager').innerHTML = Array.from({{ length: CFG.pages }}, (_, i) => '<li><button' + (i + 1 === state.page ? ' aria-current="page"' : '') + '>' + (i + 1) + '</button></li>').join('');
-  document.querySelectorAll('#pager button').forEach((b) => b.addEventListener('click', () => setTimeout(() => {{ state.page = parseInt(b.innerText, 10); render(); }}, 300)));
-  sortbtn.innerText = 'Sort by: ' + state.sort;
-}}
-let sortClicks = 0;      // a page that is still wiring its buttons ignores the first click on Sort and shows the menu a moment after the next one (seen from the server's Chrome)
-sortbtn.addEventListener('click', () => {{
-  sortClicks++; if (CFG.late && sortClicks === 1) return;
-  setTimeout(() => {{ document.getElementById('menu').innerHTML = ['Best We look at the price, travel time, number of stops and baggage allowance', 'Cheapest', 'Fastest'].map((t) => '<button role="menuitem">' + t + '</button>').join('');
-  document.querySelectorAll('#menu button').forEach((b) => b.addEventListener('click', () => setTimeout(() => {{ state.sort = b.innerText.split(' ')[0]; state.page = 1; document.getElementById('menu').innerHTML = ''; render(); }}, 300))); }}, CFG.late ? 900 : 0);
-}});
-render();
-</script></body></html>"""
+def make_offer(sort, page, i, n_trav, cabin="ECONOMY"):
+    shared = i == 0 and page == 1                               # the same flight is first in the Best list and in the Cheapest list
+    number = 1000 if shared else (1000 if sort == "BEST" else 2000) + i + 15 * (page - 1) + 1
+    return offer(flight=f"TP{number}", total=102.0 if shared else 110.0 + i + page, n=n_trav, cabin=cabin, checked=(i % 2 == 0), flex=(i % 3 != 0))
 
 
-def run_script(page_html: str, recipe: dict | None = None, url: str | None = None, tries: int | None = None) -> str:
+def run_script(pages=2, direct_only=False, children=(), cabin="economy", total=155, status=200, fail_page=None, bad_answer=False, html=None, seen=None, details=0, detail_status=200, detail_seen=None):
     sync_api = pytest.importorskip("playwright.sync_api")
-    recipe = recipe or RECIPE
-    script = "async () => { const LOCAL_RETURN = true; " + (f"const CARD_TRIES = {tries}; " if tries else "") + recipe["script"].replace("await (async", "return (async", 1) + " }"
+    recipe = booking_flights_recipe("LIS", "OPO", DAY, 2, direct_only, cabin, pages, list(children), details=details)
+    script = "async () => { const LOCAL_RETURN = true; " + recipe["script"].replace("await (async", "return (async", 1) + " }"
+    code = {"economy": "ECONOMY", "business": "BUSINESS"}[cabin]
 
     def serve(route):
-        if urlparse(route.request.url).path.startswith("/flights/"):
-            route.fulfill(status=200, content_type="text/html; charset=utf-8", body=page_html)
-        else:
+        u = urlparse(route.request.url)
+        if u.hostname != "flights.booking.com":
             route.abort()
+        elif u.path.startswith("/api/flight/"):
+            token = u.path.rsplit("/", 1)[-1]
+            if detail_seen is not None:
+                detail_seen.append(token)
+            if "adults" not in parse_qs(u.query):      # the real service answers an error body without the search parameters (a fresh browser, 5 Nov 2026)
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({"error": {"code": "SEARCH_GETFLIGHTDETAILS_INVALID", "requestId": "x"}}))
+                return
+            if detail_status != 200:
+                route.fulfill(status=detail_status, content_type="application/json", body="{}")
+                return
+            def feat(name, availability="INCLUDED"):
+                return {"featureName": name, "category": "X", "label": name, "availability": availability}
+            body = {"token": token, "fareRules": {"perSegment": [{"segmentIdentifiers": [{"segmentIndex": 0, "legIndex": 0}], "availablePolicies": [{"type": "CHANGE_BEFORE"}], "unavailablePolicies": [{"type": "CANCEL_BEFORE"}]}]},
+                    "brandedFareInfo": {"fareName": "DISCOUNT", "cabinClass": "ECONOMY", "features": [feat("PERSONAL_BAGGAGE"), feat("CABIN_BAGGAGE"), feat("CHANGEABLE_TICKET")]},
+                    "noFlexOrCfarContent": {"title": "Standard ticket", "includedFeatures": ["Cheapest price"], "excludedFeatures": ["No refund if you cancel"]},
+                    "brandedFareOffers": [{"brandedFareInfo": {"fareName": "DISCOUNT", "features": [feat("CHANGEABLE_TICKET")]}, "priceBreakdown": {"total": {"currencyCode": "EUR", "units": 102, "nanos": 0}}},
+                                          {"brandedFareInfo": {"fareName": "PLUS", "features": [feat("CHECK_BAGGAGE"), feat("REFUNDABLE_TICKET"), feat("CHANGEABLE_TICKET"), feat("PREMIUM_SEAT")]}, "priceBreakdown": {"total": {"currencyCode": "EUR", "units": 201, "nanos": 0}}}],
+                    "baggagePolicies": [{"code": "TP", "name": "TAP Portugal", "url": "https://www.flytap.com/en-se/baggage"}]}
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+        elif u.path == "/api/flights/":
+            q = {k: v[0] for k, v in parse_qs(u.query).items()}
+            if seen is not None:
+                seen.append(q)
+            page = int(q.get("page", "1"))
+            if (fail_page and page == fail_page) or status != 200:
+                route.fulfill(status=status if status != 200 else 500, content_type="application/json", body="{}")
+                return
+            if bad_answer:
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({"unexpected": True}))
+                return
+            filtered = 10 if q.get("stops") == "0" else total
+            n_trav = int(q.get("adults", "2")) + len([a for a in q.get("children", "").split(",") if a])
+            count = max(0, min(15, filtered - 15 * (page - 1)))
+            body = {"aggregation": {"totalCount": total, "filteredTotalCount": filtered, "stops": [{"numberOfStops": 0, "count": 10, "minPrice": {"currencyCode": "EUR", "units": 102, "nanos": 0}}],
+                                    "airlines": [{"code": "TP", "name": "TAP Portugal", "count": 50}], "baggage": [{"baggageType": "CABIN", "count": 108}, {"baggageType": "CHECKIN", "count": 74}]},
+                    "flightOffers": [make_offer(q["sort"], page, i, n_trav, q.get("cabinClass", "ECONOMY")) for i in range(count)], "searchId": "ABC123", "source": "cache", "searchCriteria": {"cabinClass": q.get("cabinClass")}}
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+        else:
+            route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html or "<html><body><h1>Search flights: Lisbon - Porto</h1></body></html>")
     try:
         with sync_api.sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page_ = browser.new_page(viewport={"width": 1300, "height": 900})
-            page_.route("**/*", serve)
-            page_.goto(url or recipe["url"])
-            page_.wait_for_load_state("domcontentloaded")
-            out = page_.evaluate(script)
+            page = browser.new_page()
+            page.route("**/*", serve)
+            page.goto(recipe["url"])
+            out = page.evaluate(script)
             browser.close()
     except Exception as e:      # no browser installed on this machine: not a failure of the recipe
         if "Executable doesn't exist" in str(e) or "playwright install" in str(e):
             pytest.skip(f"Playwright's Chromium is not installed: {e}")
         raise
-    return out
+    return out, recipe
 
 
-def convert_one(data: dict, recipe: dict | None = None):
-    rec = recipe or RECIPE
-    return convert_all([{"site": "booking_flights", "result": json.dumps(data), "url": rec["url"], "wishes": {"expect": rec["expect"]}}], {"expect": rec["expect"]})
+def convert_one(out, recipe):
+    return convert_all([{"site": "booking_flights", "result": out, "url": recipe["url"], "wishes": {"expect": recipe["expect"]}}], {"expect": recipe["expect"]})
 
 
-def test_the_real_script_reads_two_pages_of_best_then_picks_cheapest_in_the_menu_and_reads_two_pages_of_that():
-    data = json.loads(run_script(page()))
-    assert data["ok"] is True and len(data["rows"]) == 60 and data["results_total"] == 133 and data["per_page"] == 15
-    assert data["form"] == {"type": "ONEWAY", "origin": "TLV", "destination": "LIS", "day": "2027-03-06", "adults": 2, "children": 0, "cabin": "ECONOMY", "currency": "EUR", "sort": "BEST", "stops": None}
-    assert data["filters"] == {"stops": "-1", "airlines_off": 0, "times_on": 0} and data["no_direct_notice"] is False
-    assert data["sorts"] == [{"sort": "Best", "shown_as": "Best", "pages_read": 2, "pages_seen": 9}, {"sort": "Cheapest", "shown_as": "Cheapest", "pages_read": 2, "pages_seen": 9}]
-    by = [(r["sort"], r["page"]) for r in data["rows"]]
-    assert by[:2] == [("Best", 1), ("Best", 1)] and by.count(("Best", 1)) == 15 and by.count(("Best", 2)) == 15 and by.count(("Cheapest", 1)) == 15 and by.count(("Cheapest", 2)) == 15
-    assert data["rows"][1]["carriers"] == "Best 1-1" and data["rows"][16]["carriers"] == "Best 2-1" and data["rows"][31]["carriers"] == "Cheapest 1-1" and data["rows"][1]["total"] == 411
-    offers, sources, problems, by_price, notes = convert_one(data)
-    assert problems == [] and len(offers) == 59 and sources[0].read == 59 and sources[0].of == 133 and by_price is True        # the shared flight is one row
-    assert [o.details["from_tab"] for o in offers if o.name.startswith("Shared Air")] == ["Best and Cheapest"]
+def test_the_real_script_asks_the_flights_service_page_by_page_for_best_then_cheapest_and_makes_the_rows_the_converter_expects():
+    seen: list = []
+    out, recipe = run_script(seen=seen)
+    data = json.loads(out)
+    assert data["ok"] is True and data["results_total"] == 155 and data["unfiltered_total"] == 155 and data["sorts"] == [{"sort": "Best", "pages_read": 2, "pages_seen": 11}, {"sort": "Cheapest", "pages_read": 2, "pages_seen": 11}]
+    assert data["searched"] == {"type": "ONEWAY", "origin": "LIS", "destination": "OPO", "day": "2026-12-10", "adults": 2, "children": 0, "cabin": "ECONOMY", "currency": "EUR", "stops": None, "airlines": [], "dep_hours": None, "max_hours": None, "checked_bag": False} and data["cabin_back"] == "ECONOMY"
+    assert [(q["sort"], q.get("page", "1")) for q in seen] == [("BEST", "1"), ("BEST", "2"), ("CHEAPEST", "1"), ("CHEAPEST", "2")]
+    q = seen[0]
+    assert (q["type"], q["adults"], q["cabinClass"], q["from"], q["to"], q["depart"], q["currency"], q["enableVI"], q["search_source"]) == ("ONEWAY", "2", "ECONOMY", "LIS.AIRPORT", "OPO.AIRPORT", "2026-12-10", "EUR", "1", "user") and "stops" not in q and "children" not in q
+    assert data["baggage_counts"] == [{"type": "CABIN", "count": 108}, {"type": "CHECKIN", "count": 74}] and data["search_id"] == "ABC123" and data["failed"] is None
+    rows = data["rows"]
+    assert len(rows) == 60 and [r["page"] for r in rows if r["sort"] == "Best"] == [1] * 15 + [2] * 15
+    first = rows[0]
+    assert {k: v for k, v in first.items() if k != "detail"} == row("Best", 1, flight="TP1000", total=102.0, checked=True, flex=False)              # the JavaScript and the Python read the offer the same way
+    assert rows[16] == row("Best", 2, flight="TP1017", total=113.0 + 1, checked=False, flex=True) or rows[16]["legs"][0]["flights"] == ["TP1017"]
+    offers, sources, problems, _, notes = convert_one(out, recipe)
+    assert not problems and len(offers) == 59 and (sources[0].read, sources[0].of) == (59, 155)       # the shared flight is one row
+    shared = next(o for o in offers if "TP1000" in o.name)
+    assert shared.details["from_tab"] == "Best and Cheapest" and shared.details["checked_bag"] == "yes: 1 bag(s) per traveller up to 23 kg" and shared.price_total == 102.0
 
 
-def test_the_real_script_reads_only_the_first_page_of_each_sort_when_one_page_is_asked():
-    rec = booking_flights_recipe("TLV", "LIS", DAY, 2, False, "economy", 1)
-    data = json.loads(run_script(page(), rec))
-    assert data["ok"] is True and len(data["rows"]) == 30 and {s["pages_read"] for s in data["sorts"]} == {1}
+def test_direct_only_children_and_the_business_cabin_are_sent_and_a_short_list_needs_one_request_per_sort():
+    seen: list = []
+    out, recipe = run_script(pages=3, direct_only=True, children=(8, 10), cabin="business", seen=seen)
+    data = json.loads(out)
+    assert data["ok"] is True and data["searched"]["stops"] == "0" and data["searched"]["children"] == 2 and data["searched"]["cabin"] == "BUSINESS" and data["results_total"] == 10
+    assert [(q["sort"], q.get("page", "1")) for q in seen] == [("BEST", "1"), ("CHEAPEST", "1")]       # 10 flights: one page of each sort
+    assert all(q["stops"] == "0" and q["children"] == "8,10" and q["cabinClass"] == "BUSINESS" and q["adults"] == "2" for q in seen)
+    assert len(data["rows"][0]["trav"]) == 4 and data["rows"][0]["legs"][0]["cabins"] == ["BUSINESS"]
+    offers, _, problems, _, notes = convert_one(out, recipe)
+    assert not problems and all(o.fits is True for o in offers) and any("direct-only filter (stops=0)" in n for n in notes) and any("2 child(ren) (ages 8, 10)" in n for n in notes)
 
 
-def test_the_real_script_reads_fewer_pages_than_asked_when_the_list_has_fewer_and_says_how_many_it_saw():
-    rec = booking_flights_recipe("TLV", "LIS", DAY, 2, False, "economy", 3)
-    data = json.loads(run_script(page(total_pages=1, found=15), rec))
-    assert data["ok"] is True and len(data["rows"]) == 30 and all(s["pages_read"] == 1 and s["pages_seen"] == 1 for s in data["sorts"])
+def test_a_failing_second_page_gives_the_first_page_and_says_so_and_a_failing_first_page_is_an_error():
+    out, recipe = run_script(fail_page=2)
+    data = json.loads(out)
+    assert data["ok"] is True and data["failed"] and "Best page 2" in data["failed"][0] and data["sorts"][0]["pages_read"] == 1 and len(data["rows"]) == 30
+    notes = convert_one(out, recipe)[4]
+    assert any("Not every page asked for was read" in n for n in notes)
+    err = json.loads(run_script(status=500)[0])
+    assert err["ok"] is False and "no flight list" in err["error"] and "answered 500" in err["error"]
+    bad = json.loads(run_script(bad_answer=True)[0])
+    assert bad["ok"] is False and "no flight list in the answer" in bad["error"]
 
 
-def test_direct_only_reads_the_stops_radio_and_a_route_without_direct_flights_is_told_by_the_page_banner():
-    rec = booking_flights_recipe("TLV", "ATH", DAY, 2, True)
-    ok = json.loads(run_script(page(stops_radio="0"), rec, url=rec["url"]))
-    assert ok["ok"] is True and ok["filters"]["stops"] == "0" and ok["form"]["stops"] == "0"
-    offers, _, problems, _, notes = convert_one(ok, rec)
-    assert problems == [] and any("direct-only filter was set in the address" in n for n in notes)
-    none = json.loads(run_script(page(stops_radio="-1", no_direct=True), rec, url=rec["url"]))
-    assert none["no_direct_notice"] is True and none["filters"]["stops"] == "-1"
-    offers, _, problems, _, notes = convert_one(none, rec)
-    assert problems == [] and all(o.fits is False for o in offers) and any("no direct flights for this search" in n for n in notes)
-
-
-def test_a_changed_airline_or_flight_times_filter_or_a_stops_radio_that_was_not_asked_is_read_and_refused_by_the_converter():
-    off = json.loads(run_script(page(airlines_off=2, times_on=1, stops_radio="1"), booking_flights_recipe("TLV", "LIS", DAY, 2, False, "economy", 1)))
-    assert off["filters"] == {"stops": "1", "airlines_off": 2, "times_on": 1}
-    _, _, problems, _, _ = convert_one(off, booking_flights_recipe("TLV", "LIS", DAY, 2, False, "economy", 1))
-    assert any("stops filter 1 instead of -1" in p and "2 airline box(es) switched off" in p and "1 flight-time box(es) ticked" in p for p in problems)
-
-
-def test_the_real_script_stops_when_the_address_is_not_the_one_asked():
-    url = RECIPE["url"].replace("depart=2027-03-06", "depart=2027-03-07").replace("currency=EUR", "currency=USD").replace("ECONOMY", "BUSINESS") + "&stops=0"
-    data = json.loads(run_script(page(), url=url))
-    assert data["ok"] is False and "day 2027-03-07 instead of 2027-03-06" in data["error"] and "currency USD instead of EUR" in data["error"] and "cabin BUSINESS instead of ECONOMY" in data["error"] and "stops 0 instead of null" in data["error"]
-
-
-def test_the_real_script_says_it_could_not_read_a_page_with_no_cards_or_a_human_check():
-    silent = json.loads(run_script("<html><body><h1>Searching</h1></body></html>", tries=2))
-    assert silent["ok"] is False and "never say there are none" in silent["error"]
-    check = json.loads(run_script("<html><body>Please verify you are human</body></html>"))
+def test_the_script_stops_on_a_human_check_and_on_a_page_that_is_not_a_flights_page():
+    check = json.loads(run_script(html="<html><body>Are you a person or a robot? Press & hold</body></html>")[0])
     assert check["ok"] is False and "human check" in check["error"] and "do not work around" in check["error"]
 
 
-def test_a_card_with_two_legs_or_another_currency_reaches_the_converter_and_is_refused_there():
-    rec = booking_flights_recipe("TLV", "LIS", DAY, 2, False, "economy", 1)
-    two = json.loads(run_script(page(legs=2), rec))
-    off, _, problems, _, _ = convert_one(two, rec)
-    assert off == [] and any("2 legs, not one" in p for p in problems)
-    usd = json.loads(run_script(page(sym="$"), rec))
-    off, _, problems, _, _ = convert_one(usd, rec)
-    assert off == [] and any("not euro" in p for p in problems)
+def test_the_new_filters_are_sent_to_the_service_and_the_services_direct_only_flag_becomes_the_no_direct_notice():
+    seen: list = []
+    sync_api = pytest.importorskip("playwright.sync_api")
+    out, recipe = run_script(pages=1, seen=seen)
+    assert "airlines" not in seen[0] and "depTimeInt" not in seen[0] and "duration" not in seen[0] and "includedBaggage" not in seen[0]       # none asked, none sent
+    import tests.test_booking_flights_integration as me
+    recipe2 = booking_flights_recipe("LIS", "OPO", DAY, 2, False, "economy", 1, None, ["TP"], "06-11", 3, True)
+    seen2: list = []
+
+    def serve(route):
+        u = urlparse(route.request.url)
+        if u.path == "/api/flights/":
+            q = {k: v[0] for k, v in parse_qs(u.query).items()}
+            seen2.append(q)
+            body = {"aggregation": {"totalCount": 5, "filteredTotalCount": 1, "stops": []}, "flightOffers": [make_offer("BEST", 1, 1, 2)], "searchId": "X", "source": "cache", "searchCriteria": {"cabinClass": "ECONOMY"},
+                    "displayOptions": {"directFlightsOnlyFilterIgnored": True}}
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+        elif u.hostname == "flights.booking.com":
+            route.fulfill(status=200, content_type="text/html", body="<html><body>x</body></html>")
+        else:
+            route.abort()
+    direct = booking_flights_recipe("LIS", "OPO", DAY, 2, True, "economy", 1)
+    script = "async () => { const LOCAL_RETURN = true; " + direct["script"].replace("await (async", "return (async", 1) + " }"
+    with sync_api.sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.route("**/*", serve)
+        page.goto(direct["url"])
+        data = json.loads(page.evaluate(script))
+        page.goto(recipe2["url"])
+        page.evaluate("async () => { const LOCAL_RETURN = true; " + recipe2["script"].replace("await (async", "return (async", 1) + " }")
+        browser.close()
+    assert data["no_direct_notice"] is True and data["results_total"] == 1 and len(data["rows"]) >= 1
+    last = seen2[-1]
+    assert last["airlines"] == "TP" and last["depTimeInt"] == "06-11" and last["duration"] == "3" and last["includedBaggage"] == "CHECKIN"
 
 
-def test_a_sort_button_that_ignores_the_first_click_and_shows_its_menu_late_is_asked_again_until_the_menu_comes():
-    rec = booking_flights_recipe("TLV", "LIS", DAY, 2, False, "economy", 1)
-    data = json.loads(run_script(page(sort_button_not_ready=True), rec))
-    assert data["ok"] is True and [s["shown_as"] for s in data["sorts"]] == ["Best", "Cheapest"] and len(data["rows"]) == 30
-    _, _, problems, _, _ = convert_one(data, rec)
-    assert problems == []
+def test_the_cheapest_flights_get_their_details_read_one_request_each_and_a_failing_details_service_never_hides_the_flights():
+    detail_seen: list = []
+    out, recipe = run_script(pages=1, details=3, detail_seen=detail_seen)
+    data = json.loads(out)
+    assert data["ok"] is True and data["details_read"] == 3 and data["details_failed"] is None and len(set(detail_seen)) == 3 and len(detail_seen) == 3
+    with_detail = [r for r in data["rows"] if r.get("detail")]
+    cheapest_totals = sorted({r["total"] for r in data["rows"]})[:3]
+    assert with_detail and all(r["total"] in cheapest_totals or r["legs"][0]["flights"] == data["rows"][0]["legs"][0]["flights"] for r in with_detail)
+    d = with_detail[0]["detail"]
+    assert d["fare"] == "DISCOUNT" and d["change"] is True and d["cancel"] is False and [o["name"] for o in d["options"]] == ["DISCOUNT", "PLUS"] and d["options"][1]["refundable"] is True and d["options"][1]["checked_bag"] is True
+    offers, _, problems, _, notes = convert_one(out, recipe)
+    assert not problems and any("were read for the 3 cheapest flight(s)" in n for n in notes) and any(o.details["refund_change"].startswith("change before departure allowed") for o in offers)
+    out, recipe = run_script(pages=1, details=2, detail_status=500)
+    data = json.loads(out)
+    assert data["ok"] is True and data["details_read"] == 0 and len(data["details_failed"]) == 2 and len(data["rows"]) == 30 and not any(r.get("detail") for r in data["rows"])
+    assert any("Some fare details could not be read" in n for n in convert_one(out, recipe)[4])
+    assert detail_seen and detail_seen[0]

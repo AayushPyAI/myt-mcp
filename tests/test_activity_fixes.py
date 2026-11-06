@@ -76,13 +76,24 @@ def test_a_rating_on_ten_points_is_read_on_five_for_viator_and_getyourguide():
         viator_find_recipe("Lisbon tours", None, 1, None, False, None, 0)
 
 
+def _viator_row(**kw):
+    """One option of Viator's availability answer (read live 5 Nov 2026): the price of the whole group, its breakdown, its start times."""
+    base = {"option": "Standard", "code": "TG1", "available": True, "availability": "AVAILABLE", "date": "2027-03-07", "spots": 10, "total": 38.0, "list_total": 38.0, "discounted": False, "saved": 0, "cur": "EUR",
+            "breakdown": [{"band": "ADULT", "n": 2, "unit": 19.0, "list": 19.0}], "times": [{"t": "09:30", "label": "9:30 AM", "price": 38.0, "ok": True}], "pay_by": None, "reserve": False, "langs": [], "about": ""}
+    base.update(kw)
+    return base
+
+
+def _viator_data(path, rows, **head):
+    return {"ok": True, "url_path": path, "activity": "Best of Lisbon Small-Group Guided Walking Tour", "code": path.rsplit("-", 1)[-1], "day": "2027-03-07", "bands_sent": {"ADULT": 2}, "travellers_sent": 2, "options_found": len(rows),
+            "duration": "4 hours", "policy_type": None, "refund_until": None, "refund_deadline_past": False, "rows": rows, **head}
+
+
 def test_viators_policy_line_up_to_24_hours_for_a_full_refund_is_free_cancellation():
     from myt_mcp.sites.viator_activity import convert
-    row = {"option": None, "selected": True, "priced": True, "price_text": "€38.00", "from_text": None, "start_time": None, "times": [], "cancellation": None, "pay_later": None, "dialog_travellers": "2 Adults",
-           "dialog_when": "Sun, Mar 7, 2027 • 9:30 AM", "breakdown": ["2 Adults x €19.00 = €38.00"], "dialog_total": "€38.00"}
-    data = {"ok": True, "url_path": "/tours/Lisbon/Lisbon-Guided-Walking-Tour/d538-5383LISBONTOUR", "activity": "Best of Lisbon Small-Group Guided Walking Tour", "date_box": "Sun, Mar 7", "travellers_box": 2, "options_found": 1,
-            "duration": "4 hours (approx.)", "cancel_policy": "You can cancel up to 24 hours in advance of the experience for a full refund.", "rows": [row]}
-    wishes = {"expect": {"day": "2027-03-07", "adults": 2, "children": 0, "ages": [], "total": 2, "path": data["url_path"], "group": "Lisbon tours, 07 Mar 2027"}, "free_cancellation": True}
+    path = "/tours/Lisbon/Lisbon-Guided-Walking-Tour/d538-5383LISBONTOUR"
+    data = _viator_data(path, [_viator_row()], cancel_policy="You can cancel up to 24 hours in advance of the experience for a full refund.")
+    wishes = {"expect": {"day": "2027-03-07", "adults": 2, "children": 0, "ages": [], "total": 2, "path": path, "group": "Lisbon tours, 07 Mar 2027"}, "free_cancellation": True}
     o = convert(json.dumps(data), wishes, "Activities").offers[0]
     assert o.flexible is True and o.details["cancellation"].startswith("Free cancellation per the page's policy: You can cancel up to 24 hours")
     other = convert(json.dumps({**data, "cancel_policy": "This activity is non-refundable."}), wishes, "Activities").offers[0]
@@ -90,15 +101,14 @@ def test_viators_policy_line_up_to_24_hours_for_a_full_refund_is_free_cancellati
 
 
 def test_each_priced_viator_row_names_its_own_page_and_its_times_are_on_the_24_hour_clock():
-    """28 Oct 2026: three Viator rows said 'see Sources' and Sources held one link; the start times were '10:00 AM' next to Booking.com's '10:00'."""
+    """28 Oct 2026: three Viator rows said 'see Sources' and Sources held one link; the start times were '10:00 AM' next to Booking.com's '10:00' (the availability service gives the 24-hour time itself)."""
     from myt_mcp.sites.viator_activity import convert
-    row = {"option": None, "selected": True, "priced": True, "price_text": "€38.00", "from_text": None, "start_time": "3:30 PM", "times": ["10:00 AM", "11:00 AM", "3:30 PM"], "cancellation": None, "pay_later": None,
-           "dialog_travellers": "2 Adults", "dialog_when": "Sun, Mar 7, 2027 • 9:30 AM", "breakdown": ["2 Adults x €19.00 = €38.00"], "dialog_total": "€38.00"}
-    data = {"ok": True, "url_path": "/tours/Lisbon/Alfama-Tour-Lisbon-Old-Town/d538-268183P3", "activity": "Alfama Tour", "date_box": "Sun, Mar 7", "travellers_box": 2, "options_found": 1, "duration": "2 hours", "rows": [row]}
-    wishes = {"expect": {"day": "2027-03-07", "adults": 2, "children": 0, "ages": [], "total": 2, "path": data["url_path"], "group": "Lisbon activities 7 Mar 2027"}}
-    o = convert(json.dumps(data), wishes, "Activities").offers[0]
+    path = "/tours/Lisbon/Alfama-Tour-Lisbon-Old-Town/d538-268183P3"
+    row = _viator_row(times=[{"t": "10:00", "label": "10:00 AM", "price": 38.0, "ok": True}, {"t": "11:00", "label": "11:00 AM", "price": 38.0, "ok": True}, {"t": "15:30", "label": "3:30 PM", "price": 38.0, "ok": True}])
+    wishes = {"expect": {"day": "2027-03-07", "adults": 2, "children": 0, "ages": [], "total": 2, "path": path, "group": "Lisbon activities 7 Mar 2027"}}
+    o = convert(json.dumps(_viator_data(path, [row], activity="Alfama Tour")), wishes, "Activities").offers[0]
     assert o.link == "https://www.viator.com/tours/Lisbon/Alfama-Tour-Lisbon-Old-Town/d538-268183P3"
-    assert o.details["start_times"] == "chosen: 15:30; 3 start time(s): 10:00, 11:00, 15:30"
+    assert o.details["start_times"] == "3 start time(s): 10:00, 11:00, 15:30"
 
 
 def test_a_getyourguide_row_link_names_the_activity_page_with_the_date():

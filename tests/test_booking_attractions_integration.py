@@ -1,6 +1,8 @@
-"""Booking.com attractions, integration: the REAL script runs in a real browser (Playwright's Chromium) on a page that behaves like the real one (27 Oct 2026): activity cards with the site's own data-testid parts
-(card-title, review-score, price), 15 cards first and 15 more each time the page is scrolled to the bottom, the sort box (radios "Our top picks" / "Lowest price" / "Best reviewed" whose ids end in -trending,
--lowest_price, -highest_weighted_rating), the filter boxes that are ticked from the address (filter_by_label[]=free_cancellation ...), and an address the site redirects to <city>.en-gb.html. Nothing leaves the machine."""
+"""Booking.com attractions, integration: the REAL script runs in a real browser (Playwright's Chromium) on a page that serves what the real site serves (read live 5 Nov 2026): the first 15 activities and the filter
+statistics embedded as an Apollo store (<script type="application/json" data-capla-store-data="apollo">: ROOT_QUERY.attractionsProduct.searchProducts with {input: {ufi, limit, page, source, filters, sortBy}}), the page's
+tokens inside its inline data, and POST accommodations.booking.com/dml/graphql (operation SearchResultsProducts) answering the next pages and the other sort. Nothing leaves the machine."""
+
+from __future__ import annotations
 
 import json
 from urllib.parse import urlparse
@@ -9,122 +11,142 @@ import pytest
 
 from myt_mcp.sites import convert_all
 from myt_mcp.sites.booking_attractions import booking_attractions_recipe
-from tests.test_booking_attractions import DAY, EXPECT, RECIPE
+from tests.test_booking_attractions import DAY, SLUG
+
+UFI = -2167973
 
 
-def page(total=60, sym="€", price_html=None, radios=("trending", "lowest_price", "highest_weighted_rating")) -> str:
-    cfg = {"total": total, "sym": sym, "price_html": price_html}
-    sort_radios = "".join(f'<label><input type="radio" name="sort" id=":R1:-{k}" {"checked" if k == "trending" else ""}>{k}</label>' for k in radios)
-    filters = ("".join(f'<label><input type="checkbox" name="filter_by_label" value="{v}">{v}</label>' for v in ("free_cancellation", "skip_the_line"))
-               + "".join(f'<label><input type="checkbox" name="filter_by_min_rating" value="{v}">{v} up</label>' for v in ("4.5", "4.0")))
-    return f"""<html><head><meta charset='utf-8'></head><body><h1>Lisbon experiences</h1><div>{sort_radios}</div><div>{filters}</div><div id="list"></div><div style="height:3000px"></div>
-<script>
-const CFG = {json.dumps(cfg)}; const q = new URLSearchParams(location.search); const state = {{ sort: q.get('sort_by') || 'trending', shown: 15 }};
-document.querySelectorAll('input[type=checkbox]').forEach((b) => {{ b.checked = q.getAll(b.name + '[]').includes(b.value); }});
-function card(i) {{
-  const shared = i === 0;      // the same activity is first in every sort
-  const title = shared ? 'Shared tour' : state.sort + ' tour ' + i;
-  const price = shared ? 26 : (state.sort === 'trending' ? 30 : 40) + i;
-  const priceBlock = CFG.price_html !== null ? CFG.price_html : (i % 2 === 0 ? 'From<br>' + CFG.sym + ' ' + (price + 5) + '<br>' + CFG.sym + ' ' + price + '.05<br>Original price from ' + CFG.sym + ' ' + (price + 5) + '. Current price from ' + CFG.sym + ' ' + price + '.05'
-    : 'From<br>' + CFG.sym + ' ' + price + '<br>Current price from ' + CFG.sym + ' ' + price);
-  return '<div data-testid="card"><a href="/attractions/pt/pr' + i + '-' + state.sort + '.html?aid=1#srj">go</a><div>#' + (i + 1) + ' Best seller</div><div data-testid="card-title">' + title + '</div>'
-    + '<div>' + (i % 3 === 0 ? 'Duration: 2 hours 30 minutes' : '') + '</div><div data-testid="review-score">User reviews, Fabulous, 9.' + (i % 10) + ' out of 10 from ' + (1000 + i) + ' reviews</div>'
-    + '<div>' + (i % 2 === 0 ? 'Free cancellation available' : '') + '</div><div data-testid="price">' + priceBlock + '</div><div>See availability</div></div>';
-}}
-function render() {{ document.getElementById('list').innerHTML = Array.from({{ length: state.shown }}, (_, i) => card(i)).join(''); }}
-document.querySelectorAll('input[name="sort"]').forEach((r) => {{
-  r.checked = r.id.endsWith('-' + state.sort);
-  r.addEventListener('click', () => setTimeout(() => {{ state.sort = r.id.replace(/^.*-/, ''); state.shown = 15; document.querySelectorAll('input[name="sort"]').forEach((x) => {{ x.checked = x === r; }}); render(); window.scrollTo(0, 0); }}, 300));
-}});
-window.addEventListener('scroll', () => {{ if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 5 && state.shown < CFG.total) {{ state.shown = Math.min(CFG.total, state.shown + 15); render(); }} }});
-render();
-</script></body></html>"""
+def product(i, sort="trending", page=1, free=None, rating5=4.6):
+    """An activity as the service returns it (structure read live 5 Nov 2026)."""
+    shared = i == 0 and page == 1                      # the same activity is first in every sort
+    n = 0 if shared else i + 15 * (page - 1) + (100 if sort == "trending" else 200)
+    return {"__typename": "AttractionsProduct", "id": f"PR{n:04d}", "slug": SLUG if shared else f"pr{n:04d}-{sort}-tour", "name": "Tickets into The Lisbon Oceanarium" if shared else f"{sort} tour {n}",
+            "duration": {"__typename": "AttractionsDuration", "label": "Duration: 3 hours", "min": None, "max": None, "type": "FIXED", "value": "PT3H"},
+            "cancellationPolicy": {"__typename": "AttractionsCancellationPolicy", "comparedTo": "start", "hasFreeCancellation": (n % 2 == 0) if free is None else free, "isStillRefundable": True, "label": None, "message": None, "percentage": 100, "period": "P1D", "until": "2027-03-06T10:00:00"},
+            "reviewsStats": {"__typename": "AttractionsReviewStats", "combinedNumericStats": {"__typename": "AttractionsStats", "average": rating5 if shared else 4.0 + (n % 10) / 10, "total": 4218 if shared else 50 + n, "scale": "FIVE_POINT"}},
+            "representativePrice": {"__typename": "AttractionsPrice", "chargeAmount": 25.5 if shared else 30.0 + n / 100, "currency": "EUR", "publicAmount": 25.5 if shared else 30.0 + n / 100, "discounts": []},
+            "labels": [{"__typename": "AttractionsLabel", "text": "Free cancellation", "type": "free_cancellation"}] if (n % 2 == 0 if free is None else free) else [],
+            "flags": [{"__typename": "AttractionsProductFlags", "flag": "bestseller", "value": True, "rank": 1, "label": "#1 Best seller in Lisbon", "tooltip": None}] if shared else [], "primaryLabel": None}
 
 
-def run_script(page_html: str, recipe: dict | None = None, url: str | None = None, tries: int | None = None) -> str:
+def apollo_store(filters=None, sort=None, total=60, matching=None, has_next=True, products=None):
+    filters = filters or {}
+    inp = {"limit": 15, "page": 1, "source": "search_results", "ufi": UFI, **filters, **({"sortBy": sort} if sort else {})}
+    stats_inp = {"extractFilterOptions": True, "extractFilterStats": True, "extractSorters": True, "limit": 0, "page": 1, "source": "search_results", "ufi": UFI, **filters, **({"sortBy": sort} if sort else {})}
+    items = products if products is not None else [product(i, sort or "trending", 1) for i in range(15)]
+    store = {"ROOT_QUERY": {"__typename": "Query", "attractionsProduct": {
+        "getLocationDetails:{\"input\":{\"slug\":\"lisbon-pt\"}}": {"__typename": "X"},
+        "searchProducts:" + json.dumps({"input": stats_inp}): {"__typename": "AttractionsProductSearchResponse", "filterStats": {"__typename": "FilterStats", "filteredProductCount": matching or total, "unfilteredProductCount": total}, "sorters": []},
+        "searchProducts:" + json.dumps({"input": inp}): {"__typename": "AttractionsProductSearchResponse", "pagination": {"__typename": "P", "hasNextPage": has_next}, "unavailableProducts": [], "products": [{"__ref": f"AttractionsProduct:{{\"slug\":\"{p['slug']}\"}}"} for p in items]}}}}
+    for p in items:
+        store[f"AttractionsProduct:{{\"slug\":\"{p['slug']}\"}}"] = p
+    return store
+
+
+def page_html(store=None, tokens=True, check=False):
+    if check:
+        return "<html><body>Are you a person or a robot? Press &amp; hold</body></html>"
+    data = '<script>window.__ctx = {"csrfToken":"tok-1","pageviewId":"pv-1","etSerializedState":"et-1"};</script>' if tokens else ""
+    blob = f'<script type="application/json" data-capla-store-data="apollo">{json.dumps(store)}</script>' if store is not None else ""
+    return f"<html><head><title>Lisbon activities</title></head><body><h1>Lisbon experiences</h1>{data}{blob}</body></html>"
+
+
+def run_script(recipe=None, store=None, tokens=True, fail_sort=None, fail_all=False, seen=None, html=None, check=False, path="/attractions/searchresults/pt/lisbon.en-gb.html", matching_pages=3):
     sync_api = pytest.importorskip("playwright.sync_api")
-    recipe = recipe or RECIPE
-    script = "async () => { const LOCAL_RETURN = true; " + (f"const CARD_TRIES = {tries}; " if tries else "") + recipe["script"].replace("await (async", "return (async", 1) + " }"
+    recipe = recipe or booking_attractions_recipe("pt/lisbon", "Lisbon", DAY, 2)
+    script = "async () => { const LOCAL_RETURN = true; " + recipe["script"].replace("await (async", "return (async", 1) + " }"
+    store = store if store is not None else apollo_store()
 
     def serve(route):
-        if urlparse(route.request.url).path.startswith("/attractions/"):
-            route.fulfill(status=200, content_type="text/html; charset=utf-8", body=page_html)
+        u = urlparse(route.request.url)
+        if u.hostname == "accommodations.booking.com" and u.path == "/dml/graphql":
+            if route.request.method == "OPTIONS":
+                route.fulfill(status=204, headers={"access-control-allow-origin": "https://www.booking.com", "access-control-allow-credentials": "true", "access-control-allow-headers": "*", "access-control-allow-methods": "POST"})
+                return
+            body = json.loads(route.request.post_data)
+            inp = body["variables"]["input"]
+            if seen is not None:
+                seen.append({"op": body["operationName"], "input": inp, "headers": dict(route.request.headers), "ctx": body["variables"]["contextParams"], "query": body["query"][:60]})
+            cors = {"access-control-allow-origin": "https://www.booking.com", "access-control-allow-credentials": "true"}
+            sort = inp.get("sortBy", "trending")
+            if fail_all or (fail_sort and sort == fail_sort):
+                route.fulfill(status=500, content_type="application/json", headers=cors, body="{}")
+                return
+            page = inp["page"]
+            items = [product(i, sort, page) for i in range(15)]
+            route.fulfill(status=200, content_type="application/json", headers=cors, body=json.dumps({"data": {"attractionsProduct": {"searchProducts": {"pagination": {"hasNextPage": page < matching_pages}, "products": items}}}}))
+        elif u.hostname == "www.booking.com":
+            route.fulfill(status=200, content_type="text/html; charset=utf-8", body=html or page_html(store, tokens, check))
         else:
             route.abort()
     try:
         with sync_api.sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page_ = browser.new_page(viewport={"width": 1300, "height": 900})
-            page_.route("**/*", serve)
-            page_.goto(url or recipe["url"].replace("lisbon.html", "lisbon.en-gb.html"))      # the site's own redirect keeps the values and changes the path
-            page_.wait_for_load_state("domcontentloaded")
-            out = page_.evaluate(script)
+            page = browser.new_page()
+            page.route("**/*", serve)
+            page.goto("https://www.booking.com" + path + "?aid=304142&label=mkt1&date_from=2027-03-07&date_to=2027-03-07&adults=2&selected_currency=EUR")
+            out = page.evaluate(script)
             browser.close()
     except Exception as e:      # no browser installed on this machine: not a failure of the recipe
         if "Executable doesn't exist" in str(e) or "playwright install" in str(e):
             pytest.skip(f"Playwright's Chromium is not installed: {e}")
         raise
-    return out
+    return out, recipe
 
 
-def convert_one(data: dict, recipe: dict | None = None):
-    rec = recipe or RECIPE
-    return convert_all([{"site": "booking_attractions", "result": json.dumps(data), "url": rec["url"], "wishes": {"expect": rec["expect"]}}], {"expect": rec["expect"]})
+def convert_one(out, recipe):
+    return convert_all([{"site": "booking_attractions", "result": out, "url": recipe["url"], "wishes": {"expect": recipe["expect"]}}], {"expect": recipe["expect"]})
 
 
-def test_the_real_script_reads_thirty_cards_of_top_picks_then_picks_best_reviewed_and_reads_thirty_of_that():
-    data = json.loads(run_script(page(), booking_attractions_recipe("pt/lisbon", "Lisbon", DAY, 2, 30)))
-    assert data["ok"] is True and len(data["rows"]) == 60 and data["heading"] == "Lisbon experiences" and data["filters_on"] == [] and data["filters_on_end"] == []
-    assert data["form"] == {"place": "pt/lisbon", "day": "2027-03-07", "day_to": "2027-03-07", "adults": 2, "currency": "EUR", "sort": None, "labels": [], "min_rating": [], "language": [], "time_of_day": []}
-    assert [(x["sort"], x["shown_as"], x["read"]) for x in data["sorts"]] == [("Our top picks", "trending", 30), ("Best reviewed", "highest_weighted_rating", 30)] and all(x["cards_on_page"] >= 30 for x in data["sorts"])
-    top, best = data["rows"][:30], data["rows"][30:]
-    assert {r["sort"] for r in top} == {"Our top picks"} and {r["sort"] for r in best} == {"Best reviewed"}
-    assert top[1]["title"] == "trending tour 1" and top[1]["from"] == 31.0 and best[1]["title"] == "highest_weighted_rating tour 1"
-    r0 = top[0]
-    assert r0 == {"sort": "Our top picks", "title": "Shared tour", "cur": "€", "from": 26.05, "was": 31.0, "rating": 9.0, "reviews": 1000, "duration": "2 hours 30 minutes", "free_cancel": True, "best_seller": "1", "available_from": None, "path": "/attractions/pt/pr0-trending.html"}
-    offers, sources, problems, _, notes = convert_one(data)
-    assert problems == [] and len(offers) == 59 and sources[0].read == 59 and any("Our top picks: 30 cards, Best reviewed: 30 cards" in n for n in notes)       # the shared activity is one row
-    assert [o.details["from_tab"] for o in offers if o.name == "Shared tour"] == ["Top picks and Best reviewed"]
+def test_the_real_script_reads_page_one_from_the_pages_own_data_and_asks_the_service_for_the_rest_and_for_the_other_sort():
+    seen: list = []
+    out, recipe = run_script(seen=seen)
+    data = json.loads(out)
+    assert data["ok"] is True and data["place"] == "pt/lisbon" and data["country"] == "pt" and data["ufi"] == UFI and data["filters_match"] is True and data["results_matching"] == 60 and data["results_in_city"] == 60 and data["failed"] is None
+    assert data["searched"] == {"place": "pt/lisbon", "day": "2027-03-07", "day_to": "2027-03-07", "adults": 2, "currency": "EUR", "filters": {"filterByLabel": [], "filterByMinRating": [], "filterBySupportedLanguage": []}}
+    assert data["sorts"] == [{"sort": "Our top picks", "key": "trending", "read": 30, "has_next": True, "first_page_from": "page"}, {"sort": "Best reviewed", "key": "highest_weighted_rating", "read": 30, "has_next": True, "first_page_from": "api"}]
+    assert [(r["input"]["page"], r["input"].get("sortBy")) for r in seen] == [(2, None), (1, "highest_weighted_rating"), (2, "highest_weighted_rating")]       # page 1 of the page's own sort needs no request
+    ask = seen[0]
+    assert ask["op"] == "SearchResultsProducts" and ask["input"] == {"ufi": UFI, "limit": 15, "page": 2, "source": "search_results"} and ask["query"].startswith("query SearchResultsProducts")
+    assert ask["headers"]["x-booking-csrf-token"] == "tok-1" and ask["headers"]["x-booking-pageview-id"] == "pv-1" and ask["headers"]["x-booking-context-aid"] == "304142" and ask["ctx"]["label"] == "mkt1"
+    rows = data["rows"]
+    assert len(rows) == 60 and rows[0] == {**rows[0], "title": "Tickets into The Lisbon Oceanarium", "from": 25.5, "public_from": 25.5, "rating5": 4.6, "reviews": 4218, "duration": "3 hours", "duration_iso": "PT3H", "best_seller": 1, "slug": SLUG, "cur": "EUR"}
+    assert rows[0]["flags"] == ["bestseller"] and rows[0]["best_seller_text"] == "#1 Best seller in Lisbon" and rows[0]["free_cancel"] is True and rows[0]["cancel_until"] == "2027-03-06T10:00:00" and rows[0]["labels"] == ["free_cancellation"]
+    offers, sources, problems, _, notes = convert_one(out, recipe)
+    assert not problems and len(offers) == 59 and (sources[0].read, sources[0].of) == (59, 60)       # the shared activity is one row
+    shared = next(o for o in offers if o.name == "Tickets into The Lisbon Oceanarium")
+    assert shared.details["from_tab"] == "Top picks and Best reviewed" and shared.price_total == 25.5 and shared.details["rating"] == "9.2 (4,218 reviews)" and shared.link == f"https://www.booking.com/attractions/pt/{SLUG}.en-gb.html"
 
 
-def test_the_sites_own_filters_in_the_address_are_ticked_on_the_page_read_and_kept_after_the_sort_changed():
-    rec = booking_attractions_recipe("pt/lisbon", "Lisbon", DAY, 2, 15, None, True, None, 9.0, True)
-    data = json.loads(run_script(page(), rec, url=rec["url"].replace("lisbon.html", "lisbon.en-gb.html")))
-    want = ["filter_by_label=free_cancellation", "filter_by_label=skip_the_line", "filter_by_min_rating=4.5"]
-    assert data["ok"] is True and data["form"]["labels"] == ["free_cancellation", "skip_the_line"] and data["form"]["min_rating"] == ["4.5"] and data["filters_on"] == want and data["filters_on_end"] == want
-    _, _, problems, _, notes = convert_one(data, rec)
-    assert problems == [] and any("filter_by_label=free_cancellation" in n for n in notes)
+def test_the_filters_go_in_the_requests_input_and_a_page_opened_without_them_still_gives_the_right_activities():
+    recipe = booking_attractions_recipe("pt/lisbon", "Lisbon", DAY, 2, 30, ["tour"], True, None, 9.0, True, "en")
+    filters = {"filterByLabel": ["free_cancellation", "skip_the_line"], "filterByMinRating": ["4.5"], "filterBySupportedLanguage": ["en"]}
+    seen: list = []
+    out, _ = run_script(recipe, store=apollo_store(filters, total=60, matching=12, has_next=False), seen=seen)
+    data = json.loads(out)
+    assert data["ok"] is True and data["filters_match"] is True and data["results_matching"] == 12 and data["results_in_city"] == 60 and data["sorts"][0]["has_next"] is False and data["sorts"][0]["read"] == 15
+    assert all(r["input"].get("filterByLabel") == ["free_cancellation", "skip_the_line"] and r["input"]["filterByMinRating"] == ["4.5"] and r["input"]["filterBySupportedLanguage"] == ["en"] for r in seen)
+    assert not convert_one(out, recipe)[2]
+    seen.clear()
+    out, _ = run_script(recipe, store=apollo_store({}, total=60), seen=seen)             # the page was opened without the filters: its embedded list is NOT used for them
+    data = json.loads(out)
+    assert data["filters_match"] is False and data["results_matching"] is None and data["sorts"][0]["first_page_from"] == "api" and [r["input"]["page"] for r in seen][:2] == [1, 2]
+    assert all(r["input"]["filterByLabel"] == ["free_cancellation", "skip_the_line"] for r in seen)
 
 
-def test_a_page_with_filters_the_trip_did_not_ask_for_is_stopped_by_the_script_and_the_converter():
-    url = RECIPE["url"].replace("lisbon.html", "lisbon.en-gb.html") + "&filter_by_label[]=free_cancellation"
-    data = json.loads(run_script(page(), url=url))
-    assert data["ok"] is False and 'labels ["free_cancellation"] instead of []' in data["error"]
+def test_a_failing_second_sort_or_page_is_said_and_never_hides_what_was_read():
+    out, recipe = run_script(fail_sort="highest_weighted_rating")
+    data = json.loads(out)
+    assert data["ok"] is True and data["failed"] and "Best reviewed page 1" in data["failed"][0] and data["sorts"][0]["read"] == 30 and data["sorts"][1]["read"] == 0
+    problems = convert_one(out, recipe)[2]
+    assert any("no activity of the Best reviewed sort was read" in p and "answered 500" in p for p in problems)
+    out, recipe = run_script(fail_all=True)
+    data = json.loads(out)
+    assert data["ok"] is True and data["sorts"][0]["read"] == 15 and any("Our top picks page 2" in f for f in data["failed"])       # the 15 of the page's own data stay
 
 
-def test_the_real_script_reads_only_the_first_cards_of_each_sort_when_the_window_is_small():
-    data = json.loads(run_script(page(), booking_attractions_recipe("pt/lisbon", "Lisbon", DAY, 2, 10)))
-    assert data["ok"] is True and len(data["rows"]) == 20 and [s["read"] for s in data["sorts"]] == [10, 10] and data["sorts"][0]["cards_on_page"] == 15
-
-
-def test_the_real_script_stops_when_the_address_is_not_the_one_asked():
-    url = "https://www.booking.com/attractions/searchresults/pt/porto.en-gb.html?date_from=2027-03-08&date_to=2027-03-08&adults=3&selected_currency=INR&sort_by=lowest_price"
-    data = json.loads(run_script(page(), url=url))
-    assert data["ok"] is False and "place \"pt/porto\" instead of \"pt/lisbon\"" in data["error"] and "day \"2027-03-08\" instead of \"2027-03-07\"" in data["error"] and "currency \"INR\" instead of \"EUR\"" in data["error"] and "sort \"lowest_price\" instead of null" in data["error"]
-
-
-def test_the_real_script_says_it_could_not_read_a_page_with_no_cards_or_a_human_check_or_no_best_reviewed_choice_or_a_card_it_does_not_know():
-    silent = json.loads(run_script("<html><body><h1>Loading</h1></body></html>", tries=2))
-    assert silent["ok"] is False and "never say there are none" in silent["error"]
-    check = json.loads(run_script("<html><body>Please verify you are human</body></html>"))
-    assert check["ok"] is False and "human check" in check["error"] and "do not work around" in check["error"]
-    nobox = json.loads(run_script(page(radios=("trending", "lowest_price"))))
-    assert nobox["ok"] is False and 'no "Best reviewed" choice' in nobox["error"]
-    odd = json.loads(run_script(page(total=15, price_html="Sold out"), booking_attractions_recipe("pt/lisbon", "Lisbon", DAY, 2, 1)))
-    assert odd["ok"] is True and odd["rows"] == [] and len(odd["unparsed"]) == 2
-
-
-def test_a_price_in_another_currency_reaches_the_converter_and_is_refused_there():
-    usd = json.loads(run_script(page(total=15, sym="$"), booking_attractions_recipe("pt/lisbon", "Lisbon", DAY, 2, 2)))
-    off, _, problems, _, _ = convert_one(usd)
-    assert off == [] and any("not euro" in p for p in problems)
+def test_the_script_stops_on_a_human_check_a_page_without_data_and_a_page_that_is_not_an_attractions_page():
+    assert "human check" in json.loads(run_script(check=True)[0])["error"]
+    assert "no activity data" in json.loads(run_script(html="<html><body><h1>Lisbon</h1></body></html>")[0])["error"]
+    bad = json.loads(run_script(path="/hotel/pt/ritz.html")[0])
+    assert bad["ok"] is False and "not a Booking.com attractions results page" in bad["error"]
