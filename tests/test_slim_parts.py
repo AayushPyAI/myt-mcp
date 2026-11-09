@@ -14,18 +14,18 @@ from myt_mcp.sites import check_parts, checksum_problem, convert_all, embed_wish
 
 SITES = Path(__file__).resolve().parent.parent / "myt_mcp" / "sites"
 HEAD = {"ok": True, "next": "STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.",
-        "header": "Lisbon: 255 accommodation options available", "sort": "Price (low to high)", "residency": "en-il", "start_page": 1, "header_settled": True, "filters_ticked": ["Breakfast included"],
-        "unlabelled_ticked": 0, "expected_start": 1, "offset": 0, "pages_read": 2, "rows_read": 30, "stopped": None, "price_order": "ascending"}
+        "check_in": "2027-03-06", "check_out": "2027-03-13", "adults": 2, "child_ages": [], "residency": "en-il", "sort": "price_asc", "filters": {"stars": [40, 50], "free_cancellation": True, "meals": ["breakfast"]},
+        "offset": 0, "results_total": 255, "search_finished": True, "page_header_count": 255}
 NAMES = ["Czar Lisbon Hotel", "Hotel 3K Madrid", "Flores Guest House", "Quinta Colina by Shiadu", "Lisbon Arsenal Suites", "Casa do Patio by Shiadu", "Casa do Bairro by Shiadu", "Casa Das Janelas Com Vista"]
 WISHES = {"breakfast": True, "free_cancellation": True, "stars_min": 4, "max_distance_km": 2.0, "max_total": 1050}
 FILTERS = ["Breakfast included (operator)", "Free cancellation (operator)", "4+ stars (operator)", "within 2 km of the centre (operator)"]
 
 
 def _rows(n=30, nbsp=False):
-    sp = " " if nbsp else " "
-    return [{"p": 1 if i < 20 else 2, "name": f"{NAMES[i % 8]}{sp}{i}", "stars": 4, "distance": f"{0.4 + i * 0.05:.1f} km from the Lisbon center", "score": f"8.{i % 10}", "reviews": f"{100 + i * 37} reviews",
-             "room": "Standard Double room", "bed": "full double bed", "meal": "Breakfast incl.", "cancellation": "Free cancellation", "payment": None, "price": f"EUR {510 + i * 9}", "basis": "for 7 nights, 2 guests",
-             "path": f"/hotel/portugal/lisbon/mid{7765798 + i * 13}/{NAMES[i % 8].lower().replace(' ', '_')}/"} for i in range(n)]
+    sp = "\u00a0" if nbsp else " "
+    return [{"p": 1 if i < 20 else 2, "rank": i + 1, "name": f"{NAMES[i % 8]}{sp}{i}", "kind": "Hotel", "stars": 4, "dist_km": round(0.4 + i * 0.05, 2), "score": 8 + (i % 10) / 10, "reviews": 100 + i * 37,
+             "room": "Standard Double room (full double bed)", "meal": ["breakfast"], "free_before": "2027-03-04T00:00:00Z", "penalty": [], "pay": "deposit", "amount": 510 + i * 9, "cur": "EUR", "per_night": (510 + i * 9) / 7,
+             "taxes_extra": [], "left": None, "path": f"/hotel/portugal/lisbon/mid{7765798 + i * 13}/{NAMES[i % 8].lower().replace(' ', '_')}/"} for i in range(n)]
 
 
 def _node_parts(rows, prelude=""):
@@ -85,7 +85,7 @@ def test_the_wishes_of_a_slim_run_come_from_the_server_by_its_token_and_a_forgot
     STORE.clear()                                                                       # the token is gone (the server was restarted): the wishes compose_answer was given still apply
     offers, _, problems, _, _ = convert_all(_items(slim), WISHES)
     assert len(offers) == 12 and not problems
-    assert any("did not ask for (Breakfast included)" in p for p in convert_all(_items(slim), None)[2])      # with no wishes at all, the page's ticked filter is refused, as for any run
+    assert convert_all(_items(slim), None)[2] == []      # no wishes at all: nothing to check the search against
 
 
 def test_a_slim_run_with_a_part_missing_says_which_one_and_gives_no_half_answer():
@@ -106,7 +106,7 @@ def test_a_slim_part_typed_back_with_real_characters_is_repaired_and_a_changed_d
     offers, _, problems, _, _ = convert_all(items, None)
     assert not problems and len(offers) == 30 and offers[0].name == "Czar Lisbon Hotel\u00a00"
     assert items[1]["result"] == slim[1]                                                # the exact text the script made went on
-    broken = _items([slim[0], slim[1].replace("EUR 5", "EUR 6", 1)] + slim[2:])
+    broken = _items([slim[0], slim[1].replace(",510,", ",610,", 1)] + slim[2:])
     assert any("checksum" in p for p in check_parts(broken))
 
 

@@ -21,7 +21,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
 from myt_mcp.browser import BrowserError
-from myt_mcp.compose import NotChecked, apply_wishes, compose
+from myt_mcp.compose import NotChecked, apply_wishes, compose, distance_km
 from myt_mcp.errors import tool_errors
 from myt_mcp.services import Services
 from myt_mcp.sites import convert_all
@@ -138,13 +138,32 @@ def checked_at(jobs: list[tuple[str, int, str]]) -> str:
     return hit[2] if hit else datetime.now().strftime("%d %b %Y %H:%M")
 
 
+SORT_KEYS = {"Price (low to high)": "price_asc", "Price (high to low)": "price_desc", "Guests' rating (high to low)": "rating"}
+MEAL_KEYS = (("no meals", "nomeal"), ("half board", "half-board"), ("full board", "full-board"), ("all inclusive", "all-inclusive"), ("breakfast", "breakfast"))
+
+
+def new_shape(row: dict[str, Any], rank: int) -> dict[str, Any]:
+    """A DOM card row (text fields, what this older reader sees) as the structured row the converter reads (numbers, meal code, cancellation words). It can only say what the card says: no deadline, no taxes."""
+    m = re.fullmatch(r"([A-Z]{3})\s?([\d,]+(?:\.\d+)?)", (row.get("price") or "").replace("\u00a0", " ").strip())
+    meal_text = (row.get("meal") or "").lower()
+    meal = next(([code] for key, code in MEAL_KEYS if key in meal_text), [meal_text.replace(" ", "-")] if meal_text else [])
+    canc = row.get("cancellation") or ""
+    score = row.get("score")
+    reviews = re.search(r"[\d,]+", row.get("reviews") or "")
+    return {"p": row.get("p"), "rank": rank, "name": row.get("name"), "kind": None, "stars": row.get("stars"), "dist_km": distance_km(row.get("distance")),
+            "score": float(score) if score not in (None, "") else None, "reviews": int(reviews.group(0).replace(",", "")) if reviews else None,
+            "room": " / ".join(x for x in (row.get("room"), row.get("bed")) if x) or None, "meal": meal, "free_before": None, "cancel_text": canc or None, "free": canc.lower().startswith("free cancellation"),
+            "penalty": [], "pay": "deposit" if "wire" in (row.get("payment") or "").lower() else None, "amount": float(m.group(2).replace(",", "")) if m else None, "cur": m.group(1) if m else None,
+            "per_night": None, "taxes_extra": [], "left": None, "path": row.get("path")}
+
+
 def answer_json(runs: list[dict[str, Any]], sort_label: str) -> str:
     """The pages of one sorted list as the script-shaped JSON that the RateHawk converter checks and reads (see sites/ratehawk_hotels.py)."""
-    rows = [r for run in runs for r in run["rows"]]
-    prices = [float(re.sub(r"[^\d.]", "", r["price"])) for r in rows if r.get("price")]
-    asc, desc = prices == sorted(prices), prices == sorted(prices, reverse=True)
-    return json.dumps({"ok": True, "header": next((r["info"]["header"] for r in runs if r["info"]["header"]), None), "sort": sort_label, "start_page": 1,
-                       "pages_read": len(runs), "rows_read": len(rows), "stopped": None, "price_order": "ascending" if asc else "descending" if desc else "mixed", "rows": rows})
+    rows = [new_shape(r, i + 1) for i, r in enumerate(r for run in runs for r in run["rows"])]
+    header = next((r["info"]["header"] for r in runs if r["info"]["header"]), None)
+    total = re.search(r":\s*([\d,]+)\s+accommodation options", header or "")
+    return json.dumps({"ok": True, "sort": SORT_KEYS.get(sort_label, sort_label), "start_page": 1, "offset": 0, "results_total": int(total.group(1).replace(",", "")) if total else None, "search_finished": True,
+                       "unparsed": 0, "pages_read": len(runs), "rows_read": len(rows), "stopped": None, "rows": rows})
 
 
 def register(mcp: MCPServer, services: Services) -> None:

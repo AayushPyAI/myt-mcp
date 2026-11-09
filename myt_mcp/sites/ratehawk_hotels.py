@@ -1,7 +1,7 @@
 """RateHawk hotels: a URL and a script that the operator's own logged-in Chrome runs through Claude in Chrome (a site module, see myt_mcp/sites/__init__.py).
 
-The server cannot drive the operator's Chrome, but it can hand Claude a tested script that READS a results page the same way every time
-(instead of Claude clicking and reading by eye). The script returns structured rows; compose_answer turns them into the answer.
+The script replays the results page's OWN search call in the page (POST /hotel/search/v2/b2bsite/serp?session=..., read in the page on 7 Nov 2026) and returns structured rows: RateHawk's own data
+(price and taxes, the exact free-cancellation deadline, meal, room, stars, score, distance), its filters sent in the call itself, its own totals. compose_answer turns the rows into the answer.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ RESIDENCY = "en-il"      # RateHawk's residency / citizenship value for Israel
 RECIPES = Path(__file__).parent
 # the sort values RateHawk's own list uses (tested 21 Oct 2026): URL value -> the label the page shows
 RATEHAWK_SORTS = {"price_asc": ("price.asc", "Price (low to high)"), "price_desc": ("price", "Price (high to low)"), "rating": ("rating", "Guests' rating (high to low)")}
+BODY_SORTS = {"price_asc": "price_asc", "price_desc": "price_desc", "rating": "rating"}      # the sort values of the search call itself (read in the page's code, 7 Nov 2026: popular is sort_score, distance is distance)
 
 
 def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: date, adults: int, sort: str = "price_asc", breakfast: bool = False,
@@ -67,13 +68,17 @@ def ratehawk_hotels_recipe(country: str, city: str, check_in: date, check_out: d
     value, label = RATEHAWK_SORTS[sort]
     params += [("sort", value), ("page", str(start_page))]
     url = f"https://www.ratehawk.com/hotel/{slug(country)}/{slug(city)}/?{urlencode(params)}"
+    request = {"check_in": check_in.isoformat(), "check_out": check_out.isoformat(), "adults": adults, "ages": ages, "residency": RESIDENCY, "sort": BODY_SORTS[sort],
+               "stars_min": stars, "free_cancellation": bool(free_cancellation), "breakfast": bool(breakfast)}
     script = with_emit((RECIPES / "ratehawk_hotels.js").read_text(encoding="utf-8")).replace("__MAX_PAGES__", str(max_pages)).replace("__START_PAGE__", str(start_page)).replace("__SKIP__", str(skip)).replace("__LIMIT__", str(limit))
-    script = script.replace("__EXPECT_SORT__", label)
+    script = script.replace("__REQUEST__", json.dumps(request))
+    expect = {"check_in": check_in.isoformat(), "check_out": check_out.isoformat(), "adults": adults, "children_ages": sorted(ages), "residency": RESIDENCY, "sort": BODY_SORTS[sort], "nights": (check_out - check_in).days,
+              "filters": {k: v for k, v in (("stars", [x * 10 for x in range(stars, 6)] if stars else None), ("free_cancellation", True if free_cancellation else None), ("meals", ["breakfast"] if breakfast else None)) if v}}
     return {
         "required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results (only when the answer says `part 1 of N`; an `ingest` receipt has no parts).",
-        "url": url, "expect_sort": label, "start_page": start_page, "script": script,
+        "url": url, "expect_sort": label, "expect": expect, "start_page": start_page, "script": script,
         "steps": ["Open `url` in the operator's logged-in RateHawk tab (Claude in Chrome navigate). If the page asks to log in, stop and tell the operator.",
-                  "Wait about 10 seconds until the results show, then run `script` with the javascript tool (it only reads the page and presses Forward).",
+                  "Wait until the results show (the script waits for the page's own search by itself), then run `script` with the javascript tool (it replays the page's own search call: it clicks nothing).",
                   "If its answer has ok=false, do what `error` says (usually: open the url again) and run it once more; never read the list by eye instead.",
                   "The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row. Only if the operator asks for the best rated, run the recipe again with sort='rating' and pass those parts too.",
                   "Children: the url already has them (guests=2and6 means 2 adults and a child of 6). One child was tested; with two or more, check the page's guest count says the same."],
@@ -91,9 +96,61 @@ def _int(text: str | None) -> int | None:
     return int(m.group(0).replace(",", "")) if m else None
 
 
+MEALS = {"nomeal": "No meals", "breakfast": "Breakfast included", "half-board": "Half board", "full-board": "Full board", "all-inclusive": "All inclusive"}
+PAYS = {"deposit": "Pay by wire transfer (the agency's deposit, as the page says)", "now": "Pay now (card or wallet)", "hotel": "Pay at the hotel"}
+
+
+def _meal(values: list[str] | None, pax: int) -> tuple[str, bool, bool]:
+    """(text, a meal is included, it covers every guest). RateHawk writes 'breakfast-for-2' for a rate whose breakfast is for two guests only."""
+    texts: list[str] = []
+    included = False
+    covers = True
+    for v in values or []:
+        m = re.fullmatch(r"(.+)-for-(\d+)", v)
+        base, n = (m.group(1), int(m.group(2))) if m else (v, None)
+        label = MEALS.get(base, base.replace("-", " ").capitalize())
+        if base != "nomeal":
+            included = True
+        if n is not None:
+            label += f" for {n} guest{'s' if n != 1 else ''} only"
+            covers = covers and (pax <= n)
+        texts.append(label)
+    return (", ".join(texts) or "not shown"), included, covers
+
+
+def _stamp(value: Any) -> str:
+    text = str(value or "")
+    return text.replace("T", " ")[:16] + (" UTC" if text.endswith("Z") else "")
+
+
+def _cancel(r: dict[str, Any]) -> tuple[str, bool]:
+    """The cancellation terms as RateHawk's own policy lists them (times in UTC): free until a deadline, then fees by period, then the full price."""
+    if r.get("cancel_text"):      # the older server-browser reader sees only the card's words
+        return str(r["cancel_text"]), bool(r.get("free"))
+    cur = r.get("cur") or ""
+    pens = r.get("penalty") or []
+    steps: list[str] = []
+    for p in pens:
+        amount = p.get("amt")
+        try:
+            free = float(amount) == 0
+        except (TypeError, ValueError):
+            free = False
+        if free:
+            continue
+        window = f"{_stamp(p['from']) + ' to ' if p.get('from') else 'until '}{_stamp(p['to'])}" if p.get("to") else f"from {_stamp(p.get('from'))}"
+        steps.append(f"{amount} {cur}{' (' + str(p['pct']).rstrip('0').rstrip('.') + '%)' if p.get('pct') else ''} {window}")
+    if r.get("free_before"):
+        return f"Free cancellation until {_stamp(r['free_before'])}" + (f"; then a fee: {'; '.join(steps)}" if steps else ""), True
+    if pens and all(str(p.get("pct") or "").startswith("100") for p in pens):
+        return "No free cancellation: 100% penalty (non-refundable)", False
+    return "No free cancellation" + (f": fee {'; '.join(steps)}" if steps else ""), False
+
+
 def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, Any] | None, group: str) -> tuple[list[Offer], list[SourceRead], list[str], bool]:
     """Turns the recipe's own JSON into Offers (no retyping by Claude). Returns offers, the source entry, problems, and whether a price-sorted list was read."""
     wishes = wishes or {}
+    exp = wishes.get("expect") or {}
     problems: list[str] = []
     by_path: dict[str, Offer] = {}
     read = 0
@@ -108,53 +165,62 @@ def offers_from_ratehawk(results: list[str], urls: list[str], wishes: dict[str, 
         if not data.get("ok"):
             problems.append(f"the RateHawk script reported: {data.get('error', 'not ok')}")
             continue
-        if data.get("header_settled") is False:
-            problems.append("RateHawk was still adding results when the list was read (the count in its header kept changing): open the url again and run the script once more")
-        if "filters_ticked" in data:        # a filter RateHawk kept from an earlier visit would change the list without the operator asking for it
-            allowed = {"Breakfast included"} if wishes.get("breakfast") else set()
-            allowed |= {"Free cancellation available"} if wishes.get("free_cancellation") else set()
-            extra = [f for f in data["filters_ticked"] if f not in allowed]
-            if extra or (data.get("unlabelled_ticked") and not wishes.get("stars_min")):
-                problems.append(f"RateHawk shows filters the operator did not ask for ({', '.join(extra) or 'a star or other box'}): clear them on the page, open the url again and run the script once more")
-        if data.get("start_page") != data.get("expected_start", 1):
-            problems.append(f"the RateHawk list was read from page {data.get('start_page')}, not from page {data.get('expected_start', 1)}")
-        if data.get("stopped") and "page counter" in str(data["stopped"]):
-            problems.append(f"the RateHawk reader stopped early: {data['stopped']}")
-        want = {"Price (low to high)": "ascending", "Price (high to low)": "descending"}.get(str(data.get("sort", "")))      # a rating-sorted list has no price order
-        if want and data.get("price_order") != want:
-            problems.append(f"the prices of the RateHawk list are {data.get('price_order')}, not {want}: the page may have changed while reading")
+        if data.get("search_finished") is False:
+            problems.append("RateHawk had not finished its search when the list was read (it may be incomplete): open the url again and run the script once more")
+        if data.get("unparsed"):
+            problems.append(f"{data['unparsed']} RateHawk hotel(s) came without a rate or a price and are left out; say so")
+        if exp:
+            sent = {"check_in": data.get("check_in"), "check_out": data.get("check_out"), "adults": data.get("adults"), "children_ages": sorted(data.get("child_ages") or []), "residency": data.get("residency"), "sort": data.get("sort")}
+            for key in ("check_in", "check_out", "adults", "children_ages", "residency", "sort"):
+                if exp.get(key) is not None and sent[key] != exp[key]:
+                    problems.append(f"the RateHawk search was sent with {key} {sent[key]}, not {exp[key]}: run the script again from the recipe")
+            if exp.get("filters") is not None and (data.get("filters") or {}) != exp["filters"]:
+                problems.append(f"the RateHawk search was sent with the filters {data.get('filters') or 'none'}, not {exp['filters'] or 'none'}: run the script again from the recipe")
+        header = data.get("page_header_count")
+        if header is not None and data.get("results_total") is not None and int(header) != int(data["results_total"]):
+            problems.append(f"the page's header says {header} options and the search service {data['results_total']}: the page was on another search; open the url again and run the script once more")
+        want = {"price_asc": "ascending", "price_desc": "descending"}.get(str(data.get("sort", "")))      # a rating-sorted list has no price order
+        prices = [r.get("amount") for r in data.get("rows", []) if r.get("amount") is not None]
+        if want and prices:
+            order = "ascending" if all(a <= b for a, b in zip(prices, prices[1:])) else "descending" if all(a >= b for a, b in zip(prices, prices[1:])) else "mixed"
+            if order != want and len(set(prices)) > 1:
+                problems.append(f"the prices of the RateHawk list are {order}, not {want}: the page may have changed while reading")
         read = max(read, int(data.get("rows_read") or 0))
-        total = total or _int(data.get("header"))
-        if data.get("sort") == "Price (low to high)":
+        total = total if total is not None else data.get("results_total")
+        if data.get("sort") == "price_asc":
             sorted_by_price = True
+        pax = (data.get("adults") or 0) + len(data.get("child_ages") or [])
+        nights = exp.get("nights") or (date.fromisoformat(data["check_out"]) - date.fromisoformat(data["check_in"])).days if data.get("check_in") and data.get("check_out") else None
         for r in data.get("rows", []):
-            price, cur = _price(r.get("price"))
-            meal = r.get("meal") or ""
-            canc = r.get("cancellation") or ""
-            stars = r.get("stars")
+            price, cur = r.get("amount"), r.get("cur")
+            meal, has_meal, covers = _meal(r.get("meal"), pax)
+            canc, free = _cancel(r)
+            stars = int(r["stars"]) if r.get("stars") else None
             fits: bool | None = None
             if wishes:
                 ok = True
                 if wishes.get("breakfast"):
-                    ok &= bool(re.search(r"breakfast|half board|full board|all inclusive", meal, re.I)) and "no meals" not in meal.lower()
+                    ok &= has_meal and covers
                 if wishes.get("free_cancellation"):
-                    ok &= canc.lower().startswith("free cancellation")
+                    ok &= free
                 if wishes.get("stars_min"):
                     ok &= bool(stars) and stars >= int(wishes["stars_min"])
-                ok &= meets_limits(price, r.get("distance"), wishes)
+                ok &= meets_limits(price, f"{r['dist_km']} km" if r.get("dist_km") is not None else None, wishes)
                 fits = ok
-            path = r.get("path") or f"{r.get('name')}-{r.get('price')}"
+            path = r.get("path") or f"{r.get('name')}-{price}"
+            taxes = "; ".join(f"{t.get('n')} {t.get('a'):g} {t.get('c') or ''} payable at the property".strip() for t in r.get("taxes_extra") or [])
+            details: dict[str, Any] = {"type": r.get("kind"), "stars": stars, "score": r.get("score"), "reviews": r.get("reviews"),
+                                       "distance_from_centre": f"{r['dist_km']:g} km from the centre" if r.get("dist_km") is not None else None, "meal": meal, "cancellation": canc, "room_bed": r.get("room"),
+                                       "payment": PAYS.get(str(r.get("pay")), r.get("pay")), "taxes_not_in_price": taxes or "none listed by RateHawk",
+                                       "price_per_night": f"{r['per_night']:g} {cur}" if r.get("per_night") else None, "rooms_left": r.get("left")}
             offer = Offer(group=group, source="RateHawk", name=r.get("name") or "not shown", price_total=price, currency=cur,
-                          price_basis=(r.get("basis") or "whole stay").replace("for ", "whole stay: ", 1),
-                          details={"stars": stars, "score": r.get("score"), "reviews": _int(r.get("reviews")), "distance_from_centre": r.get("distance"),
-                                   "meal": meal or None, "cancellation": canc or None, "room_bed": " / ".join(x for x in (r.get("room"), r.get("bed")) if x) or None},
-                          flexible=canc.lower().startswith("free cancellation") or None, fits=fits, supplier=r.get("name"),
-                          link=("https://www.ratehawk.com" + r["path"]) if r.get("path") else None)
+                          price_basis=f"whole stay: {nights} night{'s' if nights != 1 else ''} for {pax} guest{'s' if pax != 1 else ''}" if nights and pax else "whole stay",
+                          details=details, flexible=True if free else None, fits=fits, supplier=r.get("name"), link=("https://www.ratehawk.com" + r["path"]) if r.get("path") else None)
             by_path.setdefault(path, offer)
     link = urls[0] if urls else None
     source = SourceRead(name="RateHawk", read=len(by_path) or None, of=total, link=link)
     if total is not None and len(by_path) > total:
-        problems.append("more hotels were read than the page header says exist: the data is not trustworthy")
+        problems.append("more hotels were read than the search service says exist: the data is not trustworthy")
     return list(by_path.values()), [source], problems, sorted_by_price
 
 
@@ -225,6 +291,7 @@ def register(mcp: MCPServer) -> None:
             return asked
         out = ratehawk_hotels_recipe(country, city, check_in, check_out, adults, sort, breakfast, free_cancellation, stars, 3, children_ages, offset, limit)
         wishes, filters = limits(stars, budget_per_night, max_distance_km, breakfast, free_cancellation, (check_out - check_in).days)
+        wishes["expect"] = out["expect"]
         out["wishes"], out["filters_used"] = wishes, filters + ["Guests: " + " and ".join([f"{adults} adults"] + [f"child {a}" for a in children_ages or []]) + " (operator)"]
         out["more"] = f"For the next {limit} hotels call this tool again with the same values and offset={offset + limit}; say so to the operator at the end of the answer."
         if server_reads("RATEHAWK_HOTELS_READ_IN_SERVER", default=False):

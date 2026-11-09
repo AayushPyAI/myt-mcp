@@ -107,14 +107,17 @@ async def test_compose_answer_tool_is_registered_and_read_only():
         assert not r.is_error and r.structured_content["ok"] is True and "Aspire (1 of 1 read)" in r.structured_content["answer"]
 
 
-SAMPLE_RH = {"ok": True, "header": "Lisbon: 1160 accommodation options available", "sort": "Price (low to high)", "start_page": 1, "pages_read": 1, "rows_read": 3,
-             "stopped": None, "price_order": "ascending", "rows": [
-    {"p": 1, "name": "White House Lisbon Hostel", "stars": 1, "distance": "3 km from the Lisbon center", "score": "9.0", "reviews": None, "room": "Bed in Dorm", "bed": None,
-     "meal": "No meals", "cancellation": "No free cancellation", "payment": "Pay by wire transfer", "price": "EUR 61", "basis": "for 2 nights for 2 guests", "path": "/hotel/portugal/lisbon/mid1/white/"},
-    {"p": 1, "name": "Hotel Alegria", "stars": 3, "distance": "700 m from the Lisbon center", "score": "9.4", "reviews": "1765 reviews", "room": "Double", "bed": "full double bed",
-     "meal": "Breakfast incl.", "cancellation": "Free cancellation", "payment": "Pay by wire transfer", "price": "EUR 513", "basis": "for 2 nights for 2 guests", "path": "/hotel/portugal/lisbon/mid2/alegria/"},
-    {"p": 1, "name": "Hotel Four", "stars": 4, "distance": "1.2 km from the Lisbon center", "score": "8.8", "reviews": "900 reviews", "room": "Twin", "bed": "twin beds",
-     "meal": "Breakfast incl.", "cancellation": "Free cancellation", "payment": "Pay by wire transfer", "price": "EUR 450", "basis": "for 2 nights for 2 guests", "path": "/hotel/portugal/lisbon/mid3/four/"}]}
+def _rh_row(name, stars, dist, score, reviews, room, meal, free_before, amount, path, pct="100.00", taxes=None, kind="Hotel"):
+    return {"p": 1, "rank": 1, "name": name, "kind": kind, "stars": stars, "dist_km": dist, "score": score, "reviews": reviews, "room": room, "meal": meal, "free_before": free_before,
+            "penalty": [{"from": None, "to": free_before, "amt": "0.00"}, {"from": free_before, "to": None, "pct": pct, "amt": f"{amount:.2f}"}] if free_before else [{"from": None, "to": None, "pct": pct, "amt": f"{amount:.2f}"}],
+            "pay": "deposit", "amount": amount, "cur": "EUR", "per_night": amount / 2, "taxes_extra": taxes or [], "left": None, "path": path}
+
+
+SAMPLE_RH = {"ok": True, "check_in": "2027-05-03", "check_out": "2027-05-05", "adults": 2, "child_ages": [], "residency": "en-il", "sort": "price_asc", "filters": {}, "offset": 0,
+             "results_total": 1160, "search_finished": True, "page_header_count": 1160, "unparsed": 0, "rows_read": 3, "rows": [
+    _rh_row("White House Lisbon Hostel", 1, 3.0, 9.0, None, "Bed in Dorm", ["nomeal"], None, 61, "/hotel/portugal/lisbon/mid1/white/", kind="Hostel"),
+    _rh_row("Hotel Four", 4, 1.2, 8.8, 900, "Twin room (twin beds)", ["breakfast"], "2027-05-01T00:00:00Z", 450, "/hotel/portugal/lisbon/mid3/four/", taxes=[{"n": "city_tax", "a": 8.0, "c": "EUR"}]),
+    _rh_row("Hotel Alegria", 3, 0.7, 9.4, 1765, "Double room (full double bed)", ["breakfast"], "2027-05-01T00:00:00Z", 513, "/hotel/portugal/lisbon/mid2/alegria/")]}
 
 
 def test_ratehawk_recipe_url_and_script_are_built_from_the_search():
@@ -126,7 +129,8 @@ def test_ratehawk_recipe_url_and_script_are_built_from_the_search():
     assert r["url"] == ("https://www.ratehawk.com/hotel/portugal/lisbon/?dates=03.05.2027-05.05.2027&guests=2&residency=en-il&meal_types=breakfast&payment=freecancellation"
                         "&stars=4.5&sort=price.asc&page=1")
     assert r["expect_sort"] == "Price (low to high)" and "__MAX_PAGES__" not in r["script"] and "const MAX_PAGES = 2;" in r["script"]
-    assert "zenpagination-button-next" in r["script"] and "page counter says" in r["script"]
+    assert "/hotel/search/v2/b2bsite/serp" in r["script"] and "zenpagination" not in r["script"] and '"sort": "price_asc"' in r["script"] and '"stars_min": 4' in r["script"] and '"breakfast": true' in r["script"]
+    assert r["expect"]["filters"] == {"stars": [40, 50], "free_cancellation": True, "meals": ["breakfast"]} and r["expect"]["nights"] == 2 and r["expect"]["children_ages"] == []
     with pytest.raises(ValueError):
         ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "price_asc", False, False, None, 99)
 
@@ -142,8 +146,10 @@ def test_ratehawk_rows_become_offers_without_retyping_and_the_cheapest_is_checke
     assert names["White House Lisbon Hostel"].fits is False and names["Hotel Alegria"].fits is True and names["Hotel Four"].fits is True
     assert names["Hotel Four"].price_total == 450 and names["Hotel Four"].currency == "EUR" and names["Hotel Four"].details["reviews"] == 900
     assert names["Hotel Alegria"].flexible is True and names["White House Lisbon Hostel"].flexible is None
-    bad = dict(SAMPLE_RH, start_page=3)
-    assert any("page 1" in p for p in offers_from_ratehawk([json.dumps(bad)], [], None, "Hotels")[2])
+    assert names["Hotel Alegria"].details["cancellation"].startswith("Free cancellation until 2027-05-01 00:00 UTC; then a fee: 513.00 EUR (100%) from 2027-05-01 00:00 UTC") and names["Hotel Four"].details["taxes_not_in_price"] == "city_tax 8 EUR payable at the property"
+    assert names["White House Lisbon Hostel"].details["cancellation"] == "No free cancellation: 100% penalty (non-refundable)" and names["Hotel Four"].price_basis == "whole stay: 2 nights for 2 guests"
+    bad = dict(SAMPLE_RH, search_finished=False)
+    assert any("had not finished" in p for p in offers_from_ratehawk([json.dumps(bad)], [], None, "Hotels")[2])
     assert any("script reported" in p for p in offers_from_ratehawk([json.dumps({"ok": False, "error": "x"})], [], None, "Hotels")[2])
     assert any("not the script's JSON" in p for p in offers_from_ratehawk(["not json"], [], None, "Hotels")[2])
 
@@ -191,17 +197,20 @@ def test_ratehawk_recipe_writes_children_into_the_guests_value_and_refuses_bad_a
         ratehawk_hotels_recipe("Portugal", "Lisbon", date(2027, 5, 3), date(2027, 5, 5), 2, "rating", children_ages=[30])
 
 
-CARS_RESULT = {"ok": True, "form": {"pickup": "Faro Airport", "dropoff": "Faro Airport", "times": ["10:00", "10:00"], "dates": ["12 Apr, Mon", "17 Apr, Sat"], "age_residency": ["26 - 69 years", "Israel"]},
-               "filters_ticked": ["Automatic"], "rows_read": 3, "reached_cap": False, "price_order": "ascending", "rows": [
-    {"score": None, "company": "tangerine", "company_from": "logo file name", "seats": "5", "large_bags": "2", "small_bags": "1", "gearbox": "Automatic", "car": "Opel Corsa", "code_class": "EDAR • Economy",
-     "pickup_place": "Meeting with an agent", "deposit": 2100, "excess": 1900, "insurance": "Basic with excess", "mileage_fuel": "Unlimited mileage • Fuel policy: Full to full", "extras": [],
-     "price": 61.83, "currency": "EUR", "cancellation": "Free cancellation up to 48 hours before pick-up"},
-    {"score": "5.8", "company": "Dollar", "company_from": "text", "seats": "4", "large_bags": "1", "small_bags": "1", "gearbox": "Automatic", "car": "Ford Focus", "code_class": "CDAR • Compact",
-     "pickup_place": "Transfer to the rental place", "deposit": 200, "excess": None, "insurance": "Zero excess", "mileage_fuel": "Unlimited mileage • Fuel policy: Full to full", "extras": [],
-     "price": 150.0, "currency": "EUR", "cancellation": "Free cancellation up to 48 hours before pick-up"},
-    {"score": "7.0", "company": "Sixt", "company_from": "text", "seats": "5", "large_bags": "2", "small_bags": "2", "gearbox": "Manual", "car": "VW Golf", "code_class": "CDMR • Compact",
-     "pickup_place": "Meeting with an agent", "deposit": 800, "excess": 1500, "insurance": "Basic with excess", "mileage_fuel": "Unlimited mileage • Fuel policy: Full to full", "extras": [],
-     "price": 170.0, "currency": "EUR", "cancellation": "No free cancellation"}]}
+def _car_row(model, sipp, category, gearbox, seats, large, small, company, price, ins="excess", cdw=None, deposit=1200, free=True, rating=None, sub="meet_greet"):
+    cancel = ([{"from": "2027-04-01T10:00:01Z", "to": "2027-04-10T10:00:00Z", "fee": 0.0, "refundable": True}, {"from": "2027-04-10T10:00:01Z", "to": "2027-04-12T10:00:00Z", "fee": 50.0, "refundable": True}] if free
+              else [{"from": "2027-04-10T10:00:01Z", "to": "2027-04-12T10:00:00Z", "fee": 50.0, "refundable": False}])
+    return {"model": model, "sipp": sipp, "category": category, "gearbox": gearbox, "seats": seats, "doors": 5, "ac": True, "electric": False, "bags_small": small, "bags_medium": 0, "bags_large": large,
+            "company": company, "rating": rating, "supplier": "x", "pickup": {"name": "Faro Airport", "type": "airport", "sub": sub, "address": "Rua X", "iata": "FAO", "at": "2027-04-12T10:00:00Z"},
+            "dropoff": {"name": "Faro Airport", "sub": sub, "at": "2027-04-17T10:00:00Z"}, "deposit": deposit, "ins_type": ins, "excess_cdw": cdw, "excess_theft": cdw, "mileage": 0, "fuel": "full_full", "cancel": cancel,
+            "fees": [{"n": "Additional driver", "a": 20.0, "in": False, "pay": "on_site", "t": "additional_driver"}], "extras": [], "driver": {"min": 21, "max": 74, "years": 2, "young": 26}, "price": price, "currency": "EUR", "fee_service": 8.94}
+
+
+CARS_RESULT = {"ok": True, "search": {"route": "965846144,965846144", "date": "2027-04-12T10:00,2027-04-17T10:00", "age": "26,69", "residency": "il"}, "filters": {"vehicle_transmission_type": ["automatic"]}, "offset": 0,
+               "search_total": 1481, "reached_cap": False, "rows": [
+    _car_row("Opel Corsa", "EDAR", "economy", "automatic", 5, 2, 1, "Tangerine", 61.83, cdw=1900, deposit=2100, rating=5.4),
+    _car_row("Ford Focus", "CDAR", "compact", "automatic", 4, 1, 1, "Dollar", 150.0, ins="zero_excess", deposit=200, rating=5.8, sub="in_terminal"),
+    _car_row("VW Golf", "CDMR", "compact", "manual", 5, 2, 2, "Sixt", 170.0, cdw=1500, deposit=800, free=False, rating=7.0)]}
 
 
 def test_ratehawk_cars_recipe_needs_known_ids_and_times_and_builds_the_url():
@@ -225,11 +234,18 @@ def test_ratehawk_cars_rows_become_offers_and_the_cheapest_that_misses_a_wish_is
     from myt_mcp.sites.ratehawk_cars import convert
 
     rows = convert(json.dumps(CARS_RESULT), {"automatic": True, "zero_excess": True}, "Cars")
-    assert not rows.problems and rows.read == 3 and rows.total == 3
+    assert not rows.problems and rows.read == 3 and rows.total == 3                       # a filtered list: only what was read is known (RateHawk's count is the whole search's)
     by = {o.name: o for o in rows.offers}
-    assert by["Opel Corsa (EDAR • Economy)"].fits is False and by["Ford Focus (CDAR • Compact)"].fits is True and by["VW Golf (CDMR • Compact)"].fits is False
-    assert "logo's file name" in by["Opel Corsa (EDAR • Economy)"].details["company"] and by["Ford Focus (CDAR • Compact)"].details["company"] == "Dollar"
-    assert by["Ford Focus (CDAR • Compact)"].details["deposit"] == "200" and by["Ford Focus (CDAR • Compact)"].flexible is True
+    assert by["Opel Corsa (EDAR \u2022 Economy)"].fits is False and by["Ford Focus (CDAR \u2022 Compact)"].fits is True and by["VW Golf (CDMR \u2022 Compact)"].fits is False
+    corsa, focus, golf = by["Opel Corsa (EDAR \u2022 Economy)"], by["Ford Focus (CDAR \u2022 Compact)"], by["VW Golf (CDMR \u2022 Compact)"]
+    assert corsa.details["company"] == "Tangerine (rated 5.4)" and focus.details["deposit"] == "200 EUR" and focus.flexible is True and golf.flexible is None
+    assert corsa.details["excess"] == "Basic cover with excess: excess 1,900 EUR (theft 1,900)" and focus.details["excess"] == "Zero excess" and corsa.details["mileage"] == "Unlimited mileage" and corsa.details["fuel"] == "Full to full"
+    assert corsa.details["pickup_place"] == "Faro Airport (meeting with an agent)" and focus.details["pickup_place"] == "Faro Airport (in the terminal)"
+    assert corsa.details["cancellation"].startswith("Free cancellation until 2027-04-10 10:00 UTC; then a fee: 50 EUR from 2027-04-10 10:00 UTC to 2027-04-12 10:00 UTC") and golf.details["cancellation"].startswith("No free cancellation: fee 50 EUR")
+    assert corsa.details["fees_not_in_price"] == "Additional driver 20 EUR (on site)" and corsa.details["driver_requirements"] == "age 21-74, licence 2 years, young-driver fee under 26" and corsa.price_basis.startswith("whole rental")
+    assert corsa.details["seats_bags"] == "5 seats / 2 large + 1 small bags"
+    unfiltered = convert(json.dumps({**CARS_RESULT, "filters": {}}), {}, "Cars")
+    assert unfiltered.total == 1481                                                       # without filters the whole search's count is the real "of M"
     assert not convert(json.dumps({"ok": False, "error": "x"}), {}, "Cars").offers and convert("nope", {}, "Cars").problems
 
 
@@ -300,20 +316,20 @@ def seal(text):
 
 
 def _part(run, part, parts, rows, read=3, **extra):
-    head = {"ok": True, "header": "Lisbon: 443 accommodation options available", "sort": "Price (low to high)", "start_page": 1, "pages_read": 1,
-            "price_order": "ascending", "stopped": None, "run": run, "rows_read": read, "part": part, "parts": parts}
+    head = {"ok": True, "check_in": "2027-05-03", "check_out": "2027-05-05", "adults": 2, "child_ages": [], "residency": "en-il", "sort": "price_asc", "filters": {}, "offset": 0, "results_total": 443,
+            "search_finished": True, "run": run, "rows_read": read, "part": part, "parts": parts}
     head.update(extra)
-    cols = ["name", "price", "path"]
-    common = {"stars": 4, "meal": "Breakfast incl.", "cancellation": "Free cancellation", "basis": "for 2 nights for 2 guests"}
+    cols = ["name", "amount", "path"]
+    common = {"stars": 4, "meal": ["breakfast"], "free_before": "2027-05-01T00:00:00Z", "penalty": [], "pay": "deposit", "cur": "EUR", "taxes_extra": []}
     return seal(json.dumps({**head, "cols": cols, "common": common, "path_base": "/hotel/portugal/lisbon/", "rows": rows}))
 
 
 def test_parts_are_joined_decoded_and_checked():
     from myt_mcp.sites import convert_all, expand
-    a = _part("r1", 1, 2, [["Hotel A", "EUR 100", "mid1/a/"], ["Hotel B", "EUR 110", "mid2/b/"]])
-    b = _part("r1", 2, 2, [["Hotel C", "EUR 120", "mid3/c/"]])
+    a = _part("r1", 1, 2, [["Hotel A", 100, "mid1/a/"], ["Hotel B", 110, "mid2/b/"]])
+    b = _part("r1", 2, 2, [["Hotel C", 120, "mid3/c/"]])
     plain = json.loads(expand(a))
-    assert plain["rows"][0]["path"] == "/hotel/portugal/lisbon/mid1/a/" and plain["rows"][0]["meal"] == "Breakfast incl." and "cols" not in plain
+    assert plain["rows"][0]["path"] == "/hotel/portugal/lisbon/mid1/a/" and plain["rows"][0]["meal"] == ["breakfast"] and "cols" not in plain
     offers, sources, problems, by_price, _ = convert_all([{"site": "ratehawk_hotels", "result": a, "url": "u"}, {"site": "ratehawk_hotels", "result": b, "url": "u"}],
                                                           {"breakfast": True, "free_cancellation": True})
     assert not problems and [o.name for o in offers] == ["Hotel A", "Hotel B", "Hotel C"] and offers[0].fits is True and by_price
@@ -322,10 +338,10 @@ def test_parts_are_joined_decoded_and_checked():
     _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": a, "url": "u"}], None)
     assert any("part(s) 2 of 2 are missing" in p and "__mytParts" in p for p in problems)
     # rows that do not add up to what the script read are refused
-    _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": _part("r2", 1, 1, [["Hotel A", "EUR 100", "mid1/a/"]], read=3), "url": "u"}], None)
+    _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": _part("r2", 1, 1, [["Hotel A", 100, "mid1/a/"]], read=3), "url": "u"}], None)
     assert any("hold 1 rows but the script read 3" in p for p in problems)
     # two runs (price sort and rating sort) never count as parts of each other
-    other = _part("r9", 1, 1, [["Hotel Z", "EUR 500", "mid9/z/"]], read=1)
+    other = _part("r9", 1, 1, [["Hotel Z", 500, "mid9/z/"]], read=1)
     _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": other, "url": "u"}, {"site": "ratehawk_hotels", "result": a, "url": "u"}, {"site": "ratehawk_hotels", "result": b, "url": "u"}], None)
     assert not problems
 
@@ -392,16 +408,17 @@ def test_page_runs_become_one_answer_the_converter_accepts():
 
     from myt_mcp.sites import convert_all
     from myt_mcp.tools.ratehawk_live import answer_json
-    row = lambda n, price: {"name": f"H{n}", "stars": 3, "distance": "1 km", "score": "8.0", "reviews": "100 reviews", "room": "Double", "bed": None, "meal": "Breakfast incl.",
-                            "cancellation": "Free cancellation", "payment": None, "price": f"EUR {price}", "basis": "for 2 nights for 2 guests", "path": f"/hotel/p/c/mid{n}/h{n}/", "p": 1}
+    row = lambda n, price: {"name": f"H{n}", "stars": 3, "distance": "1 km from the Lisbon center", "score": "8.0", "reviews": "100 reviews", "room": "Double", "bed": None, "meal": "Breakfast incl.",
+                            "cancellation": "Free cancellation", "payment": "Pay by wire transfer", "price": f"EUR {price}", "basis": "for 2 nights for 2 guests", "path": f"/hotel/p/c/mid{n}/h{n}/", "p": 1}
     runs = [{"info": {"header": "Lisbon: 443 accommodation options available", "sort": "Price (low to high)", "page": "1"}, "rows": [row(1, 100), row(2, 110)]},
             {"info": {"header": None, "sort": "Price (low to high)", "page": "2"}, "rows": [row(3, 120)]}]
     text = answer_json(runs, "Price (low to high)")
-    assert _json.loads(text)["price_order"] == "ascending" and _json.loads(text)["rows_read"] == 3
+    data = _json.loads(text)
+    assert data["sort"] == "price_asc" and data["rows_read"] == 3 and data["results_total"] == 443 and data["rows"][0]["amount"] == 100 and data["rows"][0]["meal"] == ["breakfast"] and data["rows"][0]["dist_km"] == 1.0
+    assert data["rows"][0]["cancel_text"] == "Free cancellation" and data["rows"][0]["free"] is True and data["rows"][0]["score"] == 8.0 and data["rows"][0]["reviews"] == 100
     offers, sources, problems, by_price, _ = convert_all([{"site": "ratehawk_hotels", "result": text, "url": "u"}], {"breakfast": True, "free_cancellation": True})
-    assert not problems and len(offers) == 3 and by_price and sources[0].of == 443
+    assert not problems and len(offers) == 3 and by_price and sources[0].of == 443 and offers[0].details["cancellation"] == "Free cancellation" and offers[0].flexible is True
     mixed = answer_json([{"info": {"header": None, "sort": "Price (low to high)", "page": "1"}, "rows": [row(1, 100), row(2, 300), row(3, 200)]}], "Price (low to high)")
-    assert _json.loads(mixed)["price_order"] == "mixed"
     for bad in (mixed, answer_json([{"info": {"header": None, "sort": "Price (low to high)", "page": "1"}, "rows": [row(1, 200), row(2, 100)]}], "Price (low to high)")):
         _, _, problems, _, _ = convert_all([{"site": "ratehawk_hotels", "result": bad, "url": "u"}], None)
         assert any("not ascending" in q for q in problems)
@@ -641,57 +658,68 @@ async def test_arbitrip_tools_exist_and_the_rooms_script_checks_the_dates(monkey
         assert '"check_in": "270503"' in rooms["script"] and rooms["link_query"].endswith("contract_id=CONTRACT") and "place_id=ChIJ" in rooms["link_query"]
 
 
-def test_ratehawk_hotels_refuses_a_list_with_a_filter_nobody_asked_for_or_a_search_still_running():
+def test_ratehawk_hotels_refuses_a_list_of_another_search_or_one_still_running():
     from myt_mcp.sites import convert_all
-    row = {"name": "H1", "stars": 4, "distance": "1 km", "score": "8.0", "reviews": "100 reviews", "room": "Double", "bed": None, "meal": "Breakfast incl.", "cancellation": "Free cancellation",
-           "payment": None, "price": "EUR 300", "basis": "for 2 nights for 2 guests", "path": "/hotel/p/c/mid1/h1/", "p": 1}
+    row = _rh_row("H1", 4, 1.0, 8.0, 100, "Double room", ["breakfast"], "2027-05-01T00:00:00Z", 300, "/hotel/p/c/mid1/h1/")
+    filters = {"stars": [40, 50], "free_cancellation": True, "meals": ["breakfast"]}
+    expect = {"check_in": "2027-05-03", "check_out": "2027-05-05", "adults": 2, "children_ages": [], "residency": "en-il", "sort": "price_asc", "nights": 2, "filters": filters}
     def result(**extra):
-        d = {"ok": True, "header": "Lisbon: 57 accommodation options available", "sort": "Price (low to high)", "start_page": 1, "expected_start": 1, "offset": 0, "pages_read": 1, "rows_read": 1,
-             "stopped": None, "price_order": "ascending", "header_settled": True, "filters_ticked": ["Breakfast included", "Free cancellation available"], "unlabelled_ticked": 0, "rows": [row]}
+        d = dict(SAMPLE_RH, filters=filters, results_total=57, page_header_count=57, rows=[row], rows_read=1)
         d.update(extra)
         return json.dumps(d)
-    wishes = {"breakfast": True, "free_cancellation": True}
+    wishes = {"breakfast": True, "free_cancellation": True, "expect": expect}
     run = lambda text, w=wishes: convert_all([{"site": "ratehawk_hotels", "result": text, "url": "u"}], w)[2]
     assert run(result()) == []
-    assert any("filters the operator did not ask for" in p and "Pool" in p for p in run(result(filters_ticked=["Breakfast included", "Free cancellation available", "Pool"])))
-    assert any("did not ask for" in p for p in run(result(unlabelled_ticked=1)))
-    assert run(result(unlabelled_ticked=1), {**wishes, "stars_min": 4}) == []                # star boxes are expected when the operator named stars
-    assert any("still adding results" in p for p in run(result(header_settled=False)))
-    assert any("did not ask for" in p for p in run(result(filters_ticked=["Breakfast included"]), {"free_cancellation": False, "breakfast": False}))
+    assert any("filters" in p and "not" in p for p in run(result(filters={"stars": [40, 50]})))            # the search was sent with other filters than the recipe asked for
+    assert any("check_in 2027-06-01, not 2027-05-03" in p for p in run(result(check_in="2027-06-01")))
+    assert any("adults 3, not 2" in p for p in run(result(adults=3)))
+    assert any("children_ages [6], not []" in p for p in run(result(child_ages=[6])))
+    assert any("had not finished" in p for p in run(result(search_finished=False)))
+    assert any("header says 99 options and the search service 57" in p for p in run(result(page_header_count=99)))
+    assert any("1 RateHawk hotel(s) came without a rate" in p for p in run(result(unparsed=1)))
+    assert any("sort price_desc, not price_asc" in p for p in run(result(sort="price_desc")))
 
 
 def _cars(rows, **head):
-    base = {"ok": True, "form": {"pickup": "Faro Airport", "dropoff": "Faro Airport", "times": ["10:00", "10:00"], "dates": ["12 Apr, Mon", "17 Apr, Sat"], "age_residency": ["26 - 69", "Israel"]},
-            "filters_ticked": [], "page_ticked": ["26 - 69 years"], "offset": 0, "rows_read": len(rows), "reached_cap": False, "price_order": "ascending", "rows": rows}
+    base = {"ok": True, "search": {"route": "965846144,965846144", "date": "2027-04-12T10:00,2027-04-17T10:00", "age": "26,69", "residency": "il"}, "filters": {}, "offset": 0, "search_total": 90, "reached_cap": False, "rows": rows}
     base.update(head)
     return json.dumps(base)
 
 
 def _car(name, price, seats="5", gearbox="Manual", company="greenmotion"):
-    return {"score": "8.0", "company": company, "company_from": "text", "seats": seats, "large_bags": "1", "small_bags": "2", "gearbox": gearbox, "car": name, "code_class": "MDMR • Mini", "pickup_place": "Faro Airport",
-            "deposit": 1200, "excess": 1100, "insurance": "Basic with excess", "mileage_fuel": "Unlimited mileage • Full to full", "extras": [], "price": price, "currency": "EUR", "cancellation": "Free cancellation"}
+    return _car_row(name, "MDMR", "mini", gearbox.lower(), int(seats), 1, 2, company, price, cdw=1100, deposit=1200)
 
 
-def test_ratehawk_cars_ask_first_wishes_and_hidden_filters():
+def test_ratehawk_cars_ask_first_wishes_and_the_search_is_checked():
     from myt_mcp.sites import convert_all
     from myt_mcp.sites.ratehawk_cars import cars_ask_gate, ratehawk_cars_recipe
     asked = cars_ask_gate(None, None, None, None, False)
     assert asked["ok"] is False and asked["searched"] is False and len(asked["ask_operator"]) == 4
     assert len(cars_ask_gate("automatic", None, None, None, False)["ask_operator"]) == 3 and cars_ask_gate(None, None, None, None, True) is None
     r = ratehawk_cars_recipe("Faro Airport", None, "2027-04-12", "10:00", "2027-04-17", "10:00", None, None, "26,69", "il", True, False, False, 40, False, 30, 30)
-    assert "const SKIP = 30;" in r["script"] and "const MAX_CARS = 60;" in r["script"] and r["filters_to_tick"] == ["Automatic"]
+    assert "const SKIP = 30;" in r["script"] and "const MAX_CARS = 60;" in r["script"] and r["filters_to_tick"] == ["Automatic"] and 'const FILTERS = ["Automatic"];' in r["script"]
+    assert r["expect"] == {"route": "965846144,965846144", "date": "2027-04-12T10:00,2027-04-17T10:00", "age": "26,69", "residency": "il", "filters": {"vehicle_transmission_type": ["automatic"]},
+                           "pickup_at": "2027-04-12T10:00:00Z", "dropoff_at": "2027-04-17T10:00:00Z"} and "getFilteredOffers" in r["script"] and "zenpagination" not in r["script"]
     rows = [_car("Fiat Panda", 60, "4", "Manual"), _car("Opel Corsa", 62, "5", "Automatic"), _car("Jeep", 90, "5", "Automatic")]
     wishes = {"automatic": True, "min_seats": 5, "max_total": 80}
     offers, _, problems, _, notes = convert_all([{"site": "ratehawk_cars", "result": _cars(rows), "url": "u"}], wishes)
     assert not problems and [o.fits for o in offers] == [False, True, False]            # manual, too few seats, over budget
     manual, _, _, _, _ = convert_all([{"site": "ratehawk_cars", "result": _cars(rows), "url": "u"}], {"manual": True})
     assert [o.fits for o in manual] == [True, False, False]
-    sticky = _cars(rows, page_ticked=["26 - 69 years", "Zero excess"])
-    assert any("did not ask for (Zero excess)" in p for p in convert_all([{"site": "ratehawk_cars", "result": sticky, "url": "u"}], wishes)[2])
-    asked_for = _cars(rows, filters_ticked=["Zero excess"], page_ticked=["26 - 69 years", "Zero excess"])
-    assert convert_all([{"site": "ratehawk_cars", "result": asked_for, "url": "u"}], {"zero_excess": True})[2] == []
+    exp = dict(r["expect"], filters={})
+    run = lambda text, e=exp: convert_all([{"site": "ratehawk_cars", "result": text, "url": "u"}], {"expect": e})[2]
+    assert run(_cars(rows)) == []
+    assert any("filters" in p and "vehicle_transmission_type" in p for p in run(_cars(rows, filters={"vehicle_transmission_type": ["automatic"]})))      # sent with a filter nobody asked for
+    assert any("residency 'us', not 'il'" in p for p in run(_cars(rows, search={"route": exp["route"], "date": exp["date"], "age": "26,69", "residency": "us"})))
+    assert any("route '1,2', not '965846144,965846144'" in p for p in run(_cars(rows, search={"route": "1,2", "date": exp["date"], "age": "26,69", "residency": "il"})))
+    late = [dict(rows[0], pickup=dict(rows[0]["pickup"], at="2027-04-12T12:00:00Z"))]
+    assert any("for pick-up 2027-04-12T12:00:00Z, not 2027-04-12T10:00:00Z" in p for p in run(_cars(late)))
+    mixed = [_car("A", 90), _car("B", 60), _car("C", 80)]
+    assert any("not in one order" in p for p in run(_cars(mixed)))
     later = _cars(rows, offset=30)
     assert any("cars 31 to 33" in n and "not the cheapest overall" in n for n in convert_all([{"site": "ratehawk_cars", "result": later, "url": "u"}], None)[4])
+    capped = convert_all([{"site": "ratehawk_cars", "result": _cars(rows, reached_cap=True, filters={"vehicle_transmission_type": ["automatic"]}), "url": "u"}], None)
+    assert any("more exist" in n and "RateHawk lists" not in n for n in capped[4])         # with a filter RateHawk's count (the whole search) is not quoted
 
 
 def _transfers(rows, **head):
@@ -784,14 +812,18 @@ def test_air_cards_are_counted_once_across_parts():
 
 
 def _trains(rows, **head):
-    base = {"ok": True, "page_ticked": ["One way", "All routes"], "settled": True, "all_loaded": True, "cards_total": len(rows), "offset": 0, "rows": rows}
+    base = {"ok": True, "search": {"from": "8306421", "to": "8308409", "date": "2026-11-23", "time": "08:00", "adt": "2"}, "filters": {"changes": None, "class": None}, "offset": 0, "loaded": len(rows), "matching": len(rows),
+            "all_loaded": True, "rows": rows}
     base.update(head)
     return json.dumps(base)
 
 
-def _train(no="9511", dep="08:14", arr="09:49", changes="Direct", classes=None, route="Firenze S.M. Novella \u2192 Roma Termini", date_text="23 November, Mon", tag=None):
-    return {"train": no, "route": route, "tag": tag, "dep": dep, "travel": "1 hr 35 min", "arr": arr, "date": date_text, "changes": changes,
-            "classes": classes or [{"name": "Standard", "price": 61.38, "currency": "EUR"}, {"name": "Comfort", "price": 52.58, "currency": "EUR"}, {"name": "Premier", "price": 61.38, "currency": "EUR"}]}
+def _train(no="9511", dep="08:14", arr="09:49", changes=0, classes=None, frm="Firenze S.M. Novella", to="Roma Termini", day="2026-11-23", brand="TRENITALIA_FRECCIAROSSA", minutes=95):
+    mid = "Bologna Centrale"
+    legs = ([{"from": frm, "to": to, "dep": f"{day}T{dep}:00", "arr": f"{day}T{arr}:00", "train": no, "brand": brand, "operator": "Trenitalia"}] if changes == 0 else
+            [{"from": frm, "to": mid, "dep": f"{day}T{dep}:00", "arr": f"{day}T10:00:00", "train": no, "brand": brand, "operator": "Trenitalia"}, {"from": mid, "to": to, "dep": f"{day}T10:20:00", "arr": f"{day}T{arr}:00", "train": "8001", "brand": brand, "operator": "Trenitalia"}])
+    return {"rank": 1, "id": f"id-{no}", "supplier": "rail_europe", "legs": legs, "dep": legs[0]["dep"], "arr": legs[-1]["arr"], "minutes": minutes, "changes": changes, "cur": "EUR", "services": ["wifi", "air_conditioning"], "seat_reservation": False,
+            "classes": classes or [{"id": "standard", "from": 61.38, "to": 110}, {"id": "comfort", "from": 52.58, "to": 132}, {"id": "premier", "from": 61.38, "to": 319}]}
 
 
 def test_ratehawk_trains_ask_first_station_ids_filters_and_checks():
@@ -808,17 +840,23 @@ def test_ratehawk_trains_ask_first_station_ids_filters_and_checks():
     with pytest.raises(ValueError, match="HH:MM"):
         ratehawk_trains_recipe("Roma Termini", "Napoli", date(2026, 11, 23), "8am")
     exp = ratehawk_trains_recipe("Firenze Santa Maria Novella", "Roma Termini", date(2026, 11, 23), "08:00", 2)["expect"]
+    assert exp["from_id"] == "8306421" and exp["to_id"] == "8308409" and exp["time"] == "08:00" and '"one_way"' in r["script"] and "zenpagination" not in r["script"] and "Select fare" not in r["script"]
     run = lambda text, w=None: convert_all([{"site": "ratehawk_trains", "result": text, "url": "u"}], w if w is not None else {"expect": exp})
-    offers, sources, problems, _, notes = run(_trains([_train(), _train("8505", "08:33", "10:15", tag="The cheapest option")]))
+    offers, sources, problems, _, notes = run(_trains([_train(), _train("8505", "08:33", "10:15", minutes=102)]))
     assert not problems and len(offers) == 6 and offers[0].group == "Firenze Santa Maria Novella to Roma Termini, 23 Nov 2026" and (sources[0].read, sources[0].of) == (2, 2)
-    assert offers[0].price_total == 61.38 and offers[0].details["class_fare"] == "Standard from 61.38 EUR" and "whole group" in offers[0].price_basis and any("2 trains" in n or "lists 2" in n for n in notes)
-    assert any("not Firenze Santa Maria Novella to Roma Termini" in p for p in run(_trains([_train(route="Milano Centrale \u2192 Venezia S. Lucia")]))[2])
-    assert any("not 2026-11-23" in p for p in run(_trains([_train(date_text="24 November, Tue")]))[2])
-    assert any("filters are not as asked" in p and "Direct route" in p for p in run(_trains([_train()], page_ticked=["One way", "Direct route"]))[2])
-    assert any("still adding trains" in p for p in run(_trains([_train()], settled=False))[2])
+    assert offers[0].price_total == 61.38 and offers[0].details["class_fare"] == "Standard from 61.38 EUR (up to 110 EUR for the dearest fare of the class)" and "whole group" in offers[0].price_basis and any("loaded 2 trains" in n for n in notes)
+    assert offers[0].name == "Trenitalia Frecciarossa 9511 08:14-09:49 (1 h 35 min) Standard" and offers[0].details["changes"] == "Direct" and offers[0].details["services"] == "wifi, air conditioning"
+    assert any("not Firenze Santa Maria Novella to Roma Termini" in p for p in run(_trains([_train(frm="Milano Centrale", to="Venezia S. Lucia")]))[2])
+    assert any("leaves on 2026-11-24, not 2026-11-23" in p for p in run(_trains([_train(day="2026-11-24")]))[2])
+    assert any("filters were" in p and "Direct route" in p for p in run(_trains([_train()], filters={"changes": "Direct route", "class": None}))[2])
+    assert any("date '2026-11-24', not '2026-11-23'" in p for p in run(_trains([_train()], search={"from": "8306421", "to": "8308409", "date": "2026-11-24", "time": "08:00", "adt": "2"}))[2])
+    assert any("adt '3', not '2'" in p for p in run(_trains([_train()], search={"from": "8306421", "to": "8308409", "date": "2026-11-23", "time": "08:00", "adt": "3"}))[2])
     comfort = dict(exp, **{"class": "comfort", "changes": "direct"})
-    got = run(_trains([_train(), _train("8999", changes="1 change")], page_ticked=["One way", "Direct route", "Comfort"]), {"expect": comfort, "max_total": 60})
+    got = run(_trains([_train(), _train("8999", changes=1)], filters={"changes": "Direct route", "class": "Comfort"}), {"expect": comfort, "max_total": 60})
     assert not got[2] and [o.fits for o in got[0]] == [True, False] and all(o.details["class_fare"].startswith("Comfort") for o in got[0])
+    assert got[0][1].details["changes"] == "1 change of train, via Bologna Centrale" and "8999 + 8001" in got[0][1].name
+    more = run(_trains([_train()], loaded=15, matching=15, all_loaded=False))
+    assert more[4] and any("more exist on the page than were loaded" in n for n in more[4])
 
 
 @pytest.mark.anyio
@@ -835,14 +873,18 @@ async def test_ratehawk_trains_tool_asks_first():
 
 
 def _sky(rows, **head):
-    base = {"ok": True, "route": ["FLR", "LIS"], "date": "Sat, 6 Mar", "travellers": 3, "cabin": "Economy", "results_total": 97, "direct_only": False, "tabs": {}, "ads_skipped": 2, "unparsed": [],
-            "sorts": [{"sort": "Best", "shown_as": "Best", "read": 2}, {"sort": "Cheapest", "shown_as": "Cheapest", "read": 2}], "rows": rows}
+    base = {"ok": True, "route": ["FLR", "LIS"], "date": "2027-03-06", "adults": 2, "children_ages": [6], "cabin": "economy", "currency": "EUR", "direct_only": False, "results_total": 97, "matching_total": 97, "offset": 0,
+            "sorts": [{"sort": "Best", "read": 2}, {"sort": "Cheapest", "read": 2}], "status": "complete", "polls": 2, "unparsed": 0, "rows": rows}
     base.update(head)
     return json.dumps(base)
 
 
-def _sk(sort, airlines, dep, arr, total, per, direct=False, later=None, via="one stop in Barcelona", duration="8 hours 5 minutes"):
-    return {"sort": sort, "per": per, "total": total, "airlines": airlines, "from": "Florence", "dep": dep, "to": "Lisbon", "arr": arr, "later": later, "direct": direct, "duration": duration, "via": None if direct else via}
+def _sk(sort, rank, mk, dep, arr, total, direct=False, plus=0, via=None, mins=485, op=None, **extra):
+    row = {"sort": sort, "rank": rank, "id": f"{mk}-{dep}-{arr}", "total": total, "stops": 0 if direct else 1, "mins": mins, "dep": f"2027-03-06T{dep}:00", "arr": f"2027-03-06T{arr}:00", "plus": plus, "mk": [mk], "op": op or [mk],
+           "flights": ["VY 6075"], "via": [] if direct else (via or [{"code": "BCN", "name": "Barcelona"}]), "layover": 0 if direct else 55, "self_transfer": False, "protected": False, "tags": [], "em_kg": 188.9, "em_level": "typical",
+           "sellers": [{"n": mk, "a": True, "p": total}, {"n": "Booking.com", "a": False, "p": round(total + 6.4, 2)}], "seller_count": 2, "airline_price": total}
+    row.update(extra)
+    return row
 
 
 def test_skyscanner_asks_first_has_the_url_and_its_rows_are_comparison_only():
@@ -851,25 +893,30 @@ def test_skyscanner_asks_first_has_the_url_and_its_rows_are_comparison_only():
     from myt_mcp.sites.skyscanner import skyscanner_recipe
     r = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6, 8], "economy", True, 20)
     assert r["url"] == "https://www.skyscanner.net/transport/flights/flr/lis/270306/?adultsv2=2&childrenv2=6%7C8&cabinclass=economy&rtn=0&preferdirects=true&currency=EUR"
-    assert 'const SORTS = ["Best", "Cheapest"];' in r["script"] and "const LIMIT = 20;" in r["script"] and r["expect"]["leg"] == "FLR to LIS, 06 Mar 2027"
+    assert 'const SORTS = ["Best", "Cheapest"];' in r["script"] and "const LIMIT = 20;" in r["script"] and "const DIRECT = true;" in r["script"] and r["expect"]["leg"] == "FLR to LIS, 06 Mar 2027"
+    assert "const DIRECT = false;" in skyscanner_recipe("FLR", "LIS", date(2027, 3, 6))["script"] and r["expect"]["children_ages"] == [6, 8]
     with pytest.raises(ValueError, match="IATA"):
         skyscanner_recipe("Florence", "LIS", date(2027, 3, 6))
     exp = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6])["expect"]
     run = lambda text, e=exp: convert_all([{"site": "skyscanner", "result": text, "url": "u"}], {"expect": e})
-    rows = [_sk("Best", "Portugalia Airlines", "12:20", "14:30", 414, 138, direct=True, duration="3 hours 10 minutes"), _sk("Best", "Vueling Airlines", "13:10", "16:55", 340, 113),
-            _sk("Cheapest", "Vueling Airlines", "21:00", "08:30", 218, 73, later="one day"), _sk("Cheapest", "Vueling Airlines", "13:10", "16:55", 340, 113)]
+    rows = [_sk("Best", 1, "TAP Air Portugal", "12:20", "14:30", 325.34, direct=True, mins=190, op=["Portugalia Airlines"]), _sk("Best", 2, "Vueling Airlines", "13:10", "16:55", 215.68),
+            _sk("Cheapest", 1, "Vueling Airlines", "21:00", "08:30", 146.0, plus=1, mins=690, self_transfer=True), _sk("Cheapest", 2, "Vueling Airlines", "13:10", "16:55", 215.68)]
     offers, sources, problems, _, notes = run(_sky(rows))
-    assert not problems and len(offers) == 3 and all(o.quotable is False and o.group == "FLR to LIS, 06 Mar 2027" for o in offers)         # the same ticket in both tabs is one offer
-    assert offers[0].details["per_person"].startswith("138 EUR") and offers[0].details["stops"] == "Direct flight" and "one day later" in offers[2].name
-    assert any("sponsored" in n for n in notes) and any("only compares" in n for n in notes)
-    assert any(n.startswith("FLR to LIS, 06 Mar 2027: 2 sponsored") for n in notes) and any(n.startswith("FLR to LIS, 06 Mar 2027: Skyscanner lists 97 results") for n in notes)     # counts name their leg
+    assert not problems and len(offers) == 3 and all(o.quotable is False and o.group == "FLR to LIS, 06 Mar 2027" for o in offers)         # the same ticket in both lists is one offer
+    assert offers[0].name == "TAP Air Portugal (operated by Portugalia Airlines) 12:20-14:30 (3 h 10 min)" and offers[0].price_total == 325.34 and offers[0].details["stops"] == "Direct flight"
+    assert offers[0].details["per_person"].startswith("108.45 EUR") and offers[0].details["flights"] == "VY 6075" and "(airline) 325.34 EUR" in offers[0].details["sold_by"] and "325.34 EUR for the whole group" in offers[0].details["airline_price"]
+    assert "(+1 day)" in offers[2].name and offers[2].details["self_transfer"].startswith("yes: separate tickets, NOT protected")
+    assert offers[1].details["stops"] == "1 stop via Barcelona (BCN), 55 min in total on the ground" and offers[1].details["self_transfer"] == "no" and offers[1].details["emissions"] == "189 kg CO2e (typical)" and offers[0].details["fare"].startswith("not shown")
+    assert any("only compares" in n for n in notes) and any(n.startswith("FLR to LIS, 06 Mar 2027: Skyscanner lists 97 tickets for this search") for n in notes)     # counts name their leg
     assert any("not FLR to LIS" in p for p in run(_sky(rows, route=["FCO", "LIS"]))[2])
-    assert any("not Sat, 6 Mar" in p for p in run(_sky(rows, date="Sun, 7 Mar"))[2])
-    assert any("counts 2 travellers, not 3" in p for p in run(_sky(rows, travellers=2))[2])
-    assert any("cabin 'Business'" in p for p in run(_sky(rows, cabin="Business"))[2])
-    assert any("stop filters" in p for p in run(_sky(rows, direct_only=True))[2])
-    assert any("does not know" in p for p in run(_sky(rows, unparsed=["Flight option 3: something new"]))[2])
-    assert any("both the Best and the Cheapest" in p for p in run(_sky(rows, sorts=[{"sort": "Best", "shown_as": "Best", "read": 2}]))[2])
+    assert any("not 2027-03-06" in p for p in run(_sky(rows, date="2027-03-07"))[2])
+    assert any("1 adult(s), not 2" in p for p in run(_sky(rows, adults=1))[2])
+    assert any("children aged [6, 9], not [6]" in p for p in run(_sky(rows, children_ages=[6, 9]))[2])
+    assert any("cabin 'Business'" in p for p in run(_sky(rows, cabin="business"))[2])
+    assert any("stop filter" in p for p in run(_sky(rows, direct_only=True))[2])
+    assert any("1 Skyscanner ticket(s) came without a price" in p for p in run(_sky(rows, unparsed=1))[2])
+    assert any("not EUR" in p for p in run(_sky(rows, currency="GBP"))[2])
+    assert any("both the Best and the Cheapest" in p for p in run(_sky(rows, sorts=[{"sort": "Best", "read": 2}]))[2])
     assert any("human check" in p for p in run(json.dumps({"ok": False, "error": "Skyscanner shows a human check (captcha). Stop"}))[2])
 
 
@@ -1012,26 +1059,20 @@ def test_place_matching_uses_the_distinctive_words_and_trains_keep_their_directi
     assert place_matches("Leonardo da Vinci Rome Fiumicino Airport", "Rome Fiumicino Airport (FCO)") and not place_matches("Fiumicino Airport", "Ciampino Airport")
     assert place_matches("Airport", "anything") and place_matches("Roma Termini", "Roma Termini railway station") and not place_matches("Roma Termini", "Napoli Centrale")
     exp = {"origin": "Firenze Santa Maria Novella", "destination": "Roma Termini", "day": "2026-11-23", "adults": 2, "changes": "any", "class": None}
-    back = convert_all([{"site": "ratehawk_trains", "result": _trains([_train(route="Roma Termini \u2192 Firenze S.M. Novella")]), "url": "u"}], {"expect": exp})[2]
+    back = convert_all([{"site": "ratehawk_trains", "result": _trains([_train(frm="Roma Termini", to="Firenze S.M. Novella")]), "url": "u"}], {"expect": exp})[2]
     assert any("not Firenze Santa Maria Novella to Roma Termini" in p for p in back)
 
 
-def test_skyscanner_offset_window_and_hidden_filters():
+def test_skyscanner_offset_window_and_the_direct_filter_is_checked():
     from datetime import date
     from myt_mcp.sites import convert_all
     from myt_mcp.sites.skyscanner import skyscanner_recipe
     r = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6], "economy", False, 20, 20)
     assert "const SKIP = 20;" in r["script"] and "const LIMIT = 20;" in r["script"]
     exp = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6])["expect"]
-    rows = [_sk("Best", "Vueling Airlines", "13:10", "16:55", 340, 113), _sk("Cheapest", "Vueling Airlines", "21:00", "08:30", 218, 73, later="one day")]
-    ok_filters = {"stops": ["Direct", "1 stop", "2+ stops"], "ticked_extras": [], "unticked_defaults": 0}
-    run = lambda **kw: convert_all([{"site": "skyscanner", "result": _sky(rows, filters=ok_filters, **kw), "url": "u"}], {"expect": exp})
-    offers, _, problems, _, notes = run(offset=20)
-    assert not problems and any("tickets 21 to" in n for n in notes)
-    bad = convert_all([{"site": "skyscanner", "result": _sky(rows, filters={"stops": ["Direct", "1 stop", "2+ stops"], "ticked_extras": ["Checked bag"], "unticked_defaults": 0}), "url": "u"}], {"expect": exp})[2]
-    assert any("did not ask for (Checked bag)" in p for p in bad)
-    off = convert_all([{"site": "skyscanner", "result": _sky(rows, filters={"stops": ["Direct", "1 stop", "2+ stops"], "ticked_extras": [], "unticked_defaults": 3}), "url": "u"}], {"expect": exp})[2]
-    assert any("3 airline or layover box(es) switched off" in p for p in off)
+    rows = [_sk("Best", 21, "Vueling Airlines", "13:10", "16:55", 340.0), _sk("Cheapest", 21, "Vueling Airlines", "21:00", "08:30", 218.0, plus=1)]
+    offers, _, problems, _, notes = convert_all([{"site": "skyscanner", "result": _sky(rows, offset=20), "url": "u"}], {"expect": exp})
+    assert not problems and any("tickets 21 to 22" in n for n in notes)
 
 
 def test_elal_selling_fast_label_is_kept_and_the_real_row_shapes_convert():
@@ -1342,16 +1383,17 @@ def test_sata_counts_a_technical_stop_like_the_page_and_says_so():
     assert "2 seated travellers" in offers[0].price_basis and "infants 6 EUR for all 1 infants" in offers[0].details["per_person"]
 
 
-def test_skyscanner_direct_toggle_is_expected_when_direct_only_was_asked():
+def test_skyscanner_direct_only_is_applied_on_the_stop_count_and_flagged_when_not_asked():
     from datetime import date
     from myt_mcp.sites import convert_all
     from myt_mcp.sites.skyscanner import skyscanner_recipe
     exp = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6], "economy", True)["expect"]
-    rows = [_sk("Best", "Azores Airlines", "06:00", "07:30", 192, 64)]
-    filters = {"stops": ["Direct"], "ticked_extras": ["Direct flights"], "unticked_defaults": 0}       # preferdirects=true in the url ticks the 'Direct flights' toggle itself (seen live 23 Oct 2026)
-    assert not convert_all([{"site": "skyscanner", "result": _sky(rows, filters=filters, direct_only=True), "url": "u"}], {"expect": exp})[2]
+    rows = [_sk("Best", 1, "Azores Airlines", "06:00", "07:30", 192.0, direct=True, mins=90)]
+    got = convert_all([{"site": "skyscanner", "result": _sky(rows, direct_only=True, matching_total=1), "url": "u"}], {"expect": exp})
+    assert not got[2] and got[0][0].fits is True and any("(1 of them direct)" in n for n in got[4])
     asked_any = skyscanner_recipe("FLR", "LIS", date(2027, 3, 6), 2, [6], "economy", False)["expect"]
-    assert convert_all([{"site": "skyscanner", "result": _sky(rows, filters=filters, direct_only=True), "url": "u"}], {"expect": asked_any})[2]       # not asked: still flagged
+    assert convert_all([{"site": "skyscanner", "result": _sky(rows, direct_only=True), "url": "u"}], {"expect": asked_any})[2]       # not asked: still flagged
+    assert convert_all([{"site": "skyscanner", "result": _sky([_sk("Best", 1, "Vueling Airlines", "13:10", "16:55", 215.68)]), "url": "u"}], {"expect": exp})[2]      # a connection when direct only was asked
 
 
 def test_the_drivers_age_is_stated_and_a_driver_outside_the_ratehawk_band_gets_a_warning():

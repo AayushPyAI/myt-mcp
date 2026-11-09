@@ -20,7 +20,7 @@ from mcp.types import ToolAnnotations
 
 from myt_mcp.compose import Offer
 from myt_mcp.errors import tool_errors
-from myt_mcp.sites import SiteRows, clock24, group_title, with_emit
+from myt_mcp.sites import SiteRows, clock24, group_title, server_first, with_emit
 
 NAME = "getyourguide_activity"
 SOURCE = "GetYourGuide"
@@ -44,8 +44,8 @@ def getyourguide_activity_recipe(url: str, day: date, adults: int, children_ages
     if not m:
         raise ValueError("url must be a GetYourGuide activity link (https://www.getyourguide.com/<place>/<slug>-t12345/ or https://www.getyourguide.com/-t12345/): take it from the search, never guess it")
     ages = list(children_ages or [])
-    if not 0 <= adults <= 15 or not 1 <= adults + len(ages) <= 15 or any(not 0 <= a <= 17 for a in ages):
-        raise ValueError("travellers must be 1-15 in total, adults 0-15, children's ages 0-17")
+    if not 0 <= adults <= 15 or not 1 <= adults + len(ages) <= 15 or any(not 0 <= a <= 99 for a in ages):
+        raise ValueError("travellers must be 1-15 in total, adults 0-15, ages of the others 0-99")
     total = adults + len(ages)
     link = clean_url(url, day)
     path = "/" + link.split("getyourguide.com/", 1)[1].split("?")[0].rstrip("/")
@@ -117,10 +117,13 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             problems.append(f"GetYourGuide answered for {data['day_read']}, not {exp['day']}: run the script again")
         if exp.get("id") and data.get("id") and data["id"] != exp["id"]:
             problems.append(f"the page is the activity {data['id']}, not {exp['id']}: open the url again")
-        read = {c.get("id"): c.get("count") for c in data.get("categories_read") or []}
-        sent = {c.get("id"): c.get("count") for c in data.get("categories") or []}
-        if read and any(read.get(k) != v for k, v in sent.items()):
-            problems.append("GetYourGuide priced other traveller categories than the script sent: run the script again")
+        # what was PRICED is the price breakdown of each option: it must hold the number of travellers asked. The category titles are NOT compared: one activity prices the same travellers in different categories per option
+        # (-t30749: the shared option 2 Adult + 1 Youth, the private option "3 Participants"; -t490146: ticket options re-band ages) and the availability event's `pricing_categories` echoes default counts (Adult 1 for 2 adults + 1 youth)
+        for r in rows:
+            n_priced = sum(int(b.get("n") or 0) for b in r.get("breakdown") or [])
+            if r.get("breakdown") and exp.get("total") and n_priced != exp["total"]:
+                problems.append(f"GetYourGuide priced {n_priced} traveller(s) in an option, not {exp['total']}: run the script again")
+                break
     avail = (data.get("availability") or "").lower()
     if not rows:
         notes.append(f"GetYourGuide says: {data.get('availability') or 'no option'} (for the date and group asked)" + (f"; {data['unavailable']}" if data.get("unavailable") not in (None, "[]") else "") + ": it may need another date or a larger group."
@@ -170,9 +173,9 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool(name="getyourguide_activity_recipe", annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
     @tool_errors
     async def getyourguide_activity_recipe_tool(url: str, day: date, adults: int, children_ages: list[int], activity: str | None = None, free_cancellation: bool = False) -> dict[str, Any]:
-        """FOR THE EXACT PRICE OF ONE GETYOURGUIDE ACTIVITY on a date for a group (read in the operator's own Chrome with Claude in Chrome): use the activity link from getyourguide_find_recipe (never guess
-        a link). Give `adults` and `children_ages` ([] if none) as the operator said (ask if not said); `activity` = the itinerary activity this answers; `free_cancellation` only if the operator asked for it. It returns the url, STEPS and a read-only SCRIPT: open the url in a NEW tab and run the script; it puts every traveller in the category of their age by itself and presses nothing (never press Select, Book now, Add to cart or Pay). It sends its answer to the server by itself and returns a receipt (`ingest` id): call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. A human check is never worked around. One call per activity."""
+        """FOR THE EXACT PRICE OF ONE GETYOURGUIDE ACTIVITY on a date for a group: use the activity link from getyourguide_find_recipe (never guess a link). Give `adults` and `children_ages` (the ages of everyone who is not a plain adult, children and seniors; [] if none) as the operator said (ask if not said);
+        `activity` = the itinerary activity this answers; `free_cancellation` only if the operator asked for it. THE SERVER READS IT ITSELF in its own browser (every option with the price of the whole group, start times, guide language, cancellation, meeting point) and returns a short receipt with an `ingest` id: call compose_answer with `runs`=[that id] (ok=false: put GetYourGuide in not_checked with the reason it gives). Without a server browser it returns the url, STEPS and a read-only SCRIPT: open the url in a NEW tab and run it (it presses nothing: never press Select, Book now, Add to cart or Pay); it sends its answer to the server and returns a receipt (`ingest` id): call compose_answer with `runs`=[that id] and the returned `wishes`; never type or pass a row. A human check is never worked around. One call per activity."""
         out = getyourguide_activity_recipe(url, day, adults, children_ages, activity)
         out["wishes"] = {"expect": out["expect"], **({"free_cancellation": True} if free_cancellation else {})}
         out["filters_used"] = ["Date and group as the operator said (operator)", "Free cancellation only (operator)" if free_cancellation else "All options of the activity for that date (default: no option filter)"]
-        return out
+        return await server_first(NAME, "GYG_ACTIVITY_READ_IN_SERVER", "https://www.getyourguide.com", out)

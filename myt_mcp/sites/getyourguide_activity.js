@@ -21,7 +21,8 @@ await (async () => {
   if (!box || !box.length) return JSON.stringify({ ok: false, error: 'the page has no traveller categories (GetYourGuide changed its page, or the activity cannot be booked online): say it could not be read' });
   const cats = box.map((c) => ({ id: c.categoryId, title: c.title, min: c.minimumAge, max: c.maximumAge, kind: c.participantType, autonomous: c.isAutonomous, most: c.maximumParticipants }));
   const holds = (c, age) => (c.min == null || age >= c.min) && (c.max == null || age <= c.max);
-  if (cats.some((c) => c.kind && c.kind !== 'individual')) return JSON.stringify({ ok: false, error: 'this activity is priced by a category that is not a person (' + cats.filter((c) => c.kind !== 'individual').map((c) => c.title).join(', ') + '): set the group on the page by hand and say the price could not be read by the script' });
+  const PEOPLE = ['individual', 'group'];      // 'group' = ONE category that holds everybody (private tours: "Participants, age 99 and younger", count = the number of people; read live 6 Nov 2026 on -t63541)
+  if (cats.some((c) => c.kind && !PEOPLE.includes(c.kind))) return JSON.stringify({ ok: false, error: 'this activity is priced by a category that is not a person (' + cats.filter((c) => c.kind && !PEOPLE.includes(c.kind)).map((c) => c.title).join(', ') + '): set the group on the page by hand and say the price could not be read by the script' });
   const count = new Map(); const unfit = [];
   const adultCat = cats.find((c) => holds(c, 30));
   if (REQ.adults) { if (adultCat) count.set(adultCat.id, (count.get(adultCat.id) || 0) + REQ.adults); else unfit.push('adult'); }
@@ -66,7 +67,7 @@ await (async () => {
   const section = (name, max) => { const k = flat.indexOf(name); if (k < 0) return null; const out = []; for (const l of flat.slice(k + 1)) { if (ORDER.includes(l) && l !== name) break; if (FILLER.test(l) || l === name) continue; out.push(l); } return out.join('; ').slice(0, max) || null; };
   const header = all.find((l) => /\d+ options? available|Not available for your selection|Sold out|No availability/i.test(l)) || null;
   return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.',
-    path: location.pathname, id, activity: (document.querySelector('h1') || {}).innerText || document.title, day: REQ.day, day_read: p.date_selected || null, travellers: { adults: REQ.adults, ages: REQ.ages || [] }, categories: used.map((c) => ({ id: c.id, title: c.title, min: c.min, max: c.max, count: c.count })),
+    path: location.pathname, id, activity: (document.querySelector('h1') || {}).innerText || document.title, day: REQ.day, day_read: p.date_selected || null, travellers: { adults: REQ.adults, ages: REQ.ages || [] }, categories: used.map((c) => ({ id: c.id, title: c.title, min: c.min, max: c.max, count: c.count, kind: c.kind })),
     categories_read: ((p.pricing_categories || {}).available || []).map((c) => ({ id: c.id, title: c.title, count: c.count, min: c.min_age, max: c.max_age })), availability: header, unavailable: JSON.stringify(p.unavailable_options || []).slice(0, 400), last_available_date: p.last_available_date || null,
     taxes_included: all.some((l) => /All taxes and fees included/i.test(l)), includes: section('Includes', 260), not_suitable: section('Not suitable for', 160), group_size: section('Group size', 120), know_before: section('Know before you go', 320), highlights: section('Highlights', 260),
     ms: Math.round(performance.now() - t0) }, rows);
