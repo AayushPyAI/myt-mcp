@@ -415,9 +415,16 @@ def test_an_age_no_category_takes_is_said_in_the_sites_own_categories():
     assert offers == [] and any("no traveller category that takes a 3-year-old" in p and "Adult (age 18-99), Youth (age 6-17)" in p for p in problems)
 
 
-def test_a_traveller_group_the_script_cannot_choose_is_refused_not_guessed():
-    out, recipe = run_activity(html=activity_html(({**ADULT, "participantType": "group", "title": "Group"},)))
-    assert "priced by a category that is not a person (Group)" in json.loads(out)["error"]
+def test_a_private_tour_with_one_group_category_counts_everybody_in_it():
+    # read live 6 Nov 2026 on -t63541: ONE category "Participants (age 99 and younger)", participantType "group", count = the number of people
+    seen = []
+    out, recipe = run_activity(adults=2, ages=(8,), seen=seen, html=activity_html(({**ADULT, "participantType": "group", "title": "Participants", "minimumAge": 0, "maximumAge": 99},)))
+    assert json.loads(out).get("ok") is True and seen[0]["parts"] == {1: 3}
+
+
+def test_a_traveller_category_that_is_not_a_person_is_refused_not_guessed():
+    out, recipe = run_activity(html=activity_html(({**ADULT, "participantType": "vehicle", "title": "Car"},)))
+    assert "priced by a category that is not a person (Car)" in json.loads(out)["error"]
 
 
 def test_the_activity_refusals():
@@ -432,13 +439,13 @@ def test_the_activity_refusals():
     unpriced = {**row, "cur": "EUR", "total": None, "lines": ["T", "At least 2 participants are required"]}
     res = convert(json.dumps({"ok": True, "categories": [{"id": 1, "count": 1}], "rows": [unpriced]}), {"expect": {"total": 1}}, "g")
     assert res.offers == [] and any("participants are required" in n for n in res.extra_notes)
-    assert any("priced other traveller categories" in p for p in convert(json.dumps({"ok": True, "categories": [{"id": 1, "count": 2}], "categories_read": [{"id": 1, "count": 1}], "rows": [{**row, "cur": "EUR"}]}), {"expect": {"total": 2}}, "g").problems)
+    assert any("priced 1 traveller(s) in an option, not 2" in p for p in convert(json.dumps({"ok": True, "categories": [{"id": 1, "title": "Adult", "count": 2}], "rows": [{**row, "cur": "EUR", "breakdown": [{"title": "Adult", "n": 1, "each": 175, "total": 175}]}]}), {"expect": {"total": 2}}, "g").problems)
     with pytest.raises(ValueError):
         getyourguide_activity_recipe("https://www.getyourguide.com/s/?q=x", DAY, 2, [])
     with pytest.raises(ValueError):
         getyourguide_activity_recipe(ACT_URL, DAY, 0, [])
     with pytest.raises(ValueError):
-        getyourguide_activity_recipe(ACT_URL, DAY, 2, [18])
+        getyourguide_activity_recipe(ACT_URL, DAY, 2, [100])
     assert getyourguide_activity_recipe("https://www.getyourguide.com/-t603/", DAY, 2, [])["expect"]["id"] == 603
 
 
@@ -454,3 +461,33 @@ def test_the_activity_script_stops_on_the_wrong_page_a_check_page_a_page_without
     assert "the page is the activity 603, not 999" in json.loads(run_script(other, quiet, activity_html(), url=ACT_URL))["error"]
     out, _ = run_activity(answer={"content": [], "trackingEvents": []})
     assert "no availability data" in json.loads(out)["error"]
+
+
+@pytest.mark.asyncio
+async def test_the_activity_tool_is_read_by_the_server_first_with_its_own_switch(monkeypatch):
+    from mcp import Client
+
+    import myt_mcp.sites.getyourguide_activity as module
+    from myt_mcp.app import create_server
+    from myt_mcp.config import Settings
+    calls = []
+
+    async def fake(site, flag, origin, out, *rest, **kw):
+        calls.append((site, flag, origin))
+        return {**out, "server_read": {"tried": True, "ok": False, "why": "test"}}
+    monkeypatch.setattr(module, "server_first", fake)
+    async with Client(create_server(Settings())) as c:
+        a = (await c.call_tool("getyourguide_activity_recipe", {"url": ACT_URL, "day": "2027-03-05", "adults": 2, "children_ages": []})).structured_content
+    assert calls == [("getyourguide_activity", "GYG_ACTIVITY_READ_IN_SERVER", "https://www.getyourguide.com")] and a["server_read"]["tried"] is True and "script" in a
+
+
+def test_a_group_priced_as_sent_is_not_flagged_even_when_the_availability_event_echoes_other_counts():
+    # -t490146 (6 Nov 2026): pricing_categories echoed Adult 1 / Youth 0 for 2 adults + 1 youth, the breakdown priced exactly 2 + 1
+    row = {"n": 1, "option_id": 5, "title": "T", "lines": ["T"], "slots": [{"time": "10:00 AM", "price": 112.64, "cur": "EUR"}], "total": 112.64, "cur": "EUR",
+           "breakdown": [{"title": "Adult", "n": 2, "each": 38.72, "total": 77.44}, {"title": "Youth", "n": 1, "each": 35.2, "total": 35.2}]}
+    data = {"ok": True, "categories": [{"id": 1, "title": "Adult", "count": 2, "kind": "individual"}, {"id": 2, "title": "Youth", "count": 1, "kind": "individual"}, {"id": 3, "title": "Child", "count": 0, "kind": "individual"}],
+            "categories_read": [{"id": 1, "title": "Adult", "count": 1}, {"id": 2, "title": "Youth", "count": 0}], "rows": [row]}
+    from myt_mcp.sites.getyourguide_activity import convert
+    assert convert(json.dumps(data), {"expect": {"total": 3}}, "g").problems == []
+    private = {**row, "option_id": 6, "breakdown": [{"title": "Participants", "n": 3, "each": 93.33, "total": 280}]}      # -t30749: the private option prices the same 3 people as ONE category
+    assert convert(json.dumps({**data, "rows": [row, private]}), {"expect": {"total": 3}}, "g").problems == []

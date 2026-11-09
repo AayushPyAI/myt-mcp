@@ -233,11 +233,12 @@ def test_the_lounge_exit_at_the_flight_time_gets_a_boarding_note():
 
 def test_a_car_with_fewer_large_bags_than_asked_does_not_fit():
     from myt_mcp.sites.ratehawk_cars import convert
-    row = {"score": "6.8", "company": "sixt", "company_from": "logo file name", "seats": "5", "large_bags": "2", "small_bags": "1", "gearbox": "Automatic", "car": "Renault Clio", "code_class": "EDAR • Economy",
-           "pickup_place": "Meeting with an agent", "deposit": 500, "excess": 0, "insurance": "Zero excess", "mileage_fuel": "Unlimited mileage • Fuel policy: Full to full", "extras": [], "price": 224.62, "currency": "EUR",
-           "cancellation": "Free cancellation up to 48 hours before pick-up"}
-    result = json.dumps({"ok": True, "form": {"pickup": "Joao Paulo II Airport", "dropoff": "Joao Paulo II Airport", "times": ["08:10", "10:00"], "dates": ["5 Mar, Fri", "9 Mar, Tue"], "age_residency": ["26 - 69 years", "Israel"]},
-                         "filters_ticked": ["Automatic"], "rows_read": 1, "reached_cap": False, "price_order": "ascending", "rows": [row]})
+    row = {"model": "Renault Clio", "sipp": "EDAR", "category": "economy", "gearbox": "automatic", "seats": 5, "doors": 5, "ac": True, "electric": False, "bags_small": 1, "bags_medium": 0, "bags_large": 2,
+           "company": "Sixt", "rating": 6.8, "supplier": "x", "pickup": {"name": "Joao Paulo II Airport", "type": "airport", "sub": "meet_greet", "address": None, "iata": "PDL", "at": "2027-03-05T08:10:00Z"},
+           "dropoff": {"name": "Joao Paulo II Airport", "sub": "meet_greet", "at": "2027-03-09T10:00:00Z"}, "deposit": 500, "ins_type": "zero_excess", "excess_cdw": None, "excess_theft": None, "mileage": 0, "fuel": "full_full",
+           "cancel": [{"from": "2027-02-01T08:10:00Z", "to": "2027-03-03T08:10:00Z", "fee": 0.0, "refundable": True}], "fees": [], "extras": [], "driver": None, "price": 224.62, "currency": "EUR", "fee_service": 8.94}
+    result = json.dumps({"ok": True, "search": {"route": "1,1", "date": "2027-03-05T08:10,2027-03-09T10:00", "age": "26,69", "residency": "il"}, "filters": {"vehicle_transmission_type": ["automatic"]}, "offset": 0,
+                         "search_total": 90, "reached_cap": False, "rows": [row]})
     offers = convert(result, {"min_seats": 5, "min_large_bags": 3, "automatic": True, "zero_excess": True}, "Cars").offers
     assert offers and offers[0].fits is False
     offers = convert(result, {"min_seats": 5, "min_large_bags": 2, "automatic": True, "zero_excess": True}, "Cars").offers
@@ -353,7 +354,7 @@ async def test_ratehawk_hotels_are_read_by_the_server_only_when_the_switch_is_on
 async def test_a_source_that_went_through_the_assistant_in_parts_is_named_in_the_answer():
     from tests.test_compose import _part
     settings = Settings(mcp_secret="s" * 24)
-    rows = [["Hotel Alfa", "EUR 480", "mid1/alfa/"], ["Hotel Beta", "EUR 520", "mid2/beta/"], ["Hotel Gama", "EUR 560", "mid3/gama/"]]
+    rows = [["Hotel Alfa", 480, "mid1/alfa/"], ["Hotel Beta", 520, "mid2/beta/"], ["Hotel Gama", 560, "mid3/gama/"]]
     async with Client(create_server(settings, Services(settings))) as c:
         r = await c.call_tool("compose_answer", {"kind": "hotels", "site_results": [{"site": "ratehawk_hotels", "result": _part("r1", 1, 1, rows, read=3), "url": "https://www.ratehawk.com/hotel/portugal/lisbon/"}],
                                                  "wishes": {"breakfast": True, "stars_min": 4}, "filters_used": ["Breakfast included (operator)"],

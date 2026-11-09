@@ -59,9 +59,17 @@ def ratehawk_cars_recipe(pickup: str, dropoff: str | None, pickup_date: str, pic
             "known_places": sorted(ids)}
     url = (f"https://www.ratehawk.com/cars/?route={p_id},{d_id}&date={pickup_date}T{pickup_time},{dropoff_date}T{dropoff_time}&age={driver_age}&residency={residency}")
     script = with_emit((HERE / "ratehawk_cars.js").read_text(encoding="utf-8")).replace("__MAX_CARS__", str(max_cars)).replace("__SKIP__", str(skip)).replace("__FILTERS__", json.dumps(filters))
+    body_filters: dict[str, list[str]] = {}
+    for key, value in (("vehicle_transmission_type", "automatic" if automatic else None), ("vehicle_transmission_type", "manual" if manual else None), ("rate_insurance_type", "zero_excess" if zero_excess else None),
+                       ("pick_up_office_subtype", "in_terminal" if airport_in_terminal else None)):
+        if value:
+            body_filters.setdefault(key, []).append(value)
+    expect = {"route": f"{p_id},{d_id}", "date": f"{pickup_date}T{pickup_time},{dropoff_date}T{dropoff_time}", "age": driver_age, "residency": residency, "filters": body_filters,
+              "pickup_at": f"{pickup_date}T{pickup_time}:00Z", "dropoff_at": f"{dropoff_date}T{dropoff_time}:00Z"}      # RateHawk writes the local time with a Z
     return {"required_next": "Your answer is the text compose_answer returns, shown unchanged: never write the table or the picks yourself. Order: task_plan -> the recipe tool -> run its script in Chrome -> compose_answer -> check_answer. The script's answer comes in parts (`part 1 of N`): run `window.__mytParts[1]`, `[2]` ... in the same tab with the javascript tool and pass EVERY part, unchanged, as its own item of site_results (only when the answer says `part 1 of N`; an `ingest` receipt has no parts).", "url": url, "filters_to_tick": filters, "script": script, "expect": {"pickup": pickup, "pickup_time": pickup_time, "dropoff_time": dropoff_time},
-            "steps": ["Open `url` in the operator's logged-in RateHawk tab; if it asks to log in, stop and tell the operator. Wait about 12 seconds for the cards.",
-                      "Run `script` with the javascript tool (it ticks the filters, scrolls to load the cars, reads each card). ok=false means do what `error` says; never read the cards by eye.",
+            "expect": expect,
+            "steps": ["Open `url` in the operator's logged-in RateHawk tab; if it asks to log in, stop and tell the operator. Wait about 12 seconds for the cars to show.",
+                      "Run `script` with the javascript tool (it replays the page's own load-more call with the filters in it: it clicks and scrolls nothing). ok=false means do what `error` says; never read the cars by eye.",
                       "The script sends its answer from the page to the server by itself and returns a short receipt (it holds the `ingest` id): then call compose_answer with `runs`=[that id]; never type or pass a row; give `pickup_time` there too (the same on every source)."]}
 
 
@@ -72,6 +80,34 @@ def _num(v: Any) -> int | float | None:
         return None
 
 
+OFFICE_SUBS = {"meet_greet": "meeting with an agent", "in_terminal": "in the terminal", "shuttle_bus": "shuttle bus"}
+FUELS = {"full_full": "Full to full", "full_empty": "Full to empty", "same_same": "Same to same"}
+
+
+def _stamp(value: Any) -> str:
+    text = str(value or "")
+    return text.replace("T", " ")[:16] + (" UTC" if text.endswith("Z") else "")
+
+
+def _cancellation(r: dict[str, Any]) -> tuple[str, bool]:
+    """RateHawk's own periods, oldest first: free until a deadline, then fees by period (times as RateHawk gives them, written with a Z but local to the pick-up place)."""
+    cur = r.get("currency") or ""
+    periods = sorted((c for c in r.get("cancel") or [] if c.get("from")), key=lambda c: str(c["from"]))
+    if not periods:
+        return "cancellation terms not shown", False
+    free = [c for c in periods if c.get("fee") == 0 and c.get("refundable")]
+    paid = [c for c in periods if c.get("fee") not in (0, None)]
+    steps = "; ".join(f"{c['fee']:g} {cur} from {_stamp(c['from'])} to {_stamp(c['to'])}" for c in paid)
+    if free:
+        return f"Free cancellation until {_stamp(free[-1]['to'])}" + (f"; then a fee: {steps}" if steps else ""), True
+    return "No free cancellation" + (f": fee {steps}" if steps else ""), False
+
+
+def _fees(items: list[dict[str, Any]], cur: str) -> str | None:
+    shown = [f"{f['n']} {f['a']:g} {cur}" + ("" if f.get("in") else f" ({str(f.get('pay') or 'on site').replace('_', ' ')})") + (" included" if f.get("in") else "") for f in items if f.get("a") is not None and f.get("n")]
+    return "; ".join(shown) or None
+
+
 def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
     problems: list[str] = []
     try:
@@ -80,18 +116,28 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
         return SiteRows(problems=["the RateHawk cars result is not the script's JSON text: pass its answer unchanged"])
     if not data.get("ok"):
         return SiteRows(problems=[f"the RateHawk cars script reported: {data.get('error', 'not ok')}"])
-    if data.get("price_order") == "mixed":
+    exp = wishes.get("expect") or {}
+    if exp:
+        sent = data.get("search") or {}
+        for key in ("route", "date", "age", "residency"):
+            if exp.get(key) is not None and sent.get(key) != exp[key]:
+                problems.append(f"the RateHawk cars page is for {key} '{sent.get(key)}', not '{exp[key]}': open the url again and run the script once more")
+        if exp.get("filters") is not None and (data.get("filters") or {}) != exp["filters"]:
+            problems.append(f"the RateHawk cars call was sent with the filters {data.get('filters') or 'none'}, not {exp['filters'] or 'none'}: run the script again from the recipe")
+    prices = [r.get("price") for r in data.get("rows", []) if r.get("price") is not None]
+    if prices and not all(a <= b for a, b in zip(prices, prices[1:])) and not all(a >= b for a, b in zip(prices, prices[1:])):
         problems.append("the car prices are not in one order: the page may have changed while reading")
-    if "page_ticked" in data:        # a filter RateHawk kept from an earlier visit would change the list without the operator asking for it
-        expected = set(data.get("filters_ticked") or [])
-        extra = [f for f in data["page_ticked"] if f not in expected and not re.search(r"\byears?\b", f)]
-        if extra:
-            problems.append(f"RateHawk shows filters the operator did not ask for ({', '.join(extra)}): clear them on the page, open the url again and run the script once more")
     offers: list[Offer] = []
     for r in data.get("rows", []):
+        pick, drop = r.get("pickup") or {}, r.get("dropoff") or {}
+        if exp.get("pickup_at") and pick.get("at") and pick["at"][:16] != exp["pickup_at"][:16] and f"pick-up {pick['at']}" not in problems:
+            problems.append(f"a RateHawk car is for pick-up {pick['at']}, not {exp['pickup_at']}: open the url again and run the script once more")
+        if exp.get("dropoff_at") and drop.get("at") and drop["at"][:16] != exp["dropoff_at"][:16]:
+            problems.append(f"a RateHawk car is for drop-off {drop['at']}, not {exp['dropoff_at']}: open the url again and run the script once more")
         price, cur = r.get("price"), r.get("currency")
-        cancel = r.get("cancellation") or ""
-        insurance = r.get("insurance") or ""
+        cancel, free = _cancellation(r)
+        ins = r.get("ins_type") or ""
+        zero = ins == "zero_excess" or "full" in ins
         fits: bool | None = None
         if wishes:
             ok = True
@@ -99,8 +145,8 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
                 ok &= (r.get("gearbox") or "").lower() == "automatic"
             if wishes.get("manual"):
                 ok &= (r.get("gearbox") or "").lower() == "manual"
-            if wishes.get("min_large_bags"):         # the page lists "2 large + 1 small bags": a car with fewer LARGE bags than asked does not fit (a Clio took 2 large for a family of 3, 23 Oct 2026)
-                large = _num(r.get("large_bags"))
+            if wishes.get("min_large_bags"):         # a car with fewer LARGE bags than asked does not fit (a Clio took 2 large for a family of 3, 23 Oct 2026)
+                large = _num(r.get("bags_large"))
                 ok &= large is not None and large >= int(wishes["min_large_bags"])
             if wishes.get("min_seats"):
                 seats = _num(r.get("seats"))
@@ -110,28 +156,35 @@ def convert(result_json: str, wishes: dict[str, Any], group: str) -> SiteRows:
             if wishes.get("driver_outside_band"):    # RateHawk was searched with its 26-69 band: a young- or senior-driver fee is not in the price, so no row can show it fits this driver
                 ok = False
             if wishes.get("zero_excess"):
-                ok &= insurance.lower() in ("zero excess", "full insurance")
+                ok &= zero
             fits = ok
-        seats_bags = " / ".join(x for x in (f"{r['seats']} seats" if r.get("seats") else None, f"{r['large_bags']} large + {r['small_bags']} small bags" if r.get("large_bags") is not None else None) if x) or None
-        offers.append(Offer(group=group, source=SOURCE, name=f"{r.get('car') or 'not shown'} ({r.get('code_class') or 'class not shown'})", price_total=price, currency=cur,
-                            price_basis="whole rental", flexible=cancel.lower().startswith("free cancellation") or None, fits=fits, supplier=r.get("company"),
-                            details={"company": (r.get("company") or "not shown") + (" (from the logo's file name)" if r.get("company_from") == "logo file name" else ""),
-                                     "gearbox": r.get("gearbox"), "seats_bags": seats_bags,
-                                     "excess": (f"{r['excess']:,.0f} excess" if r.get("excess") is not None else None) and f"{insurance}: excess {r['excess']:,.0f}" or insurance or None,
-                                     "fuel": (r.get("mileage_fuel") or "").split("•")[-1].strip() or None, "mileage": (r.get("mileage_fuel") or "").split("•")[0].strip() or None,
-                                     "deposit": f"{r['deposit']:,.0f}" if r.get("deposit") is not None else None, "cancellation": cancel or None,
-                                     "pickup_place": r.get("pickup_place"), "score": r.get("score")}))
-    n = int(data.get("rows_read") or len(offers))
+        bags = [f"{r['bags_large']} large" if r.get("bags_large") is not None else None, f"{r['bags_medium']} medium" if r.get("bags_medium") else None, f"{r['bags_small']} small" if r.get("bags_small") is not None else None]
+        seats_bags = " / ".join(x for x in (f"{r['seats']} seats" if r.get("seats") else None, (" + ".join(b for b in bags if b) + " bags") if any(bags) else None) if x) or None
+        cdw, theft = r.get("excess_cdw"), r.get("excess_theft")
+        excess = ("Zero excess" if zero else "Basic cover with excess") + (f": excess {cdw:,.0f} {cur} (theft {theft:,.0f})" if cdw is not None and not zero else "")
+        d = r.get("driver") or {}
+        driver = (f"age {d['min']}-{d['max']}" if d.get("min") and d.get("max") else "") + (f", licence {d['years']} years" if d.get("years") else "") + (f", young-driver fee under {d['young']}" if d.get("young") else "")
+        company = (r.get("company") or "not shown") + (f" (rated {r['rating']:g})" if r.get("rating") else "")
+        place = " ".join(x for x in (pick.get("name"), f"({OFFICE_SUBS.get(pick.get('sub'), str(pick.get('sub') or '').replace('_', ' '))})" if pick.get("sub") else "") if x) or None
+        offers.append(Offer(group=group, source=SOURCE, name=f"{r.get('model') or 'not shown'} ({r.get('sipp') or 'class not shown'} \u2022 {str(r.get('category') or '').capitalize() or 'class not shown'})", price_total=price, currency=cur,
+                            price_basis="whole rental, taxes and RateHawk's service fee included", flexible=True if free else None, fits=fits, supplier=r.get("company"),
+                            details={"company": company, "gearbox": r.get("gearbox"), "seats_bags": seats_bags, "excess": excess, "deposit": f"{r['deposit']:,.0f} {cur}" if r.get("deposit") is not None else None,
+                                     "mileage": "Unlimited mileage" if r.get("mileage") == 0 else (f"mileage limit {r['mileage']} (as RateHawk gives it)" if r.get("mileage") is not None else None),
+                                     "fuel": FUELS.get(str(r.get("fuel")), str(r.get("fuel") or "").replace("_", " ").capitalize() or None), "cancellation": cancel, "pickup_place": place,
+                                     "fees_not_in_price": _fees([f for f in r.get("fees") or [] if not f.get("in")], cur or "") or "none listed by RateHawk", "extras_on_site": _fees(r.get("extras") or [], cur or ""),
+                                     "driver_requirements": driver or None, "air_conditioning": r.get("ac"), "score": r.get("rating")}))
+    n = len(offers)
     notes = []
     if data.get("reached_cap"):
-        notes.append(f"The list was cut at {int(data.get('offset') or 0) + n} cars; more cars exist on the page.")
+        notes.append(f"The list was cut at {int(data.get('offset') or 0) + n} cars; more exist" + ("" if data.get("filters") else f" (RateHawk lists {data.get('search_total')} for this search)") + ".")
     if data.get("offset"):
         notes.append(f"These are cars {int(data['offset']) + 1} to {int(data['offset']) + n} of the list (cheaper ones were shown before): the Cheapest here is not the cheapest overall.")
     if wishes.get("driver_outside_band"):
         notes.append(f"The driver is {wishes['driver_outside_band']}, outside RateHawk's searchable 26-69 band: these prices may leave out a young- or senior-driver fee, so none is a pick for this driver. Compare them only; use a source searched with the driver's real age.")
-    form = data.get("form") or {}
-    notes.append(f"RateHawk's form showed: pick-up '{form.get('pickup')}', drop-off '{form.get('dropoff')}', times {form.get('times')}, {form.get('dates')}, driver {form.get('age_residency')}.")
-    return SiteRows(offers=offers, read=n, total=n, problems=problems, sorted_by_price=False, extra_notes=notes, more_exist=bool(data.get("reached_cap")))
+    sent = data.get("search") or {}
+    notes.append(f"RateHawk's search: route {sent.get('route')}, {sent.get('date')}, driver {sent.get('age')}, residency {sent.get('residency')}.")
+    total = data.get("search_total") if (not data.get("filters") and data.get("search_total") is not None) else n      # RateHawk's count is the whole search's, not the filtered one: with filters only what was read is known
+    return SiteRows(offers=offers, read=n, total=total, problems=problems, sorted_by_price=False, extra_notes=notes, more_exist=bool(data.get("reached_cap")))
 
 
 ASK_CARS = {"gearbox": "Gearbox: automatic, manual, or no preference?", "seats": "How many people (minimum seats) and how many LARGE suitcases must the car hold (minimum large bags), or no preference?",
@@ -191,7 +244,7 @@ def register(mcp: MCPServer) -> None:
         out = ratehawk_cars_recipe(pickup, dropoff, pickup_date, pickup_time, dropoff_date, dropoff_time, pickup_id, dropoff_id, driver_age, "il", gearbox == "automatic", bool(zero_excess),
                                    airport_in_terminal, 40, gearbox == "manual", offset, limit)
         if "url" in out:
-            out["wishes"] = {"automatic": gearbox == "automatic", "manual": gearbox == "manual", "zero_excess": bool(zero_excess), "min_seats": min_seats, "min_large_bags": min_large_bags, "max_total": max_total}
+            out["wishes"] = {"automatic": gearbox == "automatic", "manual": gearbox == "manual", "zero_excess": bool(zero_excess), "min_seats": min_seats, "min_large_bags": min_large_bags, "max_total": max_total, "expect": out["expect"]}
             if outside_band(driver_age, driver_years):
                 out["wishes"]["driver_outside_band"] = f"{driver_years} years old"
             out["filters_used"] = ([f"{gearbox.capitalize()} gearbox (operator)"] if gearbox else []) + (["Zero excess (operator)"] if zero_excess else []) + \

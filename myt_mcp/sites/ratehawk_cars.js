@@ -1,78 +1,79 @@
-// RateHawk car-rental results reader. Run it in the operator's logged-in RateHawk cars results tab (read only: it scrolls the list,
-// and ticks the filter boxes you ask for). The tool replaces __MAX_CARS__ and __FILTERS__ (a JSON list of filter labels) before it runs.
-// A field the card does not show is null ("not shown"). The card is found from its "Choose" button, not from a class name (class names carry hashes).
+// RateHawk cars: the page's OWN "load more" call, replayed in the page (read only; it clicks and scrolls nothing and books nothing). Run it in the operator's logged-in RateHawk cars results tab once the cars show.
+// The cars page is a Next.js page: its first 10 cars are in the page itself and every further batch (and every filter) comes from ONE server action of the page, getFilteredOffers (read live 7 Nov 2026): a POST to
+// the page's own address with the header next-action = the action's id (written in the page's cars script: createServerReference("<id>", ..., "getFilteredOffers")) and the body
+// [{"filters": {...}, "sessionId": "<the search's session>", "offset": N, "limit": 10}], answered as text/x-component whose line "1:" is {"offers": [...], "count": <all cars of the search: NOT reduced by the filters>}.
+// The session id is in the page itself ("sessionId":"<uuid>"). The filters of the page's own boxes are body fields: vehicle_transmission_type ["automatic"] / ["manual"], rate_insurance_type ["zero_excess"],
+// pick_up_office_subtype ["in_terminal"] (the call carries only the filters the tool asks for). Checked against the page: the first 30 cars in the same order, 28 of 30 with every field equal (model, gearbox, class, price,
+// deposit, excess) and 2 with a trailing space in the model name; the search total is 1,481.
+// An offer holds the vehicle (model, SIPP code, category, gearbox, seats, doors, bags), the rate (rental company with its rating, deposit, insurance with the excess, mileage, fuel policy, the cancellation periods with their fees,
+// the fees and extras paid on site, the driver's age and licence limits), both offices and total.partner.amount_sell (the price the page shows, service fee included).
+// The tool replaces __MAX_CARS__ and __SKIP__ (the window [SKIP, MAX_CARS) of the list) and __FILTERS__ (a JSON list of filter labels). A login page or a refusal stops the script: never worked around.
 await (async () => {
-  const MAX_CARS = __MAX_CARS__;                          // SKIP + LIMIT: the tool asks for the window [offset, offset + limit)
-  const SKIP = __SKIP__;
-  const FILTERS = __FILTERS__;
+  const MAX_CARS = __MAX_CARS__; const SKIP = __SKIP__; const FILTERS = __FILTERS__;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const chooseButtons = () => [...document.querySelectorAll('button,a,div,span')].filter((e) => e.children.length === 0 && (e.innerText || '').trim() === 'Choose');
-  const cardOf = (b) => { let e = b; for (let i = 0; i < 14 && e; i++) { e = e.parentElement; if (e && /Full conditions of rental/.test(e.innerText) && (e.innerText.match(/Choose/g) || []).length === 1) return e; } return null; };
-  const cards = () => chooseButtons().map(cardOf).filter(Boolean);
-  async function waitForCards() { for (let i = 0; i < 40; i++) { if (cards().length) { await wait(800); return true; } await wait(500); } return false; }
-
-  if (!(await waitForCards())) return JSON.stringify({ ok: false, error: 'no car cards: not a RateHawk cars results page, logged out, or still searching' });
-
-  // 1. tick the requested filters (by their visible label), one at a time
-  const ticked = []; const notFound = [];
+  if (!/(^|\.)ratehawk\.com$/.test(location.hostname) || !/^\/cars\/?$/.test(location.pathname)) return JSON.stringify({ ok: false, error: 'not a RateHawk cars results page: open the url first' });
+  if (/log in|sign in|forgot password/i.test((document.body && document.body.innerText || '').slice(0, 600)) && !(window.dataLayer || []).some((x) => x && x.user_email)) return JSON.stringify({ ok: false, error: 'RateHawk asks to log in: stop and tell the operator to log in (never type a password).' });
+  const t0 = performance.now();
+  const FILTER_BODY = { 'Automatic': ['vehicle_transmission_type', 'automatic'], 'Manual': ['vehicle_transmission_type', 'manual'], 'Zero excess': ['rate_insurance_type', 'zero_excess'], 'Airport (in the terminal)': ['pick_up_office_subtype', 'in_terminal'] };
+  const filters = {};
   for (const label of FILTERS) {
-    const lab = [...document.querySelectorAll('label')].find((l) => (l.innerText || '').trim().replace(/\s+\d+$/, '') === label);
-    const box = lab && (lab.querySelector('input[type=checkbox]') || document.getElementById(lab.getAttribute('for') || ''));
-    if (!box) { notFound.push(label); continue; }
-    if (!box.checked) { const before = cards().length + '|' + (cards()[0] ? cards()[0].innerText.slice(0, 60) : ''); lab.click(); for (let k = 0; k < 16; k++) { await wait(500); if (cards().length && cards().length + '|' + cards()[0].innerText.slice(0, 60) !== before) break; } await wait(700); }
-    ticked.push(label);
+    if (!FILTER_BODY[label]) return JSON.stringify({ ok: false, error: 'the filter "' + label + '" is not one the script can send: ask for it by hand on the page and say so' });
+    const [key, value] = FILTER_BODY[label]; (filters[key] = filters[key] || []).push(value);
   }
-  if (notFound.length) return JSON.stringify({ ok: false, error: `filter label(s) not found on the page: ${notFound.join(', ')}`, ticked });
-
-  // 2. scroll until no more cards load (or MAX_CARS)
-  let last = -1;
-  for (let i = 0; i < 40; i++) {
-    const n = cards().length;
-    if (n >= MAX_CARS || (n === last && i > 1)) break;
-    last = n; window.scrollTo(0, document.body.scrollHeight); await wait(1700);
+  let sessionId = null;
+  for (let i = 0; i < 60 && !sessionId; i++) {      // the page puts its first cars (and the search's session id) in itself; a search RateHawk has not cached takes its time
+    const txt = [...document.scripts].filter((s) => !s.src).map((s) => s.textContent).join('\n');      // inside a self.__next_f.push("...") string the quotes are escaped: \"sessionId\":\"<uuid>\" (checked on the live page, 7 Nov 2026)
+    const m = txt.match(/\\?"sessionId\\?":\\?"([0-9a-f]{8}-[0-9a-f-]{27})\\?",\\?"offers\\?":/) || txt.match(/\\?"sessionId\\?":\\?"([0-9a-f]{8}-[0-9a-f-]{27})\\?"/);
+    sessionId = m ? m[1] : null;
+    if (!sessionId) await wait(500);
   }
-
-  // 3. read the cards
-  const money = (s) => { const m = (s || '').match(/[€$£]\s?([\d,]+(?:\.\d+)?)/); return m ? parseFloat(m[1].replace(/,/g, '')) : null; };
-  function row(c) {
-    const lines = c.innerText.split('\n').map((x) => x.trim()).filter(Boolean);
-    const at = (re) => lines.findIndex((x) => re.test(x));
-    const iGear = at(/^(Manual|Automatic)$/);
-    const pre = iGear >= 3 ? lines.slice(0, iGear - 3) : [];                       // before the three counts: [score], [company]
-    const isScore = (x) => /^\d(\.\d)?$/.test(x);
-    const logo = [...c.querySelectorAll('img')].find((i) => /logo/i.test(i.alt || ''));
-    const logoName = logo ? logo.src.split('/').pop().split('?')[0].replace(/\.\w+$/, '') : null;
-    const score = pre.find(isScore) || null;
-    const companyText = pre.find((x) => !isScore(x)) || null;
-    const iModel = iGear >= 0 ? iGear + 1 : -1;
-    const sim = lines[iModel + 1] || '';
-    const dep = at(/^Deposit$/), exc = at(/^Excess$/), ins = at(/^Insurance$/), cond = at(/^Full conditions of rental$/);
-    const placeLine = iModel >= 0 && dep > iModel + 1 ? lines.slice(iModel + 2, dep).join(' ') || null : null;
-    const prices = (cond >= 0 ? lines.slice(cond + 1) : []).filter((x) => /^[€$£]\s?[\d,]+(\.\d+)?$/.test(x));
-    const extras = [];
-    for (let i = 0; i < lines.length; i++) if (/^(Snow chains|Additional driver|GPS|Child seat)/i.test(lines[i])) extras.push(lines[i] + (lines[i + 2] === 'free' ? ' (free)' : ''));
-    return {
-      score, company: companyText || logoName, company_from: companyText ? 'text' : logoName ? 'logo file name' : null,
-      seats: iGear >= 3 ? lines[iGear - 3] : null, large_bags: iGear >= 2 ? lines[iGear - 2] : null, small_bags: iGear >= 1 ? lines[iGear - 1] : null,
-      gearbox: iGear >= 0 ? lines[iGear] : null, car: lines[iModel] || null,
-      code_class: (sim.match(/similar\s+(\S+)\s*•\s*(.+)/) || []).slice(1, 3).join(' • ') || sim || null,
-      pickup_place: placeLine,
-      deposit: dep >= 0 ? money(lines[dep + 1]) : null, excess: exc >= 0 ? money(lines[exc + 1]) : null, insurance: ins >= 0 ? lines[ins + 1] : null,
-      mileage_fuel: lines.find((x) => /mileage|Fuel policy/i.test(x)) || null, extras,
-      price: prices.length ? money(prices[0]) : null,
-      currency: prices.length ? ({ '€': 'EUR', '$': 'USD', '£': 'GBP' })[prices[0].trim()[0]] || null : null,
-      cancellation: lines.find((x) => /cancellation/i.test(x)) || null,
-    };
-  }
-  const rows = cards().slice(0, MAX_CARS).map(row).slice(SKIP);
-  const pageTicked = [...document.querySelectorAll('input[type=checkbox],input[type=radio]')].filter((b) => b.checked).map((b) => ((b.closest('label') || b.parentElement || {}).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 40)).filter(Boolean);
-  const form = {
-    pickup: document.querySelectorAll('input')[0]?.value || null, dropoff: document.querySelectorAll('input')[1]?.value || null,
-    times: [...document.querySelectorAll('input')].filter((i) => /^\d\d:\d\d$/.test(i.value)).map((i) => i.value),
-    age_residency: (document.body.innerText.match(/Driver's age\s*\n?\s*([^\n]+)\s*\n?\s*Driver's residency\s*\n?\s*([^\n]+)/i) || []).slice(1, 3),
-    dates: (document.body.innerText.match(/\d{1,2} [A-Z][a-z]{2}, [A-Z][a-z]{2}/g) || []).slice(0, 2),
+  if (!sessionId) return JSON.stringify({ ok: false, error: 'the page has not shown its cars (no search session after 30 s): open the url again, wait until the cars show and run the script once more' });
+  const chunk = [...document.scripts].map((s) => s.src).find((u) => /\/_next\/static\/chunks\/app\/cars\/page-[0-9a-f]+\.js/.test(u));
+  if (!chunk) return JSON.stringify({ ok: false, error: 'the page\'s cars script was not found (RateHawk changed its page): say it could not be read' });
+  let actionId = null;
+  try { const m = (await (await fetch(chunk)).text()).match(/createServerReference\)?\(\s*"([0-9a-f]{20,})"[^)]*"getFilteredOffers"/); actionId = m ? m[1] : null; } catch (e) { /* said below */ }
+  if (!actionId) return JSON.stringify({ ok: false, error: 'the page\'s "load more" action was not found in its script (RateHawk changed its page): say it could not be read' });
+  const call = async (offset) => {
+    const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 30000);
+    try {
+      const res = await fetch(location.pathname + location.search, { method: 'POST', headers: { accept: 'text/x-component', 'next-action': actionId, 'content-type': 'text/plain;charset=UTF-8' }, body: JSON.stringify([{ filters, sessionId, offset, limit: 10 }]), signal: ac.signal });
+      const tx = await res.text();
+      if (res.status === 401 || res.status === 403 || /captcha|are you a human|access denied/i.test(tx.slice(0, 400))) return { stop: 'RateHawk refused the cars service (HTTP ' + res.status + ': logged out, a human check or a block). Stop: do not retry and do not work around it; tell the operator to look at the page.' };
+      if (!res.ok) return { stop: 'RateHawk\'s cars service answered ' + res.status + ': open the url again, wait until the cars show and run the script once more' };
+      const line = tx.split('\n').find((l) => l.startsWith('1:'));
+      if (!line) return { stop: 'RateHawk\'s cars service answered without a list (' + tx.slice(0, 80).replace(/\s+/g, ' ') + '): open the url again and run the script once more' };
+      const j = JSON.parse(line.slice(2));
+      if (!Array.isArray(j.offers)) return { stop: 'RateHawk\'s cars service answered without offers: open the url again and run the script once more' };
+      return { j };
+    } catch (err) { return { stop: 'RateHawk\'s cars service could not be read (' + String(err.name === 'AbortError' ? 'no answer in 30 s' : err.message).slice(0, 60) + '): run the script once more' }; } finally { clearTimeout(to); }
   };
-  const prices = rows.map((r) => r.price).filter((x) => x != null);
-  const asc = prices.every((p, i) => i === 0 || p >= prices[i - 1]); const desc = prices.every((p, i) => i === 0 || p <= prices[i - 1]);
-  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.', form, filters_ticked: ticked, page_ticked: pageTicked, offset: SKIP, rows_read: rows.length, reached_cap: rows.length >= MAX_CARS, price_order: asc ? 'ascending' : desc ? 'descending' : 'mixed' }, rows);
+  const base = Math.floor(SKIP / 10) * 10;
+  const all = []; let count = null; let lastLen = 0;
+  for (let off = base; off < MAX_CARS; off += 10) {
+    const got = await call(off);
+    if (got.stop) return JSON.stringify({ ok: false, error: got.stop });
+    if (count === null) count = got.j.count;      // the whole search's count: it does NOT change with the filters (read live 7 Nov 2026: 1,481 with and without Automatic)
+    all.push(...got.j.offers); lastLen = got.j.offers.length;
+    if (lastLen < 10) break;
+  }
+  const num = (x) => (x === null || x === undefined || x === '' ? null : Number(x));
+  const rowOf = (o) => {
+    const v = o.vehicle || {}; const r = o.rate || {}; const p = (o.total || {}).partner || {}; const pu = (o.pick_up || {}).office || {}; const dof = (o.drop_off || {}).office || {};
+    return { model: (v.model || '').trim() || null, sipp: v.sipp_code || null, category: v.category || null, gearbox: v.transmission_type || null, seats: v.seats_number, doors: v.doors_number, ac: v.has_air_conditioning, electric: v.is_electric,
+      bags_small: v.small_bags_number, bags_medium: v.medium_bags_number, bags_large: v.large_bags_number,
+      company: (r.rental_company || {}).label || null, rating: num((r.rental_company || {}).rating), supplier: (r.supplier || {}).slug || null,
+      pickup: { name: pu.name || null, type: pu.type || null, sub: pu.subtype || null, address: pu.address || null, iata: pu.iata_code || null, at: (o.pick_up || {}).date_time || null },
+      dropoff: { name: dof.name || null, sub: dof.subtype || null, at: (o.drop_off || {}).date_time || null },
+      deposit: r.deposit ? num(r.deposit.amount) : null, ins_type: (r.insurance || {}).type || null, excess_cdw: num((r.insurance || {}).cdw_excess), excess_theft: num((r.insurance || {}).theft_excess),
+      mileage: r.mileage, fuel: r.fuel_policy || null,
+      cancel: (r.cancellation_policies || []).map((c) => ({ from: c.start_at, to: c.end_at, fee: num(c.amount_penalty), refundable: c.is_refundable })),
+      fees: (r.fees || []).map((f) => ({ n: f.label, a: num(f.amount), in: !!f.is_included_in_rate, pay: f.payment, t: f.type })),
+      extras: (r.additional_services || []).slice(0, 8).map((f) => ({ n: f.label, a: num(f.amount), in: !!f.is_included_in_rate, pay: f.payment })),
+      driver: r.driver_requirements ? { min: r.driver_requirements.minimum_age, max: r.driver_requirements.maximum_age, years: r.driver_requirements.minimum_driving_experience, young: r.driver_requirements.young_driver_age } : null,
+      price: num(p.amount_sell), currency: p.currency_code || null, fee_service: num(p.amount_service_fee) };
+  };
+  const rows = all.slice(SKIP - base, SKIP - base + (MAX_CARS - SKIP)).map(rowOf);
+  const q = new URLSearchParams(location.search);
+  return emit({ ok: true, next: 'STOP: do not write the answer yourself. Call compose_answer with this text unchanged (site_results) and show the text it returns, nothing else.',
+    search: { route: q.get('route'), date: q.get('date'), age: q.get('age'), residency: q.get('residency') }, filters, offset: SKIP, search_total: count, reached_cap: base + all.length >= MAX_CARS && lastLen === 10, ms: Math.round(performance.now() - t0) }, rows);
 })()
